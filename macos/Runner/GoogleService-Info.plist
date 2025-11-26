@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>API_KEY</key>
+	<string>AIzaSyAKc4qF4Yc_j5qZilJ7KTawg2QgrX_EIik</string>
+	<key>GCM_SENDER_ID</key>
+	<string>584371966532</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.example.barakahApp</string>
+	<key>PROJECT_ID</key>
+	<string>ebrahimzaghal1-f0347</string>
+	<key>STORAGE_BUCKET</key>
+	<string>ebrahimzaghal1-f0347.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:584371966532:ios:ec1d4bc179efd1eb252211</string>
+</dict>
+</plist>

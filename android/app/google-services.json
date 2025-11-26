@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "584371966532",
+    "project_id": "ebrahimzaghal1-f0347",
+    "storage_bucket": "ebrahimzaghal1-f0347.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:584371966532:android:46b12853c4e83bdf252211",
+        "android_client_info": {
+          "package_name": "com.example.barakah_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAjh-aBxXBkPaUyuZbqt6eJQnT-tpF-sws"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

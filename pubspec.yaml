@@ -1,11 +1,11 @@
-name: barakah_app
-description: A new Flutter project.
-publish_to: "none"
+name: barakah90
+description: A new Flutter project
+publish_to: 'none'
 
 version: 1.0.0+1
 
 environment:
-  sdk: ">=3.2.0 <4.0.0"
+  sdk: ">=3.3.0 <4.0.0"
 
 dependencies:
   flutter:
@@ -13,35 +13,24 @@ dependencies:
 
   cupertino_icons: ^1.0.8
 
-  # -------------------------
-  # Firebase Required Packages
-  # -------------------------
-  firebase_core: ^3.7.0
-  firebase_auth: ^5.1.3
-  cloud_firestore: ^5.4.4
-  firebase_storage: ^12.1.3
+  # إصدارات متوافقة ومستقرة لخدمات Firebase
+  firebase_core: ^2.32.0
+  firebase_auth: ^4.17.8
+  cloud_firestore: ^4.17.5
 
-  # -------------------------
-  # Local Storage
-  # -------------------------
-  shared_preferences: ^2.2.2
-
-  # -------------------------
-  # UI Packages
-  # -------------------------
-  google_fonts: ^6.2.1
+  shared_preferences: ^2.2.3
+  geolocator: ^11.0.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
-  flutter_lints: ^3.0.2
+  flutter_lints: ^3.0.0
 
 flutter:
   uses-material-design: true
 
+  # تأكد من وجود هذه المجلدات فعليًا في مشروعك
   assets:
-    - assets/images/
     - assets/images/categories/
-    - assets/images/icons/
-    - assets/fonts/
+    - assets/images/backgrounds/
+    - assets/images/restaurants/

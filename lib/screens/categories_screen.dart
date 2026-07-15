@@ -1,76 +1,47 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'restaurants_screen.dart'; // للانتقال للمطاعم بعد اختيار التصنيف
 
 class CategoriesScreen extends StatelessWidget {
-  CategoriesScreen({super.key});
-
-  final List<Map<String, String>> categories = [
-    {"title": "مخبوزات", "image": "assets/images/categories/bakery.jpg"},
-    {"title": "دجاج", "image": "assets/images/categories/chicken.jpg"},
-    {"title": "أزياء", "image": "assets/images/categories/fashion.jpg"},
-    {"title": "أسماك", "image": "assets/images/categories/fish.jpg"},
-    {"title": "خضار وفواكه", "image": "assets/images/categories/fruits_veggies.jpg"},
-    {"title": "لحوم", "image": "assets/images/categories/meat.jpg"},
-    {"title": "صيدلية", "image": "assets/images/categories/pharmacy.jpg"},
-    {"title": "مطاعم", "image": "assets/images/categories/restaurants.jpg"},
-    {"title": "سوبرماركت", "image": "assets/images/categories/supermarket.jpg"},
-  ];
+  const CategoriesScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("التصنيفات"),
-        backgroundColor: Colors.pink,
+        title: const Text("التصنيفات"),
+        backgroundColor: Colors.black,
+        centerTitle: true,
       ),
-      body: GridView.builder(
-        padding: const EdgeInsets.all(16),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,       // 3 أعمدة
-          crossAxisSpacing: 10,
-          mainAxisSpacing: 10,
-        ),
-        itemCount: categories.length,
-        itemBuilder: (context, index) {
-          return InkWell(
-            onTap: () {
-              // هنا ننتقل لصفحة المنتجات لاحقًا
+      body: StreamBuilder<QuerySnapshot>(
+        // هنا نربط التطبيق بمجموعة التصنيفات التي يضيفها الأدمن
+        stream: FirebaseFirestore.instance.collection('categories').snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return const Center(child: Text("لا توجد تصنيفات حالياً"));
+          }
+
+          return ListView.builder(
+            itemCount: snapshot.data!.docs.length,
+            itemBuilder: (context, index) {
+              var category = snapshot.data!.docs[index];
+              return ListTile(
+                leading: CircleAvatar(
+                  backgroundImage: NetworkImage(category['image'] ?? ''),
+                ),
+                title: Text(category['name'] ?? 'بدون اسم'),
+                onTap: () {
+                  // عند الضغط على تصنيف (مثل "مطاعم")، يفتح صفحة المطاعم
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const RestaurantsScreen()),
+                  );
+                },
+              );
             },
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black26,
-                    blurRadius: 4,
-                    offset: Offset(1, 2),
-                  )
-                ],
-              ),
-              child: Column(
-                children: [
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                      child: Image.asset(
-                        categories[index]["image"]!,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(6.0),
-                    child: Text(
-                      categories[index]["title"]!,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
-                  )
-                ],
-              ),
-            ),
           );
         },
       ),

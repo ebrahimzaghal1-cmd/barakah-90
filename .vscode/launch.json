@@ -1,0 +1,28 @@
+{
+    // استخدم IntelliSense لمعرفة الخصائص الممكنة.
+    // مرر الماوس لرؤية أوصاف الخصائص الموجودة.
+    // لمزيد من المعلومات، يرجى زيارة: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "command": "npm start",
+            "name": "Run npm start",
+            "request": "launch",
+            "type": "node-terminal"
+        },
+        {
+            "name": "Launch Chrome",
+            "request": "launch",
+            "type": "chrome",
+            "url": "http://localhost:8080",
+            "webRoot": "${workspaceFolder}"
+        },
+        {
+            "type": "expo",
+            "request": "attach",
+            "name": "Inspect Expo app",
+            "projectRoot": "${workspaceFolder}",
+            "bundlerHost": "127.0.0.1"
+        }
+    ]
+}

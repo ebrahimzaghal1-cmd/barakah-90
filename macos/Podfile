@@ -1,6 +1,5 @@
 platform :osx, '10.15'
 
-# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
 project 'Runner', {
@@ -10,33 +9,25 @@ project 'Runner', {
 }
 
 def flutter_root
-  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'ephemeral', 'Flutter-Generated.xcconfig'), __FILE__)
-  unless File.exist?(generated_xcode_build_settings_path)
-    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure \"flutter pub get\" is executed first"
-  end
-
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
   File.foreach(generated_xcode_build_settings_path) do |line|
     matches = line.match(/FLUTTER_ROOT\=(.*)/)
     return matches[1].strip if matches
   end
-  raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Flutter-Generated.xcconfig, then run \"flutter pub get\""
 end
 
-require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+require File.expand_path(File.join(flutter_root, 'packages', 'flutter_tools', 'bin', 'podhelper'), __FILE__)
 
-flutter_macos_podfile_setup
+flutter_macos_podfile_setup   # ✅ الصحيح
 
 target 'Runner' do
-  use_frameworks!
+  use_frameworks! :linkage => :static
 
-  flutter_install_all_macos_pods File.dirname(File.realpath(__FILE__))
-  target 'RunnerTests' do
-    inherit! :search_paths
-  end
+  flutter_install_all_macos_pods File.dirname(File.realpath(__FILE__))  # ✅ الصحيح
 end
 
 post_install do |installer|
   installer.pods_project.targets.each do |target|
-    flutter_additional_macos_build_settings(target)
+    flutter_additional_macos_build_settings(target)  # ✅ الصحيح
   end
 end

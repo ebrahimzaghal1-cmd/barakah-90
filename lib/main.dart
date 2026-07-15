@@ -1,33 +1,38 @@
 import 'package:flutter/material.dart';
-import 'firebase_options.dart';
-import 'package:firebase_core/firebase_core.dart';
-
-// شاشات التطبيق
-import 'screens/onboarding_slider.dart';
-import 'screens/home_screen.dart';
+import 'package:firebase_core/firebase_core.dart'; // المكتبة الأساسية للربط
+import 'navigation/main_navigation_bar.dart';
+import 'services/upload_data.dart';
+import 'firebase_options.dart'; // الملف الذي يتم إنشاؤه تلقائياً بواسطة FlutterFire CLI
 
 void main() async {
+  // 1. التأكد من تهيئة أدوات فلاتر
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-  runApp(const BarakahApp());
+
+  try {
+    // 2. تهيئة Firebase - الخطوة التي كانت مفقودة في لقطة الشاشة 2.21.14 ص
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    
+    // 3. رفع البيانات (يفضل تشغيلها مرة واحدة فقط ثم إغلاقها)
+    // await uploadRestaurants(); 
+    
+  } catch (e) {
+    print("خطأ في تهيئة Firebase: $e");
+  }
+
+  runApp(const MyApp());
 }
 
-class BarakahApp extends StatelessWidget {
-  const BarakahApp({super.key});
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return const MaterialApp(
       debugShowCheckedModeBanner: false,
-
-      // ⭐️ السلايدر يظهر دائمًا
-      home: OnboardingSlider(),
-
-      routes: {
-        '/home': (_) => const HomeScreen(),
-      },
+      title: 'Barakah App',
+      home: MainNavBar(), // يفتح على الواجهة التي رأيناها في لقطات الشاشة السابقة
     );
   }
 }

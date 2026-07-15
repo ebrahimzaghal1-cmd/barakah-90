@@ -33,9 +33,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () async {
+                final navigator = Navigator.of(context);
                 try {
                   await auth.signUp(email.text, password.text);
-                  Navigator.pushReplacementNamed(context, '/home');
+                  if (!mounted) return;
+                  navigator.pushReplacementNamed('/home');
                 } catch (e) {
                   print(e);
                 }

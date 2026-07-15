@@ -1,8 +1,7 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'dart:async';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'onboarding_screen.dart'; 
-import 'home_screen.dart'; // تأكد من صحة المسار
+import 'package:flutter/services.dart';
+import '../navigation/main_navigation.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -12,44 +11,93 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-
   @override
   void initState() {
     super.initState();
-    checkFirstTime();
+
+    // إخفاء شريط الحالة
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
+
+    Future.delayed(const Duration(milliseconds: 2500), () {
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const MainNavigation()),
+      );
+    });
   }
 
-  Future<void> checkFirstTime() async {
-    final prefs = await SharedPreferences.getInstance();
-    final isFirstTime = prefs.getBool('isFirstTime') ?? true;
-
-    await Future.delayed(const Duration(seconds: 2));
-
-    if (mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) =>
-              isFirstTime ? const OnboardingScreen() : const HomeScreen(),
-        ),
-      );
-    }
+  @override
+  void dispose() {
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      backgroundColor: Colors.white,
-      body: Center(
-        child: Text(
-          '✨ بركة ✨',
-          style: TextStyle(
-            fontSize: 32,
-            fontWeight: FontWeight.bold,
-            color: Colors.teal,
-            fontFamily: 'Cairo',
+    return Scaffold(
+      body: Stack(
+        children: [
+          // 🔴 خلفية الرمان
+          Positioned.fill(
+            child: Image.asset(
+              'assets/images/backgrounds/pomegranate.jpg',
+              fit: BoxFit.cover,
+            ),
           ),
-        ),
+
+          // تعتيم خفيف
+          Container(color: Colors.black.withOpacity(0.25)),
+
+          // كرت زجاجي
+          Center(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(28),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 32, vertical: 28),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.35),
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.4),
+                    ),
+                  ),
+                  child: const Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        "أهلاً بكم في",
+                        style: TextStyle(
+                          fontSize: 22,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      SizedBox(height: 6),
+                      Text(
+                        "بركة ماركت",
+                        style: TextStyle(
+                          fontSize: 30,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black,
+                        ),
+                      ),
+                      SizedBox(height: 10),
+                      Text(
+                        "متعة التسوق",
+                        style: TextStyle(
+                          fontSize: 18,
+                          color: Colors.black54,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -1,0 +1,9 @@
+onPressed: () {
+  if (userCtrl.text == adminUser && passCtrl.text == adminPass) {
+    Navigator.pushReplacementNamed(context, "/admin-dashboard");
+  } else {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("خطأ في تسجيل الدخول")),
+    );
+  }
+},

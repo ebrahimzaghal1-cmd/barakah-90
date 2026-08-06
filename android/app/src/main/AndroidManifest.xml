@@ -1,5 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- صلاحيات الإنترنت -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- صلاحيات الصور -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.CAMERA"/>
+
     <application
         android:label="barakah90"
         android:name="${applicationName}"
@@ -23,7 +31,7 @@
 
         <meta-data
             android:name="flutterEmbedding"
-            android:value="2" />
+            android:value="2"/>
     </application>
 
 </manifest>

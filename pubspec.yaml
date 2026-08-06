@@ -13,23 +13,30 @@ dependencies:
 
   cupertino_icons: ^1.0.8
 
-  # إصدارات متوافقة ومستقرة لخدمات Firebase
-  firebase_core: ^2.32.0
-  firebase_auth: ^4.17.8
-  cloud_firestore: ^4.17.5
+  # Firebase
+  firebase_core: ^4.12.1
+  firebase_auth: ^6.5.6
+  cloud_firestore: ^6.7.1
+  firebase_storage: ^13.0.2
 
+  # Image Picker
+  image_picker: ^1.1.2
+
+  # Local Storage
   shared_preferences: ^2.2.3
+
+  # Location
   geolocator: ^11.0.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
   flutter_lints: ^3.0.0
 
 flutter:
   uses-material-design: true
 
-  # تأكد من وجود هذه المجلدات فعليًا في مشروعك
   assets:
     - assets/images/categories/
     - assets/images/backgrounds/

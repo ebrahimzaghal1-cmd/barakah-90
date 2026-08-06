@@ -11,7 +11,10 @@ class RestaurantsScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text("الرئيسية", style: TextStyle(color: Colors.white)),
+        title: const Text(
+          "الرئيسية",
+          style: TextStyle(color: Colors.white),
+        ),
         backgroundColor: Colors.black,
         centerTitle: true,
       ),
@@ -19,35 +22,56 @@ class RestaurantsScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- قسم التصنيفات (أفقي) ---
+            // التصنيفات
             const Padding(
               padding: EdgeInsets.all(15.0),
-              child: Text("التصنيفات", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              child: Text(
+                "التصنيفات",
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
+
             SizedBox(
               height: 100,
               child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance.collection('categories').snapshots(),
+                stream: FirebaseFirestore.instance
+                    .collection('categories')
+                    .snapshots(),
                 builder: (context, snapshot) {
-                  if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                  
+                  if (!snapshot.hasData) {
+                    return const Center(
+                      child: CircularProgressIndicator(),
+                    );
+                  }
+
                   return ListView.builder(
                     scrollDirection: Axis.horizontal,
-                    itemCount: snapshot.data!.docs.length,
                     padding: const EdgeInsets.symmetric(horizontal: 10),
+                    itemCount: snapshot.data!.docs.length,
                     itemBuilder: (context, index) {
-                      var category = snapshot.data!.docs[index];
+                      final category = snapshot.data!.docs[index];
+
                       return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
                         child: Column(
                           children: [
                             CircleAvatar(
                               radius: 30,
-                              backgroundColor: Colors.grey[200],
-                              backgroundImage: NetworkImage(category['image'] ?? ''),
+                              backgroundColor: Colors.grey.shade200,
+                              backgroundImage: NetworkImage(
+                                category['image'] ?? '',
+                              ),
                             ),
                             const SizedBox(height: 5),
-                            Text(category['name'] ?? '', style: const TextStyle(fontSize: 12)),
+
+                            // ✅ تم إصلاح الخطأ هنا
+                            Text(
+                              category['title'] ?? '',
+                              style: const TextStyle(fontSize: 12),
+                            ),
                           ],
                         ),
                       );
@@ -59,26 +83,42 @@ class RestaurantsScreen extends StatelessWidget {
 
             const Divider(),
 
-            // --- قسم المطاعم (شبكة) ---
             const Padding(
               padding: EdgeInsets.all(15.0),
-              child: Text("كل المطاعم", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              child: Text(
+                "كل المطاعم",
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
+
             StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance.collection('items').snapshots(),
+              stream: FirebaseFirestore.instance
+                  .collection('items')
+                  .snapshots(),
               builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
+                if (snapshot.connectionState ==
+                    ConnectionState.waiting) {
+                  return const Center(
+                    child: CircularProgressIndicator(),
+                  );
                 }
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Center(child: Text("لا توجد مطاعم حالياً"));
+
+                if (!snapshot.hasData ||
+                    snapshot.data!.docs.isEmpty) {
+                  return const Center(
+                    child: Text("لا توجد مطاعم حالياً"),
+                  );
                 }
 
                 return GridView.builder(
-                  shrinkWrap: true, // مهم جداً داخل SingleChildScrollView
-                  physics: const NeverScrollableScrollPhysics(), // تعطيل السكرول الداخلي
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
                   padding: const EdgeInsets.all(10),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  gridDelegate:
+                      const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
                     crossAxisSpacing: 10,
                     mainAxisSpacing: 10,
@@ -86,17 +126,23 @@ class RestaurantsScreen extends StatelessWidget {
                   ),
                   itemCount: snapshot.data!.docs.length,
                   itemBuilder: (context, index) {
-                    var restaurantDoc = snapshot.data!.docs[index];
+                    final restaurantDoc =
+                        snapshot.data!.docs[index];
+
                     return GestureDetector(
                       onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => RestaurantDetailsScreen(restaurant: restaurantDoc),
+                            builder: (_) => RestaurantDetailsScreen(
+                              restaurant: restaurantDoc,
+                            ),
                           ),
                         );
                       },
-                      child: RestaurantCard(restaurant: restaurantDoc),
+                      child: RestaurantCard(
+                        restaurant: restaurantDoc,
+                      ),
                     );
                   },
                 );

@@ -14,6 +14,7 @@ class MainNavBar extends StatefulWidget {
 }
 
 class _MainNavBarState extends State<MainNavBar> {
+
   int currentIndex = 0;
 
   late final List<Widget> screens;
@@ -22,51 +23,71 @@ class _MainNavBarState extends State<MainNavBar> {
   void initState() {
     super.initState();
 
-    screens = const [
-      RestaurantsScreen(),
-      MarketScreen(),
-      CartScreen(),
-      OrdersScreen(),
-      ProfileScreen(),
+    screens = [
+      const RestaurantsScreen(),
+      const MarketScreen(),
+      const CartScreen(),
+      const OrdersScreen(),
+      const ProfileScreen(),
     ];
   }
 
+
   @override
   Widget build(BuildContext context) {
+
     return Scaffold(
+
       body: screens[currentIndex],
+
       bottomNavigationBar: BottomNavigationBar(
+
         currentIndex: currentIndex,
-        onTap: (index) {
-          setState(() => currentIndex = index);
+
+        onTap: (index){
+          setState(() {
+            currentIndex = index;
+          });
         },
+
         type: BottomNavigationBarType.fixed,
+
         selectedItemColor: Colors.pinkAccent,
         unselectedItemColor: Colors.grey,
+
         backgroundColor: Colors.black,
+
         items: const [
+
           BottomNavigationBarItem(
             icon: Icon(Icons.restaurant),
             label: 'مطاعم',
           ),
+
           BottomNavigationBarItem(
             icon: Icon(Icons.store),
             label: 'ماركت',
           ),
+
           BottomNavigationBarItem(
             icon: Icon(Icons.shopping_cart),
             label: 'السلة',
           ),
+
           BottomNavigationBarItem(
             icon: Icon(Icons.receipt_long),
             label: 'طلباتي',
           ),
+
           BottomNavigationBarItem(
             icon: Icon(Icons.person),
             label: 'صفحتي',
           ),
+
         ],
+
       ),
+
     );
   }
 }

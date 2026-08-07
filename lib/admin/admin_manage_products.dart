@@ -1,5 +1,9 @@
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 class AdminManageProducts extends StatefulWidget {
   const AdminManageProducts({super.key});
@@ -10,83 +14,76 @@ class AdminManageProducts extends StatefulWidget {
 
 class _AdminManageProductsState extends State<AdminManageProducts> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final ImagePicker _imagePicker = ImagePicker();
 
   Future<void> _showProductDialog({DocumentSnapshot? doc}) async {
-    final titleController = TextEditingController(text: doc?['title'] ?? '');
+    final product = doc?.data() as Map<String, dynamic>? ?? {};
+    final titleController = TextEditingController(text: product['title'] ?? '');
     final descriptionController =
-        TextEditingController(text: doc?['description'] ?? '');
-    final imageController = TextEditingController(text: doc?['image'] ?? '');
+        TextEditingController(text: product['description'] ?? '');
     final categoryController =
-        TextEditingController(text: doc?['category'] ?? '');
-    final typeController = TextEditingController(text: doc?['type'] ?? '');
+        TextEditingController(text: product['category'] ?? '');
+    final typeController = TextEditingController(text: product['type'] ?? '');
+    var imageUrl = product['image']?.toString() ?? '';
+    File? selectedImage;
+    var isSaving = false;
 
     await showDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(doc == null ? 'إضافة منتج' : 'تعديل المنتج'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: titleController,
-                  decoration: const InputDecoration(
-                    labelText: 'اسم المنتج',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: descriptionController,
-                  decoration: const InputDecoration(
-                    labelText: 'الوصف',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: imageController,
-                  decoration: const InputDecoration(
-                    labelText: 'رابط الصورة',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: categoryController,
-                  decoration: const InputDecoration(
-                    labelText: 'التصنيف',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: typeController,
-                  decoration: const InputDecoration(
-                    labelText: 'النوع',
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('إلغاء'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final title = titleController.text.trim();
-                final description = descriptionController.text.trim();
-                final image = imageController.text.trim();
-                final category = categoryController.text.trim();
-                final type = typeController.text.trim();
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            Future<void> chooseImage() async {
+              try {
+                final pickedImage = await _imagePicker.pickImage(
+                  source: ImageSource.gallery,
+                  imageQuality: 85,
+                );
+                if (pickedImage == null) return;
 
-                if (title.isEmpty) return;
+                setDialogState(() => selectedImage = File(pickedImage.path));
+              } catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('تعذر اختيار الصورة.')),
+                  );
+                }
+              }
+            }
+
+            Future<void> saveProduct() async {
+              final title = titleController.text.trim();
+              if (title.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('يرجى إدخال اسم المنتج.')),
+                );
+                return;
+              }
+
+              setDialogState(() => isSaving = true);
+              try {
+                if (selectedImage != null) {
+                  final imagePath = selectedImage!.path;
+                  final extension = imagePath.contains('.')
+                      ? imagePath.split('.').last
+                      : 'jpg';
+                  final fileName =
+                      '${DateTime.now().millisecondsSinceEpoch}.$extension';
+                  final storageRef = FirebaseStorage.instance
+                      .ref()
+                      .child('items')
+                      .child(fileName);
+
+                  await storageRef.putFile(selectedImage!);
+                  imageUrl = await storageRef.getDownloadURL();
+                }
 
                 final data = {
                   'title': title,
-                  'description': description,
-                  'image': image,
-                  'category': category,
-                  'type': type,
+                  'description': descriptionController.text.trim(),
+                  'image': imageUrl,
+                  'category': categoryController.text.trim(),
+                  'type': typeController.text.trim(),
                 };
 
                 if (doc == null) {
@@ -95,14 +92,124 @@ class _AdminManageProductsState extends State<AdminManageProducts> {
                   await _firestore.collection('items').doc(doc.id).update(data);
                 }
 
-                if (mounted) Navigator.pop(context);
-              },
-              child: const Text('حفظ'),
-            ),
-          ],
+                if (context.mounted) Navigator.of(dialogContext).pop();
+              } catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text('تعذر حفظ المنتج. حاول مرة أخرى.')),
+                  );
+                }
+              } finally {
+                if (context.mounted) setDialogState(() => isSaving = false);
+              }
+            }
+
+            final preview = selectedImage != null
+                ? Image.file(selectedImage!, fit: BoxFit.cover)
+                : imageUrl.isNotEmpty
+                    ? Image.network(
+                        imageUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const Icon(
+                          Icons.image_not_supported_outlined,
+                          size: 42,
+                        ),
+                      )
+                    : const Icon(Icons.add_photo_alternate_outlined, size: 42);
+
+            return AlertDialog(
+              title: Text(doc == null ? 'إضافة منتج' : 'تعديل المنتج'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    InkWell(
+                      onTap: isSaving ? null : chooseImage,
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        height: 150,
+                        width: double.infinity,
+                        clipBehavior: Clip.antiAlias,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            preview,
+                            Positioned(
+                              bottom: 8,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 5,
+                                ),
+                                color: Colors.black54,
+                                child: Text(
+                                  imageUrl.isEmpty && selectedImage == null
+                                      ? 'اختيار صورة'
+                                      : 'تغيير الصورة',
+                                  style: const TextStyle(color: Colors.white),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: titleController,
+                      decoration:
+                          const InputDecoration(labelText: 'اسم المنتج'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: descriptionController,
+                      decoration: const InputDecoration(labelText: 'الوصف'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: categoryController,
+                      decoration: const InputDecoration(labelText: 'التصنيف'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: typeController,
+                      decoration: const InputDecoration(labelText: 'النوع'),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSaving ? null : () => Navigator.pop(context),
+                  child: const Text('إلغاء'),
+                ),
+                ElevatedButton(
+                  onPressed: isSaving ? null : saveProduct,
+                  child: isSaving
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('حفظ'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
+
+    titleController.dispose();
+    descriptionController.dispose();
+    categoryController.dispose();
+    typeController.dispose();
   }
 
   Future<void> _deleteProduct(String id) async {

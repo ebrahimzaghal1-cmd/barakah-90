@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -223,9 +223,11 @@ class _AdEditorState extends State<_AdEditor> {
   final _title = TextEditingController();
   final _subtitle = TextEditingController();
   final _picker = ImagePicker();
-  File? _imageFile;
-  final List<File> _galleryFiles = [];
-  File? _videoFile;
+  XFile? _imageFile;
+  Uint8List? _imageBytes;
+  final List<XFile> _galleryFiles = [];
+  final List<Uint8List> _galleryBytes = [];
+  XFile? _videoFile;
   String _placement = 'restaurant';
   String _displaySize = 'large';
   String _adFormat = 'banner';
@@ -261,7 +263,14 @@ class _AdEditorState extends State<_AdEditor> {
       maxWidth: 1800,
       maxHeight: 1800,
     );
-    if (file != null && mounted) setState(() => _imageFile = File(file.path));
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
+    if (mounted) {
+      setState(() {
+        _imageFile = file;
+        _imageBytes = bytes;
+      });
+    }
   }
 
   Future<void> _pickGallery() async {
@@ -272,11 +281,18 @@ class _AdEditorState extends State<_AdEditor> {
     );
     if (files.isEmpty || !mounted) return;
     final available = 5 - _existingGallery.length;
+    final selectedFiles = files.take(available.clamp(0, 5)).toList();
+    final selectedBytes = await Future.wait(
+      selectedFiles.map((file) => file.readAsBytes()),
+    );
+    if (!mounted) return;
     setState(() {
       _galleryFiles
         ..clear()
-        ..addAll(
-            files.take(available.clamp(0, 5)).map((file) => File(file.path)));
+        ..addAll(selectedFiles);
+      _galleryBytes
+        ..clear()
+        ..addAll(selectedBytes);
     });
     if (files.length > available && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -297,7 +313,7 @@ class _AdEditorState extends State<_AdEditor> {
       source: ImageSource.gallery,
       maxDuration: const Duration(seconds: 30),
     );
-    if (file != null && mounted) setState(() => _videoFile = File(file.path));
+    if (file != null && mounted) setState(() => _videoFile = file);
   }
 
   Future<void> _save() async {
@@ -529,11 +545,11 @@ class _AdEditorState extends State<_AdEditor> {
               onChanged: (value) => setState(() => _active = value),
             ),
             const Divider(height: 32),
-            if (_imageFile != null)
+            if (_imageBytes != null)
               ClipRRect(
                   borderRadius: BorderRadius.circular(18),
-                  child:
-                      Image.file(_imageFile!, height: 170, fit: BoxFit.cover))
+                  child: Image.memory(_imageBytes!,
+                      height: 170, fit: BoxFit.cover))
             else if (existingImage.isNotEmpty)
               ClipRRect(
                   borderRadius: BorderRadius.circular(18),
@@ -561,11 +577,11 @@ class _AdEditorState extends State<_AdEditor> {
                                 width: 82, height: 82, fit: BoxFit.cover),
                           ),
                         )),
-                    ..._galleryFiles.map((file) => Padding(
+                    ..._galleryBytes.map((bytes) => Padding(
                           padding: const EdgeInsetsDirectional.only(end: 8),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(12),
-                            child: Image.file(file,
+                            child: Image.memory(bytes,
                                 width: 82, height: 82, fit: BoxFit.cover),
                           ),
                         )),

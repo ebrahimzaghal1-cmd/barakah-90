@@ -74,7 +74,17 @@ class MyApp extends StatelessWidget {
           textDirection: locale.languageCode == 'ar'
               ? TextDirection.rtl
               : TextDirection.ltr,
-          child: child ?? const SizedBox.shrink(),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.asset(
+                'assets/images/profile_gold_background.jpg',
+                fit: BoxFit.cover,
+              ),
+              const ColoredBox(color: Color(0xD9FFFCF5)),
+              child ?? const SizedBox.shrink(),
+            ],
+          ),
         ),
         home: kIsWeb
             ? switch (Uri.base.path) {

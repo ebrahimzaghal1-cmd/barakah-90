@@ -29,19 +29,6 @@ class OrdersScreen extends StatelessWidget {
         if (user == null) {
           return Scaffold(
             backgroundColor: Colors.transparent,
-            appBar: AppBar(
-              title: const Text(
-                'طلباتي',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              centerTitle: true,
-              backgroundColor: Colors.white,
-              foregroundColor: Colors.black,
-              elevation: 0,
-            ),
             body: BarakahBrandBackdrop(
               child: Center(
                 child: Padding(
@@ -125,19 +112,6 @@ class OrdersScreen extends StatelessWidget {
 
         return Scaffold(
           backgroundColor: Colors.transparent,
-          appBar: AppBar(
-            title: const Text(
-              'طلباتي',
-              style: TextStyle(
-                color: Colors.black,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            centerTitle: true,
-            backgroundColor: Colors.white,
-            foregroundColor: Colors.black,
-            elevation: 0,
-          ),
           body: BarakahBrandBackdrop(
             child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: OrderService().customerOrders(),
@@ -235,17 +209,7 @@ class _OrdersSplitViewState extends State<_OrdersSplitView> {
 
         return Container(
           width: double.infinity,
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Color(0xFFFFFFFF),
-                Color(0xFFFCFCFB),
-                Color(0xFFF8F6F0),
-              ],
-            ),
-          ),
+          color: Colors.transparent,
           child: Directionality(
             textDirection: TextDirection.rtl,
             child: ListView(

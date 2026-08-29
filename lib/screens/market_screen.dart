@@ -12,10 +12,12 @@ import '../widgets/responsive_page.dart';
 import '../widgets/advertisement_banner.dart';
 import '../widgets/barakah_online_status_button.dart';
 import '../widgets/barakah_brand.dart';
+import '../widgets/barakah_media_image.dart';
 import 'categories_screen.dart';
 import 'products_screen.dart';
 import 'restaurant_details_screen.dart';
 import 'restaurants_screen.dart';
+import 'location_picker_screen.dart';
 
 /// واجهة الماركت: أقسام متتالية وبطاقات أفقية، على نمط تطبيقات التسوق.
 class MarketScreen extends StatefulWidget {
@@ -64,43 +66,24 @@ class MarketScreen extends StatefulWidget {
 }
 
 class _MarketScreenState extends State<MarketScreen> {
-  String _location = 'بيتي';
+  double? _latitude;
+  double? _longitude;
 
   Future<void> _chooseLocation() async {
-    const locations = ['بيتي', 'رام الله', 'نابلس', 'الخليل', 'القدس'];
-    final selected = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Text('اختر موقع التوصيل',
-                style: TextStyle(fontSize: 23, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 10),
-            ...locations.map((location) => Card(
-                  child: ListTile(
-                    leading: Icon(
-                        location == _location
-                            ? Icons.home_rounded
-                            : Icons.location_city_outlined,
-                        color: location == _location
-                            ? AppTheme.deepYellow
-                            : AppTheme.ink),
-                    title: Text(location,
-                        style: const TextStyle(fontWeight: FontWeight.w800)),
-                    trailing: location == _location
-                        ? const Icon(Icons.check_rounded,
-                            color: AppTheme.deepYellow)
-                        : const Icon(Icons.chevron_left_rounded),
-                    onTap: () => Navigator.pop(context, location),
-                  ),
-                )),
-          ]),
+    final selected = await Navigator.push<Map<String, double>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(
+          latitude: _latitude,
+          longitude: _longitude,
         ),
       ),
     );
-    if (selected != null && mounted) setState(() => _location = selected);
+    if (selected == null || !mounted) return;
+    setState(() {
+      _latitude = selected['latitude'];
+      _longitude = selected['longitude'];
+    });
   }
 
   @override
@@ -109,148 +92,159 @@ class _MarketScreenState extends State<MarketScreen> {
         endDrawer: const _MarketMenu(),
         body: BarakahBrandBackdrop(
           child: ResponsivePage(
-            child: SingleChildScrollView(
+            child: CustomScrollView(
               physics: const BouncingScrollPhysics(
                 parent: AlwaysScrollableScrollPhysics(),
               ),
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              child: Column(children: [
-                _MarketHeader(
-                  location: _location,
-                  onLocationPressed: _chooseLocation,
-                  onSearchPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) =>
-                              const AllItemsScreen(autoFocus: true))),
-                ),
-                const SizedBox(height: 10),
-                const AdvertisementBanner(placement: 'market_top'),
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
-                  child: BarakahOnlineStatusButton(),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(20),
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const BarakahAuctionScreen(),
-                        ),
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Column(children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                      child: _MarketHeader(
+                        onLocationPressed: _chooseLocation,
+                        onSearchPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) =>
+                                    const AllItemsScreen(autoFocus: true))),
                       ),
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 18,
-                          vertical: 15,
-                        ),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            begin: Alignment.topRight,
-                            end: Alignment.bottomLeft,
-                            colors: [
-                              Color(0xFF173762),
-                              Color(0xFF07172D),
-                            ],
-                          ),
+                    ),
+                    const SizedBox(height: 10),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: AdvertisementBanner(placement: 'market_top'),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: AppTheme.coolYellow,
-                            width: 1,
-                          ),
-                        ),
-                        child: const Row(
-                          children: [
-                            CircleAvatar(
-                              radius: 25,
-                              backgroundColor: Color(0xFFFFD64A),
-                              child: Icon(
-                                Icons.gavel_rounded,
-                                color: AppTheme.navy,
-                                size: 28,
-                              ),
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const BarakahAuctionScreen(),
                             ),
-                            SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'مزاد بركة',
-                                    style: TextStyle(
-                                      color: AppTheme.coolYellow,
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                  SizedBox(height: 3),
-                                  Text(
-                                    'بيع واشتري من مجتمع بركة',
-                                    style: TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
+                          ),
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 18,
+                              vertical: 15,
+                            ),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                begin: Alignment.topRight,
+                                end: Alignment.bottomLeft,
+                                colors: [
+                                  Color(0xFF173762),
+                                  Color(0xFF07172D),
                                 ],
                               ),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: AppTheme.coolYellow,
+                                width: 1,
+                              ),
                             ),
-                            Icon(
-                              Icons.arrow_back_ios_new_rounded,
-                              color: Colors.white,
-                              size: 18,
+                            child: const Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 25,
+                                  backgroundColor: Color(0xFFFFD64A),
+                                  child: Icon(
+                                    Icons.gavel_rounded,
+                                    color: AppTheme.navy,
+                                    size: 28,
+                                  ),
+                                ),
+                                SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'مزاد بركة',
+                                        style: TextStyle(
+                                          color: AppTheme.coolYellow,
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                      SizedBox(height: 3),
+                                      Text(
+                                        'بيع واشتري من مجتمع بركة',
+                                        style: TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.arrow_back_ios_new_rounded,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ),
-                !FirebaseState.isReady
-                    ? const _MarketContent(
-                        categories: MarketScreen.categories, items: [])
-                    : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                        stream: FirebaseFirestore.instance
-                            .collection('market_categories')
-                            .snapshots(),
-                        builder: (context, categorySnapshot) {
-                          final firestoreCategories = categorySnapshot
-                                  .data?.docs
-                                  .map((doc) => <String, String>{
-                                        'id': doc.id,
-                                        'title':
-                                            doc.data()['title']?.toString() ??
-                                                '',
-                                        'image':
-                                            doc.data()['image']?.toString() ??
-                                                '',
-                                        'desc':
-                                            doc.data()['desc']?.toString() ??
-                                                '',
-                                      })
-                                  .where((item) => item['title']!.isNotEmpty)
-                                  .toList() ??
-                              <Map<String, String>>[];
-                          final categories = firestoreCategories.isEmpty
-                              ? MarketScreen.categories
-                              : firestoreCategories;
-                          return StreamBuilder<
-                              QuerySnapshot<Map<String, dynamic>>>(
+                    !FirebaseState.isReady
+                        ? const _MarketContent(
+                            categories: MarketScreen.categories, items: [])
+                        : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                             stream: FirebaseFirestore.instance
-                                .collection('items')
+                                .collection('market_categories')
                                 .snapshots(),
-                            builder: (context, itemSnapshot) => _MarketContent(
-                              categories: categories,
-                              items: itemSnapshot.data?.docs ?? [],
-                            ),
-                          );
-                        },
-                      ),
-              ]),
+                            builder: (context, categorySnapshot) {
+                              final firestoreCategories = categorySnapshot
+                                      .data?.docs
+                                      .map((doc) => <String, String>{
+                                            'id': doc.id,
+                                            'title': doc
+                                                    .data()['title']
+                                                    ?.toString() ??
+                                                '',
+                                            'image': doc
+                                                    .data()['image']
+                                                    ?.toString() ??
+                                                '',
+                                            'desc': doc
+                                                    .data()['desc']
+                                                    ?.toString() ??
+                                                '',
+                                          })
+                                      .where(
+                                          (item) => item['title']!.isNotEmpty)
+                                      .toList() ??
+                                  <Map<String, String>>[];
+                              final categories = firestoreCategories.isEmpty
+                                  ? MarketScreen.categories
+                                  : firestoreCategories;
+                              return StreamBuilder<
+                                  QuerySnapshot<Map<String, dynamic>>>(
+                                stream: FirebaseFirestore.instance
+                                    .collection('items')
+                                    .snapshots(),
+                                builder: (context, itemSnapshot) =>
+                                    _MarketContent(
+                                  categories: categories,
+                                  items: itemSnapshot.data?.docs ?? [],
+                                ),
+                              );
+                            },
+                          ),
+                  ]),
+                ),
+              ],
             ),
           ),
         ),
@@ -457,119 +451,102 @@ class _MarketBarakahStatusBanner extends StatelessWidget {
 
 class _MarketHeader extends StatelessWidget {
   const _MarketHeader({
-    required this.location,
     required this.onLocationPressed,
     required this.onSearchPressed,
   });
 
-  final String location;
   final VoidCallback onLocationPressed;
   final VoidCallback onSearchPressed;
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.fromLTRB(14, 7, 14, 12),
+        width: double.infinity,
+        height: 112,
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: const Color(0xFFFFFEFA),
-          border: Border(
-              bottom: BorderSide(color: AppTheme.coolYellow.withOpacity(.28))),
+          borderRadius: BorderRadius.circular(26),
+          image: const DecorationImage(
+            image: AssetImage(
+              'assets/images/barakah_gold_header_bunny_16.png',
+            ),
+            fit: BoxFit.cover,
+            alignment: Alignment.centerRight,
+          ),
+          border: Border.all(color: const Color(0xFFE7BE4D), width: 1.4),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x330A1C39),
+              blurRadius: 18,
+              offset: Offset(0, 7),
+            ),
+          ],
         ),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          SizedBox(
-            height: 72,
-            child: Row(
-              textDirection: TextDirection.rtl,
-              children: [
-                SizedBox(
-                  width: 66,
-                  height: 70,
-                  child: Image.asset(
-                    'assets/images/barakah_profile_bunny.png',
-                    fit: BoxFit.contain,
-                    alignment: Alignment.bottomCenter,
-                  ),
+        child: DecoratedBox(
+          decoration: const BoxDecoration(),
+          child: Stack(children: [
+            const Positioned(
+              left: 0,
+              right: 0,
+              bottom: 17,
+              child: Center(
+                child: SizedBox(
+                  width: 178,
+                  child: BarakahBrandName(light: true, compact: true),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 14,
+              bottom: 12,
+              child: Row(children: [
+                _GoldHeaderAction(
+                  tooltip: 'البحث',
+                  icon: Icons.search_rounded,
+                  onPressed: onSearchPressed,
                 ),
                 const SizedBox(width: 8),
-                const Expanded(child: BarakahBrandName(compact: true)),
+                _GoldHeaderAction(
+                  tooltip: 'الموقع',
+                  icon: Icons.location_on_rounded,
+                  onPressed: onLocationPressed,
+                ),
+                const SizedBox(width: 8),
                 Builder(
-                  builder: (context) => IconButton(
+                  builder: (context) => _GoldHeaderAction(
                     tooltip: 'القائمة',
+                    icon: Icons.menu_rounded,
                     onPressed: () => Scaffold.of(context).openEndDrawer(),
-                    icon: const Icon(
-                      Icons.menu_rounded,
-                      size: 31,
-                      color: AppTheme.navy,
-                    ),
                   ),
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 5),
-          Row(children: [
-            Expanded(
-              child: Material(
-                color: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  side: BorderSide(
-                    color: AppTheme.coolYellow.withOpacity(.55),
-                  ),
-                ),
-                child: InkWell(
-                  onTap: onSearchPressed,
-                  borderRadius: BorderRadius.circular(14),
-                  child: const SizedBox(
-                    height: 46,
-                    child: Row(
-                      textDirection: TextDirection.rtl,
-                      children: [
-                        SizedBox(width: 14),
-                        Icon(Icons.search_rounded, color: AppTheme.navy),
-                        SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'ابحث عن منتج، قسم أو ماركت',
-                            style: TextStyle(
-                              color: Colors.black54,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            SizedBox(
-              height: 46,
-              child: OutlinedButton.icon(
-                onPressed: onLocationPressed,
-                icon: const Icon(
-                  Icons.location_on_rounded,
-                  size: 19,
-                  color: AppTheme.deepYellow,
-                ),
-                label: Text(
-                  location,
-                  style: const TextStyle(
-                    color: AppTheme.navy,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                style: OutlinedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  side: BorderSide(
-                    color: AppTheme.coolYellow.withOpacity(.55),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                ),
-              ),
+                const SizedBox(width: 10),
+                const BarakahOnlineStatusButton(),
+              ]),
             ),
           ]),
-        ]),
+        ),
+      );
+}
+
+class _GoldHeaderAction extends StatelessWidget {
+  const _GoldHeaderAction({
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: const Color(0x33071B3C),
+        shape: const CircleBorder(),
+        child: IconButton(
+          tooltip: tooltip,
+          onPressed: onPressed,
+          icon: Icon(icon, color: Colors.white),
+        ),
       );
 }
 
@@ -764,23 +741,14 @@ class _CustomMarketStrip extends StatelessWidget {
                             ],
                           ),
                           child: ClipOval(
-                            child: image.startsWith('http')
-                                ? Image.network(
-                                    image,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) => const Icon(
-                                      Icons.auto_awesome_rounded,
-                                      color: AppTheme.deepYellow,
-                                    ),
-                                  )
-                                : Image.asset(
-                                    image,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) => const Icon(
-                                      Icons.auto_awesome_rounded,
-                                      color: AppTheme.deepYellow,
-                                    ),
-                                  ),
+                            child: BarakahMediaImage(
+                              path: image,
+                              fit: BoxFit.cover,
+                              fallback: const Icon(
+                                Icons.auto_awesome_rounded,
+                                color: AppTheme.deepYellow,
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -858,9 +826,10 @@ class _CustomMarketItemScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(30),
                 child: AspectRatio(
                   aspectRatio: 1.1,
-                  child: image.startsWith('http')
-                      ? Image.network(image, fit: BoxFit.cover)
-                      : Image.asset(image, fit: BoxFit.cover),
+                  child: BarakahMediaImage(
+                    path: image,
+                    fit: BoxFit.cover,
+                  ),
                 ),
               ),
             ),
@@ -1180,28 +1149,13 @@ class _MarketCategoriesStrip extends StatelessWidget {
                     size: 34,
                   ),
                 );
-              } else if (image.startsWith('http://') ||
-                  image.startsWith('https://')) {
-                categoryImage = Image.network(
-                  image,
-                  width: double.infinity,
-                  height: double.infinity,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const Center(
-                    child: Icon(
-                      Icons.storefront_rounded,
-                      color: Colors.black,
-                      size: 34,
-                    ),
-                  ),
-                );
               } else {
-                categoryImage = Image.asset(
-                  image,
+                categoryImage = BarakahMediaImage(
+                  path: image,
                   width: double.infinity,
                   height: double.infinity,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const Center(
+                  fallback: const Center(
                     child: Icon(
                       Icons.storefront_rounded,
                       color: Colors.black,
@@ -1588,9 +1542,10 @@ class _MarketSection extends StatelessWidget {
           LayoutBuilder(builder: (context, constraints) {
             // على الجوال يظهر الكرت بعرض الشاشة تقريباً، وعلى الشاشات الكبيرة
             // يتوقف عند عرض مريح كي لا يصبح عريضاً جداً.
-            final cardWidth =
-                (constraints.maxWidth * .68).clamp(220.0, 310.0).toDouble();
-            final cardHeight = cardWidth * .72;
+            final cardWidth = isTrendingSection
+                ? 148.0
+                : (constraints.maxWidth * .68).clamp(220.0, 310.0).toDouble();
+            final cardHeight = isTrendingSection ? 205.0 : cardWidth * .72;
             return SizedBox(
               height: cardHeight,
               child: ListView.separated(

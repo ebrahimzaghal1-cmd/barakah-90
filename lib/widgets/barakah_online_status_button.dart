@@ -2,8 +2,36 @@ import 'package:flutter/material.dart';
 
 import '../services/app_hours_service.dart';
 
-class BarakahOnlineStatusButton extends StatelessWidget {
+class BarakahOnlineStatusButton extends StatefulWidget {
   const BarakahOnlineStatusButton({super.key});
+
+  @override
+  State<BarakahOnlineStatusButton> createState() =>
+      _BarakahOnlineStatusButtonState();
+}
+
+class _BarakahOnlineStatusButtonState extends State<BarakahOnlineStatusButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulseController;
+  late final Animation<double> _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 950),
+    )..repeat(reverse: true);
+    _pulse = Tween<double>(begin: .88, end: 1.18).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => StreamBuilder<AppHoursStatus?>(
@@ -19,53 +47,39 @@ class BarakahOnlineStatusButton extends StatelessWidget {
 
           return Align(
             alignment: AlignmentDirectional.centerStart,
-            child: Material(
-              color: background,
-              borderRadius: BorderRadius.circular(999),
-              child: InkWell(
-                onTap: () => _showDetails(context, status),
-                borderRadius: BorderRadius.circular(999),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: foreground.withOpacity(.24)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 10,
-                        height: 10,
-                        decoration: BoxDecoration(
-                          color: foreground,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: foreground.withOpacity(.28),
-                              blurRadius: 7,
-                              spreadRadius: 2,
-                            ),
-                          ],
+            child: ScaleTransition(
+              scale: _pulse,
+              child: Material(
+                color: background,
+                shape: const CircleBorder(),
+                elevation: 5,
+                shadowColor: foreground.withOpacity(.48),
+                child: InkWell(
+                  onTap: () => _showDetails(context, status),
+                  customBorder: const CircleBorder(),
+                  child: Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2.2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: foreground.withOpacity(.38),
+                          blurRadius: 10,
+                          spreadRadius: 2,
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        status.isOpen ? 'أونلاين' : 'أوفلاين',
-                        style: TextStyle(
-                          color: foreground,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      const SizedBox(width: 5),
-                      Icon(
-                        Icons.keyboard_arrow_down_rounded,
+                      ],
+                    ),
+                    alignment: Alignment.center,
+                    child: Container(
+                      width: 16,
+                      height: 16,
+                      decoration: BoxDecoration(
                         color: foreground,
-                        size: 19,
+                        shape: BoxShape.circle,
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ),

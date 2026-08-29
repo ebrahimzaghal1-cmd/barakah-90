@@ -1,23 +1,33 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
+import 'package:image_picker/image_picker.dart';
 
 /// يرفع الصور والفيديوهات المختارة من الجوال إلى خادم بركة الإعلامي.
 class MediaUploadService {
   static const _endpoint =
       'https://barakah-90-production-384c.up.railway.app/upload';
 
-  Future<String> upload(File file, {required bool isVideo}) async {
+  Future<String> upload(XFile file, {required bool isVideo}) async {
     Object? lastError;
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty) {
+      throw Exception('الملف المختار فارغ');
+    }
+    final fileName = file.name.trim().isNotEmpty
+        ? file.name.trim()
+        : file.path.split('/').last;
+
+    // الصور والفيديوهات تستخدم خادم ImageKit نفسه في الويب والآيفون.
     for (var attempt = 1; attempt <= 3; attempt++) {
       try {
         final request = http.MultipartRequest('POST', Uri.parse(_endpoint));
-        request.files.add(await http.MultipartFile.fromPath(
+        request.files.add(http.MultipartFile.fromBytes(
           'image',
-          file.path,
-          contentType: _contentType(file.path, isVideo: isVideo),
+          bytes,
+          filename: fileName,
+          contentType: _contentType(fileName, isVideo: isVideo),
         ));
         final streamed = await request.send().timeout(
               const Duration(seconds: 90),

@@ -82,7 +82,7 @@ class SponsoredAdsFeed extends StatelessWidget {
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
             ),
             ...ads.take(2).map((ad) => Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+                  padding: const EdgeInsets.only(bottom: 18),
                   child: SizedBox(
                     width: double.infinity,
                     child: _SponsoredGalleryCard(data: ad.data()),
@@ -144,13 +144,13 @@ class _SponsoredGalleryCardState extends State<_SponsoredGalleryCard> {
       width: double.infinity,
       child: Material(
         color: Colors.white.withOpacity(.86),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.zero,
         clipBehavior: Clip.antiAlias,
-        child: Padding(
-          padding: EdgeInsets.all(outerPadding),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Row(children: [
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Padding(
+            padding: EdgeInsets.fromLTRB(16, outerPadding, 16, 0),
+            child: Row(children: [
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                 decoration: BoxDecoration(
@@ -190,72 +190,88 @@ class _SponsoredGalleryCardState extends State<_SponsoredGalleryCard> {
                 child: const BarakahBrandName(light: true, compact: true),
               ),
             ]),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: AspectRatio(
-                aspectRatio: imageAspectRatio,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(22),
-                  child: Stack(fit: StackFit.expand, children: [
-                    Image.network(
-                      images[_selected],
-                      key: ValueKey(images[_selected]),
-                      width: double.infinity,
-                      height: double.infinity,
-                      fit: BoxFit.cover,
-                      alignment: Alignment.center,
-                      errorBuilder: (_, __, ___) => const ColoredBox(
-                        color: AppTheme.ink,
-                        child: Icon(Icons.broken_image_outlined,
-                            color: Colors.white, size: 44),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: AspectRatio(
+              aspectRatio: imageAspectRatio,
+              child: Stack(fit: StackFit.expand, children: [
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 320),
+                  transitionBuilder: (child, animation) => FadeTransition(
+                    opacity: animation,
+                    child: ScaleTransition(
+                      scale: Tween<double>(begin: .96, end: 1).animate(
+                        CurvedAnimation(
+                          parent: animation,
+                          curve: Curves.easeOutCubic,
+                        ),
                       ),
+                      child: child,
                     ),
-                    if (images.length > 1)
-                      PositionedDirectional(
-                        start: 12,
-                        end: 12,
-                        bottom: 12,
-                        child: Container(
-                          height: thumbnailHeight,
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(.35),
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                          child: ListView.separated(
-                            scrollDirection: Axis.horizontal,
-                            itemCount: images.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(width: 6),
-                            itemBuilder: (_, index) => GestureDetector(
-                              onTap: () => setState(() => _selected = index),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 180),
-                                width: index == _selected ? 88 : 66,
-                                clipBehavior: Clip.antiAlias,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: index == _selected
-                                        ? AppTheme.coolYellow
-                                        : Colors.white70,
-                                    width: index == _selected ? 3 : 1,
-                                  ),
+                  ),
+                  child: Image.network(
+                    images[_selected],
+                    key: ValueKey(images[_selected]),
+                    width: double.infinity,
+                    height: double.infinity,
+                    fit: BoxFit.cover,
+                    alignment: Alignment.center,
+                    errorBuilder: (_, __, ___) => const ColoredBox(
+                      color: AppTheme.ink,
+                      child: Icon(Icons.broken_image_outlined,
+                          color: Colors.white, size: 44),
+                    ),
+                  ),
+                ),
+                if (images.length > 1)
+                  PositionedDirectional(
+                    start: 12,
+                    end: 12,
+                    bottom: 12,
+                    child: Container(
+                      height: thumbnailHeight,
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(.35),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: images.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 6),
+                        itemBuilder: (_, index) => AnimatedScale(
+                          duration: const Duration(milliseconds: 220),
+                          scale: index == _selected ? 1.06 : 1,
+                          curve: Curves.easeOutBack,
+                          child: GestureDetector(
+                            onTap: () => setState(() => _selected = index),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 220),
+                              width: index == _selected ? 84 : 66,
+                              clipBehavior: Clip.antiAlias,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: index == _selected
+                                      ? AppTheme.coolYellow
+                                      : Colors.white70,
+                                  width: index == _selected ? 3 : 1,
                                 ),
-                                child: Image.network(images[index],
-                                    fit: BoxFit.cover),
                               ),
+                              child: Image.network(images[index],
+                                  fit: BoxFit.cover),
                             ),
                           ),
                         ),
                       ),
-                  ]),
-                ),
-              ),
+                    ),
+                  ),
+              ]),
             ),
-          ]),
-        ),
+          ),
+        ]),
       ),
     );
   }
@@ -321,53 +337,44 @@ class _AdCarouselState extends State<_AdCarousel> {
       'medium' => 215.0,
       _ => 295.0,
     };
-    final appWidth = MediaQuery.sizeOf(context).width;
-
     return AnimatedContainer(
       duration: const Duration(milliseconds: 250),
       height: height,
-      child: OverflowBox(
-        minWidth: appWidth,
-        maxWidth: appWidth,
-        minHeight: height,
-        maxHeight: height,
-        alignment: Alignment.center,
-        child: SizedBox(
-          width: appWidth,
-          height: height,
-          child: Column(children: [
-            Expanded(
-              child: PageView.builder(
-                controller: _controller,
-                itemCount: widget.ads.length,
-                onPageChanged: (value) => setState(() => _page = value),
-                itemBuilder: (_, index) =>
-                    _AdCard(data: widget.ads[index].data()),
+      child: SizedBox(
+        width: double.infinity,
+        height: height,
+        child: Column(children: [
+          Expanded(
+            child: PageView.builder(
+              controller: _controller,
+              itemCount: widget.ads.length,
+              onPageChanged: (value) => setState(() => _page = value),
+              itemBuilder: (_, index) =>
+                  _AdCard(data: widget.ads[index].data()),
+            ),
+          ),
+          if (widget.ads.length > 1)
+            Padding(
+              padding: const EdgeInsets.only(top: 7),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                    widget.ads.length,
+                    (index) => AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          margin: const EdgeInsets.symmetric(horizontal: 3),
+                          width: index == _page ? 18 : 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: index == _page
+                                ? AppTheme.deepYellow
+                                : Colors.black26,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        )),
               ),
             ),
-            if (widget.ads.length > 1)
-              Padding(
-                padding: const EdgeInsets.only(top: 7),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(
-                      widget.ads.length,
-                      (index) => AnimatedContainer(
-                            duration: const Duration(milliseconds: 180),
-                            margin: const EdgeInsets.symmetric(horizontal: 3),
-                            width: index == _page ? 18 : 6,
-                            height: 6,
-                            decoration: BoxDecoration(
-                              color: index == _page
-                                  ? AppTheme.deepYellow
-                                  : Colors.black26,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          )),
-                ),
-              ),
-          ]),
-        ),
+        ]),
       ),
     );
   }

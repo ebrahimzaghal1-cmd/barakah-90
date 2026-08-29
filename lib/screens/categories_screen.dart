@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../services/business_hours_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/barakah_brand.dart';
+import '../widgets/barakah_media_image.dart';
 import 'restaurant_details_screen.dart';
 
 class CategoriesScreen extends StatelessWidget {
@@ -383,22 +384,12 @@ class _CategoryCover extends StatelessWidget {
       );
     }
 
-    if (image.startsWith('assets/')) {
-      return Image.asset(
-        image,
-        height: 200,
-        width: double.infinity,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => const _CategoryImageError(),
-      );
-    }
-
-    return Image.network(
-      image,
+    return BarakahMediaImage(
+      path: image,
       height: 200,
       width: double.infinity,
       fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) => const _CategoryImageError(),
+      fallback: const _CategoryImageError(),
     );
   }
 }

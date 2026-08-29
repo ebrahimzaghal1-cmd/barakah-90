@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../services/media_upload_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/barakah_media_image.dart';
 
 class AdminManageHomeStrips extends StatefulWidget {
   const AdminManageHomeStrips({
@@ -128,7 +129,8 @@ class _AdminManageHomeStripsState extends State<AdminManageHomeStrips> {
         TextEditingController(text: current?['destinationUrl']?.toString());
     var actionType = current?['actionType']?.toString() ?? 'details';
     var image = current?['image']?.toString() ?? '';
-    File? imageFile;
+    XFile? imageFile;
+    Uint8List? imageBytes;
     var uploading = false;
 
     final result = await showDialog<Map<String, dynamic>>(
@@ -197,11 +199,11 @@ class _AdminManageHomeStripsState extends State<AdminManageHomeStrips> {
                             ),
                   ),
                   const SizedBox(height: 14),
-                  if (imageFile != null)
+                  if (imageBytes != null)
                     ClipRRect(
                       borderRadius: BorderRadius.circular(18),
-                      child: Image.file(
-                        imageFile!,
+                      child: Image.memory(
+                        imageBytes!,
                         height: 150,
                         width: double.infinity,
                         fit: BoxFit.cover,
@@ -210,8 +212,8 @@ class _AdminManageHomeStripsState extends State<AdminManageHomeStrips> {
                   else if (image.isNotEmpty)
                     ClipRRect(
                       borderRadius: BorderRadius.circular(18),
-                      child: Image.network(
-                        image,
+                      child: BarakahMediaImage(
+                        path: image,
                         height: 150,
                         width: double.infinity,
                         fit: BoxFit.cover,
@@ -228,9 +230,12 @@ class _AdminManageHomeStripsState extends State<AdminManageHomeStrips> {
                               maxHeight: 1400,
                             );
                             if (picked != null) {
-                              setItemState(
-                                () => imageFile = File(picked.path),
-                              );
+                              final bytes = await picked.readAsBytes();
+                              if (!itemDialogContext.mounted) return;
+                              setItemState(() {
+                                imageFile = picked;
+                                imageBytes = bytes;
+                              });
                             }
                           },
                     icon: const Icon(Icons.add_photo_alternate_outlined),
@@ -328,6 +333,9 @@ class _AdminManageHomeStripsState extends State<AdminManageHomeStrips> {
         ((current['title']?.toString() ?? '').contains('مبيع')
             ? 'bestSelling'
             : 'categories');
+    if (surface == 'restaurants' && useQuickActions) {
+      stripType = 'custom';
+    }
     var showAllCategories = current['showAllCategories'] == true ||
         current['title']?.toString().trim() == 'سوق بركة';
     var saving = false;
@@ -388,7 +396,9 @@ class _AdminManageHomeStripsState extends State<AdminManageHomeStrips> {
               );
               return;
             }
-            if (!useQuickActions &&
+            final usesEditableCards =
+                surface == 'restaurants' && stripType == 'custom';
+            if (!usesEditableCards &&
                 stripType == 'categories' &&
                 !showAllCategories &&
                 selectedIds.isEmpty) {
@@ -409,7 +419,7 @@ class _AdminManageHomeStripsState extends State<AdminManageHomeStrips> {
               );
               return;
             }
-            if (useQuickActions && quickItems.isEmpty) {
+            if (usesEditableCards && quickItems.isEmpty) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('أضف اختصاراً واحداً على الأقل.'),
@@ -423,8 +433,8 @@ class _AdminManageHomeStripsState extends State<AdminManageHomeStrips> {
               'surface': surface,
               'order': int.tryParse(order.text.trim()) ?? 0,
               'enabled': enabled,
-              'useQuickActions': surface == 'restaurants' && useQuickActions,
-              'stripType': surface == 'market' ? stripType : 'categories',
+              'useQuickActions': usesEditableCards,
+              'stripType': stripType,
               'showAllCategories': showAllCategories,
               'categoryIds': selectedIds.toList(),
               'customItems': customItems,
@@ -518,24 +528,38 @@ class _AdminManageHomeStripsState extends State<AdminManageHomeStrips> {
                                 ),
                       ),
                     ],
-                    if (surface == 'restaurants')
-                      SwitchListTile.adaptive(
-                        value: useQuickActions,
+                    if (surface == 'restaurants') ...[
+                      const SizedBox(height: 4),
+                      DropdownButtonFormField<String>(
+                        value: stripType == 'custom' ? 'custom' : 'categories',
+                        decoration: const InputDecoration(
+                          labelText: 'نوع محتوى الشريط',
+                          helperText:
+                              'كل شريط يمكن أن يعرض تصنيفات أو بطاقات تضيفها وتعدلها بحرية.',
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                            value: 'categories',
+                            child: Text('تصنيفات المطاعم'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'custom',
+                            child: Text('بطاقات حرة قابلة للإضافة والتعديل'),
+                          ),
+                        ],
                         onChanged: saving
                             ? null
-                            : (value) => setDialogState(
-                                  () => useQuickActions = value,
-                                ),
-                        title: const Text('استخدام اختصارات بركة الرئيسية'),
-                        subtitle: const Text(
-                          'العب واربح، عروض التوصيل، الخصومات والأماكن القريبة',
-                        ),
+                            : (value) => setDialogState(() {
+                                  stripType = value ?? 'categories';
+                                  useQuickActions = stripType == 'custom';
+                                }),
                       ),
-                    if (surface == 'restaurants' && useQuickActions) ...[
+                    ],
+                    if (surface == 'restaurants' && stripType == 'custom') ...[
                       const Align(
                         alignment: AlignmentDirectional.centerStart,
                         child: Text(
-                          'اختصارات الشريط وصورها',
+                          'بطاقات الشريط وصورها',
                           style: TextStyle(fontWeight: FontWeight.w900),
                         ),
                       ),
@@ -602,10 +626,10 @@ class _AdminManageHomeStripsState extends State<AdminManageHomeStrips> {
                                 }
                               },
                         icon: const Icon(Icons.add_circle_outline_rounded),
-                        label: const Text('إضافة اختصار جديد'),
+                        label: const Text('إضافة بطاقة جديدة'),
                       ),
                     ],
-                    if (!useQuickActions && stripType == 'categories') ...[
+                    if (stripType == 'categories') ...[
                       SwitchListTile.adaptive(
                         value: showAllCategories,
                         onChanged: saving
@@ -659,7 +683,7 @@ class _AdminManageHomeStripsState extends State<AdminManageHomeStrips> {
                         style: TextStyle(fontSize: 12, color: Colors.black54),
                       ),
                     ],
-                    if (stripType == 'custom') ...[
+                    if (surface == 'market' && stripType == 'custom') ...[
                       const SizedBox(height: 12),
                       const Align(
                         alignment: AlignmentDirectional.centerStart,
@@ -897,28 +921,20 @@ class _EditableStripImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget fallback(Object _, StackTrace? __) => const SizedBox(
-          width: 48,
-          height: 48,
-          child: Icon(Icons.image_not_supported_outlined),
-        );
+    const fallback = SizedBox(
+      width: 48,
+      height: 48,
+      child: Icon(Icons.image_not_supported_outlined),
+    );
     return ClipRRect(
       borderRadius: BorderRadius.circular(10),
-      child: path.startsWith('http')
-          ? Image.network(
-              path,
-              width: 48,
-              height: 48,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stack) => fallback(error, stack),
-            )
-          : Image.asset(
-              path,
-              width: 48,
-              height: 48,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stack) => fallback(error, stack),
-            ),
+      child: BarakahMediaImage(
+        path: path,
+        width: 48,
+        height: 48,
+        fit: BoxFit.cover,
+        fallback: fallback,
+      ),
     );
   }
 }

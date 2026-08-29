@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../widgets/responsive_page.dart';
 import '../widgets/restaurant_card.dart';
 import '../widgets/barakah_brand.dart';
+import '../widgets/barakah_media_image.dart';
 import '../widgets/barakah_online_status_button.dart';
 import '../widgets/advertisement_banner.dart';
 import '../services/admin_notification_service.dart';
@@ -22,6 +23,7 @@ import 'categories_screen.dart';
 import 'restaurant_details_screen.dart';
 import 'authentication_screen.dart';
 import 'restaurant_offers_screen.dart';
+import 'location_picker_screen.dart';
 
 const _barakahNavy = Color(0xFF071B3C);
 const _barakahGold = Color(0xFFD7A928);
@@ -103,434 +105,411 @@ class _RestaurantsScreenState extends State<RestaurantsScreen> {
   }
 
   Future<void> _chooseArea() async {
-    final area = await showModalBottomSheet<String>(
-      context: context,
-      builder: (sheetContext) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Text('اختر موقعك',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-            const SizedBox(height: 8),
-            const Text('استخدم GPS للموقع الحقيقي أو اختر المدينة يدويًا.'),
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _locating
-                    ? null
-                    : () {
-                        Navigator.pop(sheetContext);
-                        _useCurrentLocation();
-                      },
-                icon: const Icon(Icons.my_location_rounded),
-                label: Text(_locating
-                    ? 'جارٍ تحديد موقعك...'
-                    : 'استخدام موقعي الحقيقي الآن'),
-              ),
-            ),
-            const SizedBox(height: 10),
-            ..._areas.map((area) => ListTile(
-                  leading: const Icon(Icons.location_city_outlined),
-                  title: Text(area),
-                  onTap: () => Navigator.pop(sheetContext, area),
-                )),
-          ]),
-        ),
+    final location = await Navigator.push<Map<String, double>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const LocationPickerScreen(),
       ),
     );
-    if (area != null && mounted) setState(() => _selectedArea = area);
+    if (location == null || !mounted) return;
+    setState(() {
+      _selectedArea = _closestArea(
+        location['latitude']!,
+        location['longitude']!,
+      );
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFFFCF5),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFFFFFEFA),
-              Color(0xFFF4FCFA),
-              Color(0xFFFFFBF2),
-              Color(0xFFFFFFFF),
-            ],
-            stops: [0.0, 0.38, 0.72, 1.0],
+      backgroundColor: Colors.transparent,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.asset(
+            'assets/images/profile_gold_background.jpg',
+            fit: BoxFit.cover,
           ),
-        ),
-        child: ResponsivePage(
-          child: SafeArea(
-            child: CustomScrollView(
-              physics: const BouncingScrollPhysics(
-                parent: AlwaysScrollableScrollPhysics(),
-              ),
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              slivers: [
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _TurquoiseHomeHeader(
-                          onSearchChanged: (value) => setState(
-                            () => _query = value.trim().toLowerCase(),
+          const ColoredBox(color: Color(0xD9FFFCF5)),
+          ResponsivePage(
+            child: SafeArea(
+              child: CustomScrollView(
+                physics: const BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics(),
+                ),
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _TurquoiseHomeHeader(
+                            onSearchChanged: (value) => setState(
+                              () => _query = value.trim().toLowerCase(),
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 14),
-                        Row(children: [
-                          Expanded(
-                            child: Material(
-                              color: _barakahNavy,
-                              borderRadius: BorderRadius.circular(16),
-                              child: InkWell(
-                                onTap: _chooseArea,
-                                borderRadius: BorderRadius.circular(18),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 14, vertical: 11),
-                                  child: Row(children: [
-                                    Container(
-                                      width: 42,
-                                      height: 42,
-                                      decoration: const BoxDecoration(
-                                        color: Color(0x2EFFFFFF),
-                                        shape: BoxShape.circle,
+                          const SizedBox(height: 10),
+                          const AdvertisementBanner(
+                            placement: 'restaurants_top',
+                          ),
+                          const SizedBox(height: 10),
+                          const _OfferBanner(),
+                          const SizedBox(height: 12),
+                          Row(children: [
+                            Expanded(
+                              child: Material(
+                                color: _barakahNavy,
+                                borderRadius: BorderRadius.circular(16),
+                                child: InkWell(
+                                  onTap: _chooseArea,
+                                  borderRadius: BorderRadius.circular(18),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 14, vertical: 11),
+                                    child: Row(children: [
+                                      Container(
+                                        width: 42,
+                                        height: 42,
+                                        decoration: const BoxDecoration(
+                                          color: Color(0x2EFFFFFF),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Icon(
+                                          _locating
+                                              ? Icons.gps_fixed_rounded
+                                              : Icons.location_on_outlined,
+                                          color: Colors.white,
+                                        ),
                                       ),
-                                      child: Icon(
-                                        _locating
-                                            ? Icons.gps_fixed_rounded
-                                            : Icons.location_on_outlined,
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                                _locating
+                                                    ? 'جارٍ تحديد موقعك...'
+                                                    : _selectedArea,
+                                                style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 16,
+                                                    fontWeight:
+                                                        FontWeight.w900)),
+                                            const Text(
+                                                'اضغط لتحديد موقعك أو تغيير المدينة',
+                                                style: TextStyle(
+                                                    color: Colors.white70,
+                                                    fontSize: 11,
+                                                    fontWeight:
+                                                        FontWeight.w600)),
+                                          ],
+                                        ),
+                                      ),
+                                      const Icon(
+                                        Icons.keyboard_arrow_down_rounded,
                                         color: Colors.white,
                                       ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                              _locating
-                                                  ? 'جارٍ تحديد موقعك...'
-                                                  : _selectedArea,
-                                              style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 16,
-                                                  fontWeight: FontWeight.w900)),
-                                          const Text(
-                                              'اضغط لتحديد موقعك أو تغيير المدينة',
-                                              style: TextStyle(
-                                                  color: Colors.white70,
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.w600)),
-                                        ],
-                                      ),
-                                    ),
-                                    const Icon(
-                                      Icons.keyboard_arrow_down_rounded,
-                                      color: Colors.white,
-                                    ),
-                                  ]),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          IconButton(
-                            tooltip: 'تفعيل الإشعارات',
-                            onPressed: () async {
-                              final enabled = await AdminNotificationService
-                                  .instance
-                                  .requestPermissionForCurrentUser();
-
-                              if (!context.mounted) return;
-
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    enabled
-                                        ? 'تم تفعيل إشعارات بركة على هذا الجهاز ✅'
-                                        : 'لم يتم تفعيل الإشعارات. تأكد من السماح بها من إعدادات المتصفح أو الجهاز.',
+                                    ]),
                                   ),
-                                  backgroundColor:
-                                      enabled ? Colors.green : Colors.orange,
                                 ),
-                              );
-                            },
-                            icon: const Icon(
-                              Icons.notifications_none_rounded,
-                              color: _barakahGold,
-                            ),
-                          ),
-                        ]),
-                        const SizedBox(height: 16),
-                        const AdvertisementBanner(
-                          placement: 'restaurants_top',
-                        ),
-                        const SizedBox(height: 16),
-                        const _OfferBanner(),
-                        const SizedBox(height: 14),
-                        const SponsoredAdsFeed(
-                          placement: 'restaurants_gallery',
-                        ),
-                        const SizedBox(height: 14),
-                        const AdvertisementBanner(
-                          placement: 'restaurants_between_1',
-                        ),
-                        const SizedBox(height: 22),
-                        const _RestaurantHomeStrips(),
-                        const SizedBox(height: 10),
-                        const _TurquoiseQuickLinks(),
-                        const SizedBox(height: 14),
-                        const AdvertisementBanner(
-                          placement: 'restaurants_between_2',
-                        ),
-                        const SizedBox(height: 22),
-                        const Text(
-                          'أقسام المطاعم',
-                          style: TextStyle(
-                            color: AppTheme.ink,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        const SizedBox(
-                          height: 154,
-                          child: _FallbackCategories(),
-                        ),
-                        const SizedBox(height: 14),
-                        const AdvertisementBanner(
-                          placement: 'restaurants_between_3',
-                        ),
-                        const SizedBox(height: 24),
-                        const Text(
-                          'المطاعم المفضلة لديكم',
-                          style: TextStyle(
-                            color: AppTheme.ink,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        const SizedBox(
-                          height: 230,
-                          child: _RestaurantsQuickRow(),
-                        ),
-                        const SizedBox(height: 14),
-                        const AdvertisementBanner(
-                          placement: 'restaurants_between_4',
-                        ),
-                        const SizedBox(height: 22),
-                        const AdvertisementBanner(
-                          placement: 'restaurants_between_5',
-                        ),
-                        Row(children: [
-                          const Text('ترندات',
-                              style: TextStyle(
-                                  fontSize: 19, fontWeight: FontWeight.w800)),
-                          const Spacer(),
-                          TextButton(
-                            onPressed: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (_) => const AllItemsScreen(
-                                        trendingOnly: true))),
-                            child: const Text('عرض الكل',
-                                style: TextStyle(
-                                    color: Color(0xFF007BFF),
-                                    fontWeight: FontWeight.bold)),
-                          )
-                        ]),
-                        const SizedBox(height: 8),
-                        const AdvertisementBanner(
-                          placement: 'restaurants_between_6',
-                        ),
-                        const SizedBox(height: 12),
-                      ],
-                    ),
-                  ),
-                ),
-                if (!FirebaseState.isReady)
-                  _StaticCatalogue(query: _query)
-                else
-                  StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                    stream: FirebaseFirestore.instance
-                        .collection('items')
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const SliverFillRemaining(
-                            child: Center(child: CircularProgressIndicator()));
-                      }
-                      final docs = snapshot.data?.docs ?? [];
-
-                      String normalizeSearch(dynamic value) {
-                        var text = value.toString().toLowerCase();
-
-                        const replacements = {
-                          'أ': 'ا',
-                          'إ': 'ا',
-                          'آ': 'ا',
-                          'ٱ': 'ا',
-                          'ى': 'ي',
-                          'ؤ': 'و',
-                          'ئ': 'ي',
-                          'ـ': '',
-                        };
-
-                        replacements.forEach((from, to) {
-                          text = text.replaceAll(from, to);
-                        });
-
-                        text = text.replaceAll(
-                          RegExp(r'[\u064B-\u065F\u0670]'),
-                          '',
-                        );
-
-                        text = text.replaceAll(
-                          RegExp(r'\s+'),
-                          ' ',
-                        );
-
-                        return text.trim();
-                      }
-
-                      final normalizedQuery = normalizeSearch(_query);
-
-                      bool matchesValue(dynamic value) {
-                        if (normalizedQuery.isEmpty) return true;
-                        if (value == null) return false;
-
-                        if (value is Map) {
-                          return value.values.any(matchesValue);
-                        }
-
-                        if (value is Iterable) {
-                          return value.any(matchesValue);
-                        }
-
-                        return normalizeSearch(value).contains(normalizedQuery);
-                      }
-
-                      // المنتجات المطابقة للبحث.
-                      final matchingProductBusinessIds = docs
-                          .where((doc) {
-                            final data = doc.data();
-
-                            return data['kind']?.toString().toLowerCase() ==
-                                    'product' &&
-                                matchesValue(data);
-                          })
-                          .map(
-                            (doc) =>
-                                doc.data()['businessId']?.toString().trim() ??
-                                '',
-                          )
-                          .where((id) => id.isNotEmpty)
-                          .toSet();
-
-                      // المطاعم نفسها.
-                      final restaurants = docs.where((doc) {
-                        final data = doc.data();
-
-                        final kind = data['kind']?.toString().toLowerCase();
-
-                        if (kind == 'product') {
-                          return false;
-                        }
-
-                        final type =
-                            data['type']?.toString().toLowerCase().trim();
-
-                        final isRestaurant = type == null ||
-                            type.isEmpty ||
-                            type == 'restaurant' ||
-                            type == 'restaurants';
-
-                        if (!isRestaurant) {
-                          return false;
-                        }
-
-                        if (normalizedQuery.isEmpty) {
-                          return true;
-                        }
-
-                        // يظهر المطعم إذا:
-                        // 1- بيانات المطعم نفسه مطابقة
-                        // 2- أو يوجد منتج مطابق تابع له
-                        return matchesValue(data) ||
-                            matchingProductBusinessIds.contains(doc.id);
-                      }).toList();
-
-                      final results = normalizedQuery.isEmpty
-                          ? restaurants
-                              .where(
-                                (item) => item.data()['isTrending'] == true,
-                              )
-                              .toList()
-                          : restaurants;
-
-                      if (results.isEmpty) {
-                        return SliverFillRemaining(
-                          child: Center(
-                            child: Text(
-                              _query.isEmpty
-                                  ? 'لا توجد مطاعم في الترندات حالياً.'
-                                  : 'ما لقينا نتائج لـ "$_query"',
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Colors.black54,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 17,
                               ),
                             ),
-                          ),
-                        );
-                      }
+                            const SizedBox(width: 10),
+                            IconButton(
+                              tooltip: 'تفعيل الإشعارات',
+                              onPressed: () async {
+                                final enabled = await AdminNotificationService
+                                    .instance
+                                    .requestPermissionForCurrentUser();
 
-                      final columns =
-                          MediaQuery.sizeOf(context).width >= 700 ? 3 : 2;
-                      return SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                        sliver: SliverGrid(
-                          delegate:
-                              SliverChildBuilderDelegate((context, index) {
-                            final item = results[index];
-                            return GestureDetector(
-                              onTap: () => Navigator.push(
+                                if (!context.mounted) return;
+
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      enabled
+                                          ? 'تم تفعيل إشعارات بركة على هذا الجهاز ✅'
+                                          : 'لم يتم تفعيل الإشعارات. تأكد من السماح بها من إعدادات المتصفح أو الجهاز.',
+                                    ),
+                                    backgroundColor:
+                                        enabled ? Colors.green : Colors.orange,
+                                  ),
+                                );
+                              },
+                              icon: const Icon(
+                                Icons.notifications_none_rounded,
+                                color: _barakahGold,
+                              ),
+                            ),
+                          ]),
+                          const SizedBox(height: 14),
+                          const SponsoredAdsFeed(
+                            placement: 'restaurants_gallery',
+                          ),
+                          const SizedBox(height: 14),
+                          const AdvertisementBanner(
+                            placement: 'restaurants_between_1',
+                          ),
+                          const SizedBox(height: 22),
+                          const _RestaurantHomeStrips(),
+                          const SizedBox(height: 10),
+                          const _TurquoiseQuickLinks(),
+                          const SizedBox(height: 14),
+                          const AdvertisementBanner(
+                            placement: 'restaurants_between_2',
+                          ),
+                          const SizedBox(height: 22),
+                          const Text(
+                            'أقسام المطاعم',
+                            style: TextStyle(
+                              color: AppTheme.ink,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          const SizedBox(
+                            height: 154,
+                            child: _FallbackCategories(),
+                          ),
+                          const SizedBox(height: 14),
+                          const AdvertisementBanner(
+                            placement: 'restaurants_between_3',
+                          ),
+                          const SizedBox(height: 24),
+                          const Text(
+                            'المطاعم المفضلة لديكم',
+                            style: TextStyle(
+                              color: AppTheme.ink,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          const SizedBox(
+                            height: 230,
+                            child: _RestaurantsQuickRow(),
+                          ),
+                          const SizedBox(height: 14),
+                          const AdvertisementBanner(
+                            placement: 'restaurants_between_4',
+                          ),
+                          const SizedBox(height: 22),
+                          const AdvertisementBanner(
+                            placement: 'restaurants_between_5',
+                          ),
+                          Row(children: [
+                            const Text('ترندات',
+                                style: TextStyle(
+                                    fontSize: 19, fontWeight: FontWeight.w800)),
+                            const Spacer(),
+                            TextButton(
+                              onPressed: () => Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                      builder: (_) => RestaurantDetailsScreen(
-                                          restaurant: item))),
-                              child: RestaurantCard(restaurant: item),
-                            );
-                          }, childCount: results.length),
-                          gridDelegate:
-                              SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: columns,
-                                  crossAxisSpacing: 12,
-                                  mainAxisSpacing: 12,
-                                  childAspectRatio: .66),
-                        ),
-                      );
-                    },
-                  ),
-                const SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(16, 0, 16, 24),
-                    child: AdvertisementBanner(
-                      placement: 'restaurants_between_7',
+                                      builder: (_) => const AllItemsScreen(
+                                          trendingOnly: true))),
+                              child: const Text('عرض الكل',
+                                  style: TextStyle(
+                                      color: Color(0xFF007BFF),
+                                      fontWeight: FontWeight.bold)),
+                            )
+                          ]),
+                          const SizedBox(height: 8),
+                          const AdvertisementBanner(
+                            placement: 'restaurants_between_6',
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                  if (!FirebaseState.isReady)
+                    _StaticCatalogue(query: _query)
+                  else
+                    StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                      stream: FirebaseFirestore.instance
+                          .collection('items')
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const SliverFillRemaining(
+                              child:
+                                  Center(child: CircularProgressIndicator()));
+                        }
+                        final docs = snapshot.data?.docs ?? [];
+
+                        String normalizeSearch(dynamic value) {
+                          var text = value.toString().toLowerCase();
+
+                          const replacements = {
+                            'أ': 'ا',
+                            'إ': 'ا',
+                            'آ': 'ا',
+                            'ٱ': 'ا',
+                            'ى': 'ي',
+                            'ؤ': 'و',
+                            'ئ': 'ي',
+                            'ـ': '',
+                          };
+
+                          replacements.forEach((from, to) {
+                            text = text.replaceAll(from, to);
+                          });
+
+                          text = text.replaceAll(
+                            RegExp(r'[\u064B-\u065F\u0670]'),
+                            '',
+                          );
+
+                          text = text.replaceAll(
+                            RegExp(r'\s+'),
+                            ' ',
+                          );
+
+                          return text.trim();
+                        }
+
+                        final normalizedQuery = normalizeSearch(_query);
+
+                        bool matchesValue(dynamic value) {
+                          if (normalizedQuery.isEmpty) return true;
+                          if (value == null) return false;
+
+                          if (value is Map) {
+                            return value.values.any(matchesValue);
+                          }
+
+                          if (value is Iterable) {
+                            return value.any(matchesValue);
+                          }
+
+                          return normalizeSearch(value)
+                              .contains(normalizedQuery);
+                        }
+
+                        // المنتجات المطابقة للبحث.
+                        final matchingProductBusinessIds = docs
+                            .where((doc) {
+                              final data = doc.data();
+
+                              return data['kind']?.toString().toLowerCase() ==
+                                      'product' &&
+                                  matchesValue(data);
+                            })
+                            .map(
+                              (doc) =>
+                                  doc.data()['businessId']?.toString().trim() ??
+                                  '',
+                            )
+                            .where((id) => id.isNotEmpty)
+                            .toSet();
+
+                        // المطاعم نفسها.
+                        final restaurants = docs.where((doc) {
+                          final data = doc.data();
+
+                          final kind = data['kind']?.toString().toLowerCase();
+
+                          if (kind == 'product') {
+                            return false;
+                          }
+
+                          final type =
+                              data['type']?.toString().toLowerCase().trim();
+
+                          final isRestaurant = type == null ||
+                              type.isEmpty ||
+                              type == 'restaurant' ||
+                              type == 'restaurants';
+
+                          if (!isRestaurant) {
+                            return false;
+                          }
+
+                          if (normalizedQuery.isEmpty) {
+                            return true;
+                          }
+
+                          // يظهر المطعم إذا:
+                          // 1- بيانات المطعم نفسه مطابقة
+                          // 2- أو يوجد منتج مطابق تابع له
+                          return matchesValue(data) ||
+                              matchingProductBusinessIds.contains(doc.id);
+                        }).toList();
+
+                        final results = normalizedQuery.isEmpty
+                            ? restaurants
+                                .where(
+                                  (item) => item.data()['isTrending'] == true,
+                                )
+                                .toList()
+                            : restaurants;
+
+                        if (results.isEmpty) {
+                          return SliverFillRemaining(
+                            child: Center(
+                              child: Text(
+                                _query.isEmpty
+                                    ? 'لا توجد مطاعم في الترندات حالياً.'
+                                    : 'ما لقينا نتائج لـ "$_query"',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Colors.black54,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 17,
+                                ),
+                              ),
+                            ),
+                          );
+                        }
+
+                        final columns =
+                            MediaQuery.sizeOf(context).width >= 700 ? 3 : 2;
+                        return SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                          sliver: SliverGrid(
+                            delegate:
+                                SliverChildBuilderDelegate((context, index) {
+                              final item = results[index];
+                              return GestureDetector(
+                                onTap: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                        builder: (_) => RestaurantDetailsScreen(
+                                            restaurant: item))),
+                                child: RestaurantCard(restaurant: item),
+                              );
+                            }, childCount: results.length),
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: columns,
+                                    crossAxisSpacing: 12,
+                                    mainAxisSpacing: 12,
+                                    childAspectRatio: .66),
+                          ),
+                        );
+                      },
+                    ),
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(16, 0, 16, 24),
+                      child: AdvertisementBanner(
+                        placement: 'restaurants_between_7',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -559,83 +538,100 @@ class _TurquoiseHomeHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
         width: double.infinity,
-        padding: const EdgeInsets.fromLTRB(12, 7, 12, 10),
-        decoration: const BoxDecoration(
-          color: Color(0xFFFFFEFA),
-          border: Border(
-            bottom: BorderSide(color: Color(0x55D7A928)),
+        height: 112,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(26),
+          image: const DecorationImage(
+            image: AssetImage(
+              'assets/images/barakah_gold_header_bunny_16.png',
+            ),
+            fit: BoxFit.cover,
+            alignment: Alignment.centerRight,
           ),
-          boxShadow: [
+          border: Border.all(color: const Color(0xFFE7BE4D), width: 1.4),
+          boxShadow: const [
             BoxShadow(
-              color: Color(0x0C071B3C),
-              blurRadius: 16,
-              offset: Offset(0, 6),
+              color: Color(0x330A1C39),
+              blurRadius: 18,
+              offset: Offset(0, 7),
             ),
           ],
         ),
-        child: Column(
-          children: [
-            SizedBox(
-              height: 74,
-              child: Row(
-                textDirection: TextDirection.rtl,
-                children: [
-                  SizedBox(
-                    width: 68,
-                    height: 72,
-                    child: Image.asset(
-                      'assets/images/barakah_profile_bunny.png',
-                      fit: BoxFit.contain,
-                      alignment: Alignment.bottomCenter,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        BarakahBrandName(compact: true),
-                        SizedBox(height: 7),
-                        BarakahOnlineStatusButton(),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 6),
-            SizedBox(
-              height: 46,
-              child: TextField(
-                onChanged: onSearchChanged,
-                style: const TextStyle(
-                  color: AppTheme.navy,
-                  fontWeight: FontWeight.w700,
-                ),
-                cursorColor: _barakahGold,
-                decoration: InputDecoration(
-                  hintText: 'ابحث عن مطعم، تصنيف أو وجبة',
-                  prefixIcon: const Icon(Icons.search, color: _barakahNavy),
-                  filled: true,
-                  fillColor: Colors.white,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                  hintStyle: const TextStyle(color: Colors.black54),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: Color(0x55D7A928)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide:
-                        const BorderSide(color: _barakahGold, width: 1.4),
+        child: DecoratedBox(
+          decoration: const BoxDecoration(),
+          child: Stack(
+            children: [
+              const Positioned(
+                left: 0,
+                right: 0,
+                bottom: 17,
+                child: Center(
+                  child: SizedBox(
+                    width: 178,
+                    child: BarakahBrandName(light: true, compact: true),
                   ),
                 ),
               ),
-            ),
-          ],
+              Positioned(
+                left: 20,
+                bottom: 14,
+                child: Material(
+                  color: const Color(0x33071B3C),
+                  shape: const CircleBorder(),
+                  child: IconButton(
+                    tooltip: 'البحث',
+                    onPressed: () => _openSearch(context),
+                    icon: const Icon(
+                      Icons.search_rounded,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+              const Positioned(
+                left: 78,
+                bottom: 18,
+                child: BarakahOnlineStatusButton(),
+              ),
+            ],
+          ),
         ),
       );
+
+  Future<void> _openSearch(BuildContext context) async {
+    final controller = TextEditingController();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.fromLTRB(
+          18,
+          4,
+          18,
+          MediaQuery.viewInsetsOf(sheetContext).bottom + 22,
+        ),
+        child: TextField(
+          controller: controller,
+          autofocus: true,
+          onChanged: onSearchChanged,
+          textInputAction: TextInputAction.search,
+          decoration: InputDecoration(
+            hintText: 'ابحث عن مطعم، تصنيف أو وجبة',
+            prefixIcon: const Icon(Icons.search_rounded),
+            suffixIcon: IconButton(
+              tooltip: 'إغلاق',
+              onPressed: () => Navigator.pop(sheetContext),
+              icon: const Icon(Icons.close_rounded),
+            ),
+          ),
+        ),
+      ),
+    );
+    controller.dispose();
+  }
 }
 
 class _TurquoiseQuickLinks extends StatelessWidget {
@@ -955,7 +951,10 @@ class _OfferBanner extends StatelessWidget {
   const _OfferBanner();
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => Navigator.push(
           context,
@@ -1063,7 +1062,9 @@ class _OfferBanner extends StatelessWidget {
             ],
           ),
         ),
-      );
+      ),
+    );
+  }
 }
 
 class _RestaurantsQuickRow extends StatelessWidget {
@@ -1682,21 +1683,13 @@ class _QuickActionImage extends StatelessWidget {
             size: 42,
           ),
         );
-    return path.startsWith('http')
-        ? Image.network(
-            path,
-            width: double.infinity,
-            height: double.infinity,
-            fit: BoxFit.cover,
-            errorBuilder: fallback,
-          )
-        : Image.asset(
-            path,
-            width: double.infinity,
-            height: double.infinity,
-            fit: BoxFit.cover,
-            errorBuilder: fallback,
-          );
+    return BarakahMediaImage(
+      path: path,
+      width: double.infinity,
+      height: double.infinity,
+      fit: BoxFit.cover,
+      fallback: fallback(context, Object(), null),
+    );
   }
 }
 
@@ -2482,14 +2475,18 @@ class _HomeCategoryTile extends StatelessWidget {
                           color: AppTheme.coolYellow,
                           child: Icon(Icons.category_outlined,
                               color: AppTheme.ink, size: 38))
-                      : image.startsWith('assets/')
-                          ? Image.asset(image, fit: BoxFit.cover)
-                          : Image.network(image,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => const ColoredBox(
-                                  color: AppTheme.coolYellow,
-                                  child: Icon(Icons.broken_image_outlined,
-                                      color: AppTheme.ink, size: 38))),
+                      : BarakahMediaImage(
+                          path: image,
+                          fit: BoxFit.cover,
+                          fallback: const ColoredBox(
+                            color: AppTheme.coolYellow,
+                            child: Icon(
+                              Icons.broken_image_outlined,
+                              color: AppTheme.ink,
+                              size: 38,
+                            ),
+                          ),
+                        ),
                 ),
               ),
               Padding(

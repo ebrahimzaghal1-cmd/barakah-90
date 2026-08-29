@@ -88,34 +88,44 @@ class ProfileScreen extends StatelessWidget {
             ),
             iconTheme: const IconThemeData(color: AppTheme.navy),
           ),
-          body: BarakahBrandBackdrop(
-            child: ResponsivePage(
-              child: StreamBuilder<User?>(
-                stream: AuthService().authStateChanges,
-                builder: (context, snapshot) {
-                  final user = snapshot.data;
-                  if (user == null) {
-                    return _ProfileBody(
-                        user: null,
-                        data: const {},
-                        copy: copy,
-                        onAdmin: _openAdmin);
-                  }
-                  return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                    stream: FirebaseFirestore.instance
-                        .collection('users')
-                        .doc(user.uid)
-                        .snapshots(),
-                    builder: (context, profileSnapshot) => _ProfileBody(
-                      user: user,
-                      data: profileSnapshot.data?.data() ?? const {},
-                      copy: copy,
-                      onAdmin: _openAdmin,
-                    ),
-                  );
-                },
+          body: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.asset(
+                'assets/images/profile_gold_background.jpg',
+                fit: BoxFit.cover,
+                alignment: Alignment.center,
               ),
-            ),
+              const ColoredBox(color: Color(0xB8FFFCF5)),
+              ResponsivePage(
+                child: StreamBuilder<User?>(
+                  stream: AuthService().authStateChanges,
+                  builder: (context, snapshot) {
+                    final user = snapshot.data;
+                    if (user == null) {
+                      return _ProfileBody(
+                          user: null,
+                          data: const {},
+                          copy: copy,
+                          onAdmin: _openAdmin);
+                    }
+                    return StreamBuilder<
+                        DocumentSnapshot<Map<String, dynamic>>>(
+                      stream: FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(user.uid)
+                          .snapshots(),
+                      builder: (context, profileSnapshot) => _ProfileBody(
+                        user: user,
+                        data: profileSnapshot.data?.data() ?? const {},
+                        copy: copy,
+                        onAdmin: _openAdmin,
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
         );
       },

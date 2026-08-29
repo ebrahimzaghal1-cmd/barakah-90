@@ -1,12 +1,11 @@
-import 'dart:convert';
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
+import '../services/media_upload_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/barakah_media_image.dart';
 
 class AdminManageCategories extends StatefulWidget {
   const AdminManageCategories({
@@ -39,34 +38,6 @@ class _AdminManageCategoriesState extends State<AdminManageCategories> {
     await batch.commit();
   }
 
-  Future<String> uploadImage(File image) async {
-    final request = http.MultipartRequest(
-      'POST',
-      Uri.parse('https://barakah-90-production-384c.up.railway.app/upload'),
-    );
-    request.files.add(
-      await http.MultipartFile.fromPath(
-        'image',
-        image.path,
-        contentType: MediaType('image', 'jpeg'),
-      ),
-    );
-
-    final response = await request.send();
-    if (response.statusCode != 200) {
-      throw Exception('Image upload failed');
-    }
-
-    final body = await response.stream.bytesToString();
-    final json = jsonDecode(body) as Map<String, dynamic>;
-    final imageUrl = json['url']?.toString();
-    if (imageUrl == null || imageUrl.isEmpty) {
-      throw Exception('Image upload returned no URL');
-    }
-
-    return imageUrl;
-  }
-
   Future<void> _showCategoryDialog({DocumentSnapshot? doc}) async {
     final category = doc?.data() as Map<String, dynamic>? ?? {};
     final titleController =
@@ -75,7 +46,8 @@ class _AdminManageCategoriesState extends State<AdminManageCategories> {
         TextEditingController(text: category['desc'] ?? '');
     final typeController = TextEditingController(text: category['type'] ?? '');
     var imageUrl = category['image']?.toString() ?? '';
-    File? selectedImage;
+    XFile? selectedImage;
+    Uint8List? selectedImageBytes;
     var isSaving = false;
 
     await showDialog(
@@ -90,7 +62,11 @@ class _AdminManageCategoriesState extends State<AdminManageCategories> {
                   imageQuality: 85,
                 );
                 if (pickedImage != null) {
-                  setDialogState(() => selectedImage = File(pickedImage.path));
+                  final bytes = await pickedImage.readAsBytes();
+                  setDialogState(() {
+                    selectedImage = pickedImage;
+                    selectedImageBytes = bytes;
+                  });
                 }
               } catch (_) {
                 if (context.mounted) {
@@ -113,7 +89,10 @@ class _AdminManageCategoriesState extends State<AdminManageCategories> {
               setDialogState(() => isSaving = true);
               try {
                 if (selectedImage != null) {
-                  imageUrl = await uploadImage(selectedImage!);
+                  imageUrl = await MediaUploadService().upload(
+                    selectedImage!,
+                    isVideo: false,
+                  );
                 }
 
                 final data = {
@@ -141,13 +120,13 @@ class _AdminManageCategoriesState extends State<AdminManageCategories> {
               }
             }
 
-            final preview = selectedImage != null
-                ? Image.file(selectedImage!, fit: BoxFit.cover)
+            final preview = selectedImageBytes != null
+                ? Image.memory(selectedImageBytes!, fit: BoxFit.cover)
                 : imageUrl.isNotEmpty
-                    ? Image.network(
-                        imageUrl,
+                    ? BarakahMediaImage(
+                        path: imageUrl,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => const Icon(
+                        fallback: const Icon(
                           Icons.image_not_supported_outlined,
                           size: 42,
                         ),
@@ -304,7 +283,7 @@ class _AdminManageCategoriesState extends State<AdminManageCategories> {
                   leading: CircleAvatar(
                     backgroundColor: AppTheme.coolYellow.withOpacity(0.25),
                     backgroundImage: image.toString().isNotEmpty
-                        ? NetworkImage(image.toString())
+                        ? barakahImageProvider(image.toString())
                         : null,
                     child: image.toString().isEmpty
                         ? const Icon(Icons.category, color: AppTheme.deepYellow)

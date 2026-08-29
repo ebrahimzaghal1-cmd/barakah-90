@@ -1,0 +1,58 @@
+{
+  "id": "70931620-3559-44ba-8fa1-b5cafb8cf312",
+  "number": 43,
+  "metadata": {
+    "created_on": "2026-08-20T23:57:03.173985Z",
+    "source": "wrangler",
+    "author_id": "b45ac02e3d200aa35f149a08306a3fae",
+    "author_email": "ebrahimzaghal1@gmail.com",
+    "has_preview": true
+  },
+  "annotations": {
+    "workers/triggered_by": "version_upload"
+  },
+  "resources": {
+    "script": {
+      "etag": "f1727ce8ed7e5a21d67a576a63c3e62fb22a19486d0d648025e4d0ddf14652aa",
+      "handlers": [
+        "fetch"
+      ],
+      "last_deployed_from": "wrangler"
+    },
+    "script_runtime": {
+      "compatibility_date": "2026-08-01",
+      "usage_model": "standard"
+    },
+    "bindings": [
+      {
+        "name": "ALLOWED_ORIGINS",
+        "text": "https://barakah-new.web.app,https://barakah-new.firebaseapp.com",
+        "type": "plain_text"
+      },
+      {
+        "database_id": "66681e60-4155-4b5e-82dd-1c613bb7ea66",
+        "id": "66681e60-4155-4b5e-82dd-1c613bb7ea66",
+        "name": "DB",
+        "type": "d1"
+      },
+      {
+        "name": "FIREBASE_CLIENT_EMAIL",
+        "type": "secret_text"
+      },
+      {
+        "name": "FIREBASE_PRIVATE_KEY",
+        "type": "secret_text"
+      },
+      {
+        "name": "FIREBASE_PROJECT_ID",
+        "text": "barakah-new",
+        "type": "plain_text"
+      },
+      {
+        "name": "FIREBASE_WEB_API_KEY",
+        "text": "AIzaSyA8vUPyQHotiybswHkP5bAXqrXIkggM0Us",
+        "type": "plain_text"
+      }
+    ]
+  }
+}

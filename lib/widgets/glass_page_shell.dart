@@ -1,4 +1,8 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
+
+import '../theme/app_theme.dart';
 
 class GlassPageShell extends StatelessWidget {
   final String title;
@@ -17,13 +21,48 @@ class GlassPageShell extends StatelessWidget {
         title: Text(title),
         centerTitle: true,
       ),
-
-      // 🔥 بدون blur
       body: Container(
         width: double.infinity,
         height: double.infinity,
-        color: Colors.grey[100], // خلفية نظيفة بدل البلور
-        child: child,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFFFFFFF), Color(0xFFFCFCFB), Color(0xFFF7F4EC)],
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(.075),
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(
+                    color: AppTheme.coolYellow.withOpacity(.36),
+                    width: 1.2,
+                  ),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x73000000),
+                      blurRadius: 24,
+                      offset: Offset(0, 12),
+                    ),
+                    BoxShadow(
+                      color: Color(0x33FFFFFF),
+                      blurRadius: 2,
+                      offset: Offset(0, -1),
+                    ),
+                  ],
+                ),
+                child: child,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

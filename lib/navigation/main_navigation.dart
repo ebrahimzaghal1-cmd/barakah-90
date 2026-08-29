@@ -37,7 +37,8 @@ class _MainNavigationState extends State<MainNavigation> {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.restaurant), label: 'مطاعم'),
           BottomNavigationBarItem(icon: Icon(Icons.store), label: 'ماركت'),
-          BottomNavigationBarItem(icon: Icon(Icons.shopping_cart), label: 'السلة'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.shopping_cart), label: 'السلة'),
           BottomNavigationBarItem(icon: Icon(Icons.list_alt), label: 'طلباتي'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'صفحتي'),
         ],

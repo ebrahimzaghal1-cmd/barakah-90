@@ -17,10 +17,7 @@ import 'package:flutter/foundation.dart'
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
-      throw UnsupportedError(
-        'DefaultFirebaseOptions have not been configured for web - '
-        'you can reconfigure this by running the FlutterFire CLI again.',
-      );
+      return web;
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
@@ -52,13 +49,22 @@ class DefaultFirebaseOptions {
     }
   }
 
+  static const FirebaseOptions web = FirebaseOptions(
+    apiKey: 'AIzaSyA8vUPyQHotiybswHkP5bAXqrXIkggM0Us',
+    appId: '1:783945761203:web:b66000463fd51c8b684bc6',
+    messagingSenderId: '783945761203',
+    projectId: 'barakah-new',
+    authDomain: 'barakah-new.firebaseapp.com',
+    storageBucket: 'barakah-new.firebasestorage.app',
+    measurementId: 'G-9XDBPWGXV7',
+  );
+
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyClco57MParkblTbc-DoM4mVDFJhsBfMcY',
-    appId: '1:783945761203:ios:19c5de6c1c63a0d6684bc6',
+    appId: '1:783945761203:ios:99eabaa743ef42cb684bc6',
     messagingSenderId: '783945761203',
     projectId: 'barakah-new',
     storageBucket: 'barakah-new.firebasestorage.app',
-    iosBundleId: 'com.example.barakah90',
+    iosBundleId: 'com.barakah.market',
   );
-
 }

@@ -18,7 +18,6 @@ class _MainScreenState extends State<MainScreen> {
   final List<Widget> pages = [
     const HomeScreen(),
     const CartScreen(),
-
   ];
 
   @override

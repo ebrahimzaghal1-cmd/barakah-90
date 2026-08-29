@@ -23,11 +23,11 @@ class _MainNavBarState extends State<MainNavBar> {
     super.initState();
     screens = [
       Container(
-  color: Colors.red,
-  child: const Center(
-    child: Text("🔥 TEST 🔥"),
-  ),
-),
+        color: Colors.red,
+        child: const Center(
+          child: Text("🔥 TEST 🔥"),
+        ),
+      ),
       const MarketScreen(),
       const CartScreen(),
       const OrdersScreen(),

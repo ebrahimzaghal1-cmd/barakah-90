@@ -22,10 +22,13 @@ class CategoryItem extends StatelessWidget {
         child: Stack(
           children: [
             Positioned.fill(
-              child: Image.asset(
-                image,
-                fit: BoxFit.cover,
-              ),
+              child: image.startsWith('assets/')
+                  ? Image.asset(image, fit: BoxFit.cover)
+                  : Image.network(image,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const ColoredBox(
+                          color: Color(0xFFFFE6EF),
+                          child: Icon(Icons.image_not_supported_outlined))),
             ),
             Positioned.fill(
               child: Container(

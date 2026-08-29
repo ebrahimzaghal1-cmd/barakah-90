@@ -31,55 +31,55 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 20),
 
           // الشبكة
-       Expanded(
-  child: StreamBuilder(
-    stream: FirebaseFirestore.instance
-        .collection('categories')
-        .snapshots(),
-    builder: (context, snapshot) {
-      if (snapshot.connectionState == ConnectionState.waiting) {
-        return const Center(child: CircularProgressIndicator());
-      }
+          Expanded(
+            child: StreamBuilder(
+              stream: FirebaseFirestore.instance
+                  .collection('categories')
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-      if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-        return const Center(
-          child: Text(
-            'لا توجد تصنيفات',
-            style: TextStyle(color: Colors.white),
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  return const Center(
+                    child: Text(
+                      'لا توجد تصنيفات',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  );
+                }
+
+                final docs = snapshot.data!.docs;
+
+                return GridView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: docs.length,
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 16,
+                    mainAxisSpacing: 16,
+                    childAspectRatio: 1,
+                  ),
+                  itemBuilder: (context, index) {
+                    final item = docs[index];
+
+                    return CategoryCard(
+                      title: item['title'],
+                      image: item['image'],
+                      onTap: () {
+                        Navigator.pushNamed(
+                          context,
+                          '/products',
+                          arguments: item['title'],
+                        );
+                      },
+                    );
+                  },
+                );
+              },
+            ),
           ),
-        );
-      }
-
-      final docs = snapshot.data!.docs;
-
-      return GridView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: docs.length,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          crossAxisSpacing: 16,
-          mainAxisSpacing: 16,
-          childAspectRatio: 1,
-        ),
-        itemBuilder: (context, index) {
-          final item = docs[index];
-
-          return CategoryCard(
-            title: item['title'],
-            image: item['image'],
-            onTap: () {
-              Navigator.pushNamed(
-                context,
-                '/products',
-                arguments: item['title'],
-              );
-            },
-          );
-        },
-      );
-    },
-  ),
-),
         ],
       ),
     );

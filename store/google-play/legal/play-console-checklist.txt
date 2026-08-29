@@ -1,0 +1,254 @@
+========================================
+BARAKAH | بركة
+GOOGLE PLAY CONSOLE CHECKLIST
+========================================
+
+PACKAGE
+com.barakah.market
+
+VERSION
+1.0.0+1
+
+PRIVACY POLICY
+https://barakah-new.web.app/privacy
+
+ACCOUNT DELETION
+https://barakah-new.web.app/delete-account
+
+
+========================================
+1. APP ACCESS
+========================================
+
+هل كل وظائف التطبيق متاحة بدون تسجيل دخول؟
+NO
+
+اختيار Play Console:
+Some or all functionality is restricted
+
+السبب:
+بعض الوظائف مثل إنشاء الطلب، الحساب، النقاط، السائق، وبعض العمليات تحتاج تسجيل دخول.
+
+يجب تجهيز حساب اختبار للمراجع قبل إرسال التطبيق للمراجعة.
+
+
+========================================
+2. ADS
+========================================
+
+التطبيق يعرض عروضًا وإعلانات داخلية للمطاعم والمتاجر.
+
+إذا لم يكن هناك AdMob أو شبكة إعلانات خارجية:
+اعتبر المحتوى عروضًا/محتوى تجاريًا داخل التطبيق.
+
+إذا Play Console سأل:
+Does your app contain ads?
+اختر YES إذا كانت البانرات المدفوعة/الإعلانات التجارية ظاهرة للمستخدم.
+
+
+========================================
+3. TARGET AUDIENCE
+========================================
+
+التطبيق ليس موجهًا للأطفال.
+
+الاختيار المقترح:
+18 and over
+
+أو الفئات البالغة المناسبة فقط إذا رغبت بتوسيع الجمهور.
+
+لا تختَر فئات الأطفال إلا إذا تم تصميم التطبيق والامتثال لسياسة Families.
+
+
+========================================
+4. LOCATION
+========================================
+
+يستخدم التطبيق:
+- Approximate location
+- Precise location
+
+الاستخدام:
+- عرض الأماكن القريبة
+- تحديد موقع التوصيل
+- تحديد أقرب سائق عند الحاجة
+
+الموقع ليس مستخدمًا للإعلانات المخصصة.
+
+
+========================================
+5. PERSONAL INFO
+========================================
+
+قد يجمع التطبيق:
+
+Name
+YES
+
+Email address
+YES
+
+Phone number
+YES
+
+User IDs
+YES
+
+Address
+YES
+
+
+الأغراض:
+- Account management
+- App functionality
+- Order fulfillment
+- Fraud prevention / security عند الحاجة
+
+
+========================================
+6. FINANCIAL / PURCHASE DATA
+========================================
+
+التطبيق يحتوي بيانات معاملات وطلبات داخل بركة.
+
+Purchase history
+YES
+
+يستخدم من أجل:
+- App functionality
+- Order fulfillment
+- Accounting / transaction history
+
+
+========================================
+7. LOCATION DATA SAFETY
+========================================
+
+Approximate location
+COLLECTED: YES
+
+Precise location
+COLLECTED: YES
+
+Purpose:
+App functionality
+
+Optional:
+YES للمستخدم العادي بحسب استخدام ميزات الموقع،
+لكن بعض وظائف التوصيل/السائق قد تحتاجه عند تفعيلها.
+
+
+========================================
+8. APP ACTIVITY
+========================================
+
+App interactions / analytics:
+YES إذا كانت analytics_events وقياسات الزيارات داخلة في تعريف Play Console.
+
+Purpose:
+Analytics
+App functionality
+
+
+========================================
+9. USER-GENERATED CONTENT
+========================================
+
+مزاد بركة يسمح للمستخدم بإرسال:
+- صور
+- وصف
+- بيانات إعلان/طلب مزاد
+
+لذلك راجع أسئلة User Generated Content في Content Rating بعناية.
+
+
+========================================
+10. PHOTOS / VIDEOS
+========================================
+
+التطبيق يستخدم System/Image Picker لاختيار صور عند الحاجة.
+
+Android manifest لا يطلب:
+READ_MEDIA_IMAGES
+READ_MEDIA_VIDEO
+READ_EXTERNAL_STORAGE
+CAMERA
+
+وهذا مقصود لتجنب وصول دائم لمكتبة المستخدم.
+
+
+========================================
+11. NOTIFICATIONS
+========================================
+
+Permission:
+POST_NOTIFICATIONS
+
+Purpose:
+- Order updates
+- Service notifications
+
+لا تستخدم لتجميع بيانات حساسة.
+
+
+========================================
+12. ACCOUNT CREATION / DELETION
+========================================
+
+Account creation:
+YES
+
+In-app account deletion:
+YES
+
+Web deletion resource:
+https://barakah-new.web.app/delete-account
+
+
+========================================
+13. DATA ENCRYPTION
+========================================
+
+Data transmitted over encrypted HTTPS/TLS connections:
+YES
+
+Firebase / Cloudflare / HTTPS endpoints are used.
+
+
+========================================
+14. PRIVACY POLICY
+========================================
+
+Public URL:
+https://barakah-new.web.app/privacy
+
+يجب أن يبقى الرابط عامًا ويعمل بدون تسجيل دخول.
+
+
+========================================
+15. CONTENT RATING NOTES
+========================================
+
+التطبيق:
+- Shopping / food / marketplace
+- Loyalty points
+- Auction marketplace
+- No real-money gambling intended
+- No pornography
+- No violent content intended
+
+أجب عن أسئلة المزاد على أنه Marketplace/Auction،
+وليس Gambling، طالما لا توجد مراهنة أو رهان مالي على نتيجة عشوائية.
+
+
+========================================
+16. RELEASE FILE
+========================================
+
+store/google-play/Barakah-1.0.0-build1.aab
+
+Official package:
+com.barakah.market
+
+Official signing:
+barakah-upload

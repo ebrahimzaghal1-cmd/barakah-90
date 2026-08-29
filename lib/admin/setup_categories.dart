@@ -67,7 +67,6 @@ class _SetupCategoriesState extends State<SetupCategories> {
         backgroundColor: Colors.pink,
         centerTitle: true,
       ),
-
       body: Center(
         child: _loading
             ? const CircularProgressIndicator(color: Colors.pink)
@@ -118,4 +117,3 @@ class _SetupCategoriesState extends State<SetupCategories> {
     );
   }
 }
-

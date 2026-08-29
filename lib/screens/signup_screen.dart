@@ -36,6 +36,33 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 final navigator = Navigator.of(context);
                 try {
                   await auth.signUp(email.text, password.text);
+                  if (!context.mounted) return;
+
+                  final issuedPin = auth.lastIssuedBarakahPin;
+
+                  if (issuedPin != null && issuedPin.isNotEmpty) {
+                    await showDialog<void>(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (dialogContext) => AlertDialog(
+                        title: const Text('بطاقة بركة جاهزة 🎉'),
+                        content: Text(
+                          'رقم البطاقة: ${auth.lastBarakahCardNumber ?? ''}\n\n'
+                          'الرقم السري (PIN): $issuedPin\n\n'
+                          'احتفظ بهذا الرقم السري. لن يتم عرضه مرة أخرى، ويمكنك تغييره لاحقًا من صفحتي.',
+                        ),
+                        actions: [
+                          FilledButton(
+                            onPressed: () => Navigator.pop(dialogContext),
+                            child: const Text('تم الحفظ'),
+                          ),
+                        ],
+                      ),
+                    );
+
+                    auth.clearIssuedBarakahPin();
+                  }
+
                   if (!mounted) return;
                   navigator.pushReplacementNamed('/home');
                 } catch (e) {

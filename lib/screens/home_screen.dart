@@ -10,7 +10,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-
   final List<String> homeBanners = [
     'assets/images/banners/banner1.jpg',
     'assets/images/banners/banner2.jpg',
@@ -23,22 +22,17 @@ class _HomeScreenState extends State<HomeScreen> {
       backgroundColor: Colors.transparent,
       body: Stack(
         children: [
-          // الخلفية
           Positioned.fill(
             child: Image.asset(
               'assets/images/backgrounds/welcome_pomegranate.jpg',
               fit: BoxFit.cover,
             ),
           ),
-
-          // تعتيم خفيف
           Positioned.fill(
             child: Container(
               color: Colors.black.withOpacity(0.15),
             ),
           ),
-
-          // الشيت
           DraggableScrollableSheet(
             initialChildSize: 0.55,
             minChildSize: 0.45,
@@ -49,14 +43,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   top: Radius.circular(30),
                 ),
                 child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                  filter: ImageFilter.blur(
+                    sigmaX: 15,
+                    sigmaY: 15,
+                  ),
                   child: Container(
                     color: Colors.white.withOpacity(0.85),
                     child: ListView(
                       controller: scrollController,
                       padding: const EdgeInsets.all(16),
                       children: [
-                        // المقبض
                         Center(
                           child: Container(
                             width: 40,
@@ -67,7 +63,71 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                         ),
+
                         const SizedBox(height: 16),
+
+                        // =========================
+                        // عروض اليوم
+                        // =========================
+
+                        const Text(
+                          '🔥 عروض اليوم',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+
+                        const SizedBox(height: 15),
+
+                        Row(
+                          children: [
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () {
+                                  Navigator.pushNamed(
+                                    context,
+                                    '/restaurants',
+                                  );
+                                },
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(20),
+                                  child: Image.asset(
+                                    'assets/images/offers/restaurants_offers.png',
+                                    height: 140,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: GestureDetector(
+                                onTap: () {
+                                  Navigator.pushNamed(
+                                    context,
+                                    '/market',
+                                  );
+                                },
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(20),
+                                  child: Image.asset(
+                                    'assets/images/offers/market_offers.png',
+                                    height: 140,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 25),
+
+                        // =========================
+                        // التصنيفات
+                        // =========================
 
                         const Text(
                           'التصنيفات',
@@ -77,6 +137,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
+
                         const SizedBox(height: 20),
 
                         GridView.builder(
@@ -84,7 +145,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           physics: const NeverScrollableScrollPhysics(),
                           gridDelegate:
                               const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2, // عرض عنصرين مثل شاشة المنتجات
+                            crossAxisCount: 2,
                             crossAxisSpacing: 16,
                             mainAxisSpacing: 16,
                             childAspectRatio: 0.8,
@@ -92,6 +153,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           itemCount: categories.length,
                           itemBuilder: (context, index) {
                             final item = categories[index];
+
                             return CategoryCard(
                               title: item['title']!,
                               image: item['image']!,

@@ -1,0 +1,1 @@
+This folder contains the built output assets for the worker "barakah-secure-api" generated at 2026-08-21T02:07:24.472Z.

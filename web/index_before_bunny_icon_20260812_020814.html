@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="بركة — كل ما تتمنوه تحت سقف واحد">
+  <meta name="theme-color" content="#071F49">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="بركة">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>بركة | BARAKAH</title>
+  <link rel="manifest" href="manifest.json">
+
+<!-- BARAKAH_BUNNY_LOADER_START -->
+<style>
+  #barakah-boot-loader {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 12% 10%, rgba(243,196,59,.20) 0 12%, transparent 13%),
+      radial-gradient(circle at 90% 86%, rgba(243,196,59,.16) 0 14%, transparent 15%),
+      radial-gradient(circle at 55% 45%, rgba(214,226,241,.50), transparent 38%),
+      #F9F8F1;
+    font-family: Arial, Tahoma, sans-serif;
+  }
+
+  #barakah-boot-loader .barakah-loader-inner {
+    width: min(92vw, 390px);
+    text-align: center;
+    direction: rtl;
+  }
+
+  #barakah-boot-loader .barakah-bunny-crop {
+    width: min(82vw, 320px);
+    height: min(78vw, 305px);
+    max-height: 305px;
+    margin: 0 auto 10px;
+    overflow: hidden;
+  }
+
+  #barakah-boot-loader .barakah-bunny-crop img {
+    display: block;
+    width: 100%;
+    height: auto;
+    animation: barakahBunnyWalk .9s ease-in-out infinite;
+    transform-origin: 50% 85%;
+  }
+
+  #barakah-boot-loader .barakah-wait-text {
+    color: #17366B;
+    font-size: clamp(20px, 5vw, 27px);
+    font-weight: 800;
+    margin-top: 8px;
+  }
+
+  #barakah-boot-loader .barakah-dots {
+    display: flex;
+    direction: ltr;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 20px;
+  }
+
+  #barakah-boot-loader .barakah-dots span {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #17366B;
+    animation: barakahDot 1s ease-in-out infinite;
+  }
+
+  #barakah-boot-loader .barakah-dots span:nth-child(2) { animation-delay: .12s; }
+  #barakah-boot-loader .barakah-dots span:nth-child(3) { animation-delay: .24s; }
+  #barakah-boot-loader .barakah-dots span:nth-child(4) { animation-delay: .36s; }
+  #barakah-boot-loader .barakah-dots span:nth-child(5) { animation-delay: .48s; }
+
+  @keyframes barakahBunnyWalk {
+    0%, 100% { transform: translate(0, 0) rotate(-1deg); }
+    25% { transform: translate(8px, -7px) rotate(1deg); }
+    50% { transform: translate(14px, 0) rotate(-1deg); }
+    75% { transform: translate(6px, -7px) rotate(1deg); }
+  }
+
+  @keyframes barakahDot {
+    0%, 55%, 100% {
+      transform: scale(.82);
+      background: #17366B;
+    }
+    25% {
+      transform: scale(1.45);
+      background: #F3C43B;
+    }
+  }
+</style>
+<!-- BARAKAH_BUNNY_LOADER_END -->
+
+</head>
+<body>
+
+<div id="barakah-boot-loader" aria-live="polite">
+  <div class="barakah-loader-inner">
+    <div class="barakah-bunny-crop">
+      <img src="loading_bunny.png" alt="أرنب بركة">
+    </div>
+    <div class="barakah-wait-text">استنا شوي، بنجهزلك الصفحة 🛍️</div>
+    <div class="barakah-dots" aria-hidden="true">
+      <span></span><span></span><span></span><span></span><span></span>
+    </div>
+  </div>
+</div>
+
+  <script src="flutter_bootstrap.js" async></script>
+
+<!-- BARAKAH_BUNNY_LOADER_SCRIPT -->
+<script>
+  (() => {
+    const hideBarakahLoader = () => {
+      const loader = document.getElementById('barakah-boot-loader');
+      if (!loader) return;
+      loader.style.transition = 'opacity 180ms ease';
+      loader.style.opacity = '0';
+      setTimeout(() => loader.remove(), 190);
+    };
+
+    window.addEventListener('flutter-first-frame', hideBarakahLoader, { once: true });
+
+    window.addEventListener('load', () => {
+      const started = Date.now();
+      const timer = setInterval(() => {
+        const flutterView = document.querySelector(
+          'flutter-view, flt-glass-pane, flt-scene-host'
+        );
+
+        if (flutterView) {
+          clearInterval(timer);
+          requestAnimationFrame(() => {
+            requestAnimationFrame(hideBarakahLoader);
+          });
+        } else if (Date.now() - started > 20000) {
+          clearInterval(timer);
+        }
+      }, 50);
+    }, { once: true });
+  })();
+</script>
+
+</body>
+</html>

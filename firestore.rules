@@ -1,0 +1,682 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isMerchant() {
+      return signedIn() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'merchant';
+    }
+
+    function isDriver() {
+      return signedIn() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'driver';
+    }
+
+    function isCustomerService() {
+      return signedIn() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'customer_service' &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.customerServiceEnabled == true &&
+        get(/databases/$(database)/documents/employment_contracts/$(request.auth.uid)).data.status == 'accepted';
+    }
+
+    function ownsBusiness(businessId) {
+      return isMerchant() && businessId is string &&
+        get(/databases/$(database)/documents/items/$(businessId)).data.ownerId == request.auth.uid;
+    }
+
+    match /items/{itemId} {
+      allow read: if true;
+      allow create: if isAdmin() ||
+        (isMerchant() && request.resource.data.kind == 'product' &&
+          request.resource.data.ownerId == request.auth.uid &&
+          get(/databases/$(database)/documents/items/$(request.resource.data.businessId)).data.ownerId == request.auth.uid);
+      allow update: if isAdmin() ||
+        (isMerchant() && resource.data.kind == 'product' &&
+          resource.data.ownerId == request.auth.uid &&
+          request.resource.data.ownerId == request.auth.uid &&
+          request.resource.data.kind == 'product' &&
+          request.resource.data.businessId == resource.data.businessId &&
+          get(/databases/$(database)/documents/items/$(request.resource.data.businessId)).data.ownerId == request.auth.uid) ||
+        (isMerchant() && resource.data.kind != 'product' &&
+          resource.data.ownerId == request.auth.uid &&
+          request.resource.data.ownerId == request.auth.uid &&
+          request.resource.data.kind == resource.data.kind &&
+          request.resource.data.type == resource.data.type &&
+          request.resource.data.category == resource.data.category &&
+          request.resource.data.isTrending == resource.data.isTrending &&
+          request.resource.data.rating == resource.data.rating);
+      allow delete: if isAdmin() ||
+        (isMerchant() && resource.data.kind == 'product' &&
+          resource.data.ownerId == request.auth.uid);
+    }
+
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /restaurant_categories/{categoryId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /market_categories/{categoryId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /home_category_strips/{stripId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /ads/{adId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if signedIn() && request.auth.uid == userId &&
+        request.resource.data.role == 'customer';
+      allow update: if isAdmin() ||
+        (signedIn() && request.auth.uid == userId &&
+          request.resource.data.role == resource.data.role &&
+          ((resource.data.role == 'customer' &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'displayName', 'phone', 'address', 'agentLocation',
+              'agentLatitude', 'agentLongitude', 'language', 'lastLoginAt',
+              'updatedAt'
+            ])) ||
+           (resource.data.role != 'customer' &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'displayName', 'phone', 'address', 'gender', 'language',
+              'agentNumber', 'agentLocation', 'agentLatitude', 'agentLongitude',
+              'facebookUrl', 'instagramUrl', 'tiktokUrl', 'lastLoginAt',
+              'updatedAt'
+            ])))) ||
+        (
+          signedIn() &&
+          request.auth.uid == userId &&
+          resource.data.role == 'customer' &&
+          request.resource.data.role == resource.data.role &&
+          resource.data.signupGiftClaimed != true &&
+          request.resource.data.signupGiftClaimed == true &&
+          request.resource.data.signupGiftPoints == 50 &&
+          request.resource.data.loyaltyPoints ==
+            ((resource.data.loyaltyPoints is number
+                ? resource.data.loyaltyPoints
+                : 0) + 50) &&
+          request.resource.data.signupGiftClaimedAt == request.time &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'loyaltyPoints',
+            'signupGiftClaimed',
+            'signupGiftPoints',
+            'signupGiftClaimedAt'
+          ])
+        ) ||
+        (isDriver() && request.auth.uid == userId &&
+          request.resource.data.role == 'driver' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'driverAvailable', 'driverBusy', 'driverLatitude', 'driverLongitude',
+            'driverLocationUpdatedAt', 'activeOrderId'
+          ]));
+      allow delete: if isAdmin();
+    }
+
+    match /orders/{orderId} {
+      // الطلبات الجديدة ينشئها الخادم فقط كي يضمن رقماً تسلسلياً غير قابل للتلاعب.
+      allow create: if false;
+      allow read: if signedIn() &&
+        (resource.data.customerId == request.auth.uid || isAdmin() ||
+          (isCustomerService() &&
+            get(/databases/$(database)/documents/support_threads/$(resource.data.customerId)).data.assignedAgentId == request.auth.uid) ||
+          resource.data.driverId == request.auth.uid ||
+          ownsBusiness(resource.data.businessId));
+      // تغييرات الحالة تمر عبر الخادم. الاستثناء الوحيد للزبون هو تقييم
+      // طلبه المُسلّم، مع منع تعديل أي بيانات مالية أو تشغيلية في الطلب.
+      allow update: if signedIn() &&
+        resource.data.customerId == request.auth.uid &&
+        resource.data.status == 'delivered' &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'customerReaction', 'reactionUpdatedAt'
+        ]) &&
+        request.resource.data.customerReaction in [
+          'happy', 'love', 'excellent', 'excited', 'surprised', 'sad'
+        ] &&
+        request.resource.data.reactionUpdatedAt == request.time;
+      allow delete: if false;
+    }
+
+    match /driver_applications/{userId} {
+      allow create: if signedIn() &&
+        request.auth.uid == userId &&
+        request.resource.data.keys().hasOnly([
+          'userId',
+          'fullName',
+          'email',
+          'phone',
+          'nationalId',
+          'vehicle',
+          'driverLicenseNumber',
+          'vehicleLicenseNumber',
+          'vehicleInsuranceNumber',
+          'payoutMethod',
+          'payoutAccount',
+          'acceptedDriverTerms',
+          'acceptedPrivacyPolicy',
+          'agreementVersion',
+          'agreementAcceptedAt',
+          'status',
+          'identityVerified',
+          'driverLicenseVerified',
+          'vehicleDocumentsVerified',
+          'payoutVerified',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.fullName is string &&
+        request.resource.data.fullName.size() >= 2 &&
+        request.resource.data.fullName.size() <= 120 &&
+        request.resource.data.email is string &&
+        request.resource.data.email.size() >= 5 &&
+        request.resource.data.email.size() <= 180 &&
+        request.resource.data.phone is string &&
+        request.resource.data.phone.size() >= 6 &&
+        request.resource.data.phone.size() <= 30 &&
+        request.resource.data.nationalId is string &&
+        request.resource.data.nationalId.size() >= 5 &&
+        request.resource.data.nationalId.size() <= 30 &&
+        request.resource.data.vehicle is string &&
+        request.resource.data.vehicle.size() >= 2 &&
+        request.resource.data.vehicle.size() <= 160 &&
+        request.resource.data.driverLicenseNumber is string &&
+        request.resource.data.vehicleLicenseNumber is string &&
+        request.resource.data.vehicleInsuranceNumber is string &&
+        request.resource.data.payoutMethod is string &&
+        request.resource.data.payoutAccount is string &&
+        request.resource.data.acceptedDriverTerms == true &&
+        request.resource.data.acceptedPrivacyPolicy == true &&
+        request.resource.data.agreementVersion is string &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.identityVerified == false &&
+        request.resource.data.driverLicenseVerified == false &&
+        request.resource.data.vehicleDocumentsVerified == false &&
+        request.resource.data.payoutVerified == false;
+
+      allow read: if isAdmin() ||
+        (signedIn() && request.auth.uid == userId);
+
+      allow update: if isAdmin() ||
+        (
+          signedIn() &&
+          request.auth.uid == userId &&
+          resource.data.status == 'pending' &&
+          request.resource.data.status == 'pending' &&
+
+          request.resource.data.identityVerified ==
+            resource.data.identityVerified &&
+          request.resource.data.driverLicenseVerified ==
+            resource.data.driverLicenseVerified &&
+          request.resource.data.vehicleDocumentsVerified ==
+            resource.data.vehicleDocumentsVerified &&
+          request.resource.data.payoutVerified ==
+            resource.data.payoutVerified &&
+
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'fullName',
+            'email',
+            'phone',
+            'nationalId',
+            'vehicle',
+            'driverLicenseNumber',
+            'vehicleLicenseNumber',
+            'vehicleInsuranceNumber',
+            'payoutMethod',
+            'payoutAccount',
+            'acceptedDriverTerms',
+            'acceptedPrivacyPolicy',
+            'agreementVersion',
+            'agreementAcceptedAt',
+            'createdAt',
+            'updatedAt'
+          ])
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    match /business_ratings/{businessId}/votes/{userId} {
+      allow read: if signedIn() && request.auth.uid == userId;
+      allow create, update: if signedIn() && request.auth.uid == userId &&
+        request.resource.data.value is number &&
+        request.resource.data.value >= 1 &&
+        request.resource.data.value <= 5;
+      allow delete: if isAdmin() || (signedIn() && request.auth.uid == userId);
+    }
+
+    match /rating_summaries/{businessId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /coupons/{couponId} {
+      allow read: if signedIn() &&
+        (resource.data.customerId == request.auth.uid || isAdmin());
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /loyalty_transactions/{transactionId} {
+      allow read: if signedIn() &&
+        (resource.data.customerId == request.auth.uid || isAdmin());
+
+      // سجل النقاط يكتبه السيرفر الموثق فقط.
+      allow create, update, delete: if false;
+    }
+
+
+    match /auction_requests/{requestId} {
+      allow read: if true;
+
+      allow create: if signedIn() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.keys().hasOnly([
+          'userId',
+          'userEmail',
+          'itemName',
+          'description',
+          'startingPrice',
+          'area',
+          'contactPhone',
+          'condition',
+          'image',
+          'imageUrls',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        request.resource.data.itemName is string &&
+        request.resource.data.itemName.size() > 0 &&
+        request.resource.data.itemName.size() <= 120 &&
+        request.resource.data.description is string &&
+        request.resource.data.description.size() > 0 &&
+        request.resource.data.description.size() <= 1200 &&
+        request.resource.data.startingPrice is number &&
+        request.resource.data.startingPrice >= 0 &&
+        request.resource.data.area is string &&
+        request.resource.data.contactPhone is string &&
+        request.resource.data.condition in [
+          'جديدة',
+          'مستعملة - ممتازة',
+          'مستعملة - جيدة',
+          'تحتاج صيانة'
+        ] &&
+        request.resource.data.image is string &&
+        request.resource.data.image.size() > 0 &&
+        request.resource.data.imageUrls is list &&
+        request.resource.data.imageUrls.size() >= 1 &&
+        request.resource.data.imageUrls.size() <= 5 &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.updatedAt == request.time;
+
+      allow update: if isAdmin() ||
+        (
+          signedIn() &&
+          resource.data.status == 'approved' &&
+          resource.data.userId != request.auth.uid &&
+          (!('buyerId' in resource.data) || resource.data.buyerId == '') &&
+          request.resource.data.buyerId == request.auth.uid &&
+          request.resource.data.saleStatus == 'pending_commission' &&
+          request.resource.data.commissionRate == 10 &&
+          request.resource.data.commissionPaid == false
+        );
+
+      allow delete: if isAdmin();
+    }
+
+
+    match /auction_sales/{saleId} {
+      allow create: if signedIn() &&
+        request.resource.data.buyerId == request.auth.uid &&
+        request.resource.data.status == 'pending_commission' &&
+        request.resource.data.commissionRate == 10 &&
+        request.resource.data.commissionPaid == false;
+
+      allow read: if signedIn() &&
+        (
+          resource.data.buyerId == request.auth.uid ||
+          resource.data.sellerId == request.auth.uid ||
+          isAdmin()
+        );
+
+      allow update, delete: if isAdmin();
+    }
+
+
+    match /analytics_events/{eventId} {
+      allow create: if
+        request.resource.data.keys().hasOnly([
+          'eventType',
+          'category',
+          'sessionId',
+          'createdAt'
+        ]) &&
+        request.resource.data.eventType in [
+          'app_visit',
+          'category_view'
+        ] &&
+        request.resource.data.sessionId is string &&
+        request.resource.data.sessionId.size() >= 8 &&
+        request.resource.data.sessionId.size() <= 80 &&
+        (
+          !request.resource.data.keys().hasAny(['category']) ||
+          (
+            request.resource.data.category is string &&
+            request.resource.data.category.size() <= 100
+          )
+        );
+
+      allow read: if isAdmin();
+      allow update, delete: if false;
+    }
+
+
+    match /merchant_applications/{applicationId} {
+      allow create: if
+        request.resource.data.keys().hasOnly([
+          'businessName',
+          'ownerName',
+          'email',
+          'phone',
+          'nationalId',
+          'activityType',
+          'area',
+          'description',
+          'locationUrl',
+          'latitude',
+          'longitude',
+
+          'payoutOwnerName',
+          'payoutMethod',
+          'payoutAccount',
+
+          'identityDocumentRef',
+          'businessDocumentRef',
+          'payoutDocumentRef',
+
+          'commissionRate',
+          'commissionAppliesTo',
+          'subscriptionFee',
+
+          'acceptedPartnerAgreement',
+          'acceptedPrivacyPolicy',
+          'agreementVersion',
+          'agreementAcceptedAt',
+
+          'identityVerified',
+          'businessVerified',
+          'payoutVerified',
+
+          'merchantEnabled',
+          'status',
+          'source',
+
+          'createdAt',
+          'updatedAt'
+        ]) &&
+
+        request.resource.data.businessName is string &&
+        request.resource.data.businessName.size() >= 2 &&
+        request.resource.data.businessName.size() <= 120 &&
+
+        request.resource.data.ownerName is string &&
+        request.resource.data.ownerName.size() >= 2 &&
+        request.resource.data.ownerName.size() <= 120 &&
+
+        request.resource.data.email is string &&
+        request.resource.data.email.size() >= 5 &&
+        request.resource.data.email.size() <= 180 &&
+
+        request.resource.data.phone is string &&
+        request.resource.data.phone.size() >= 6 &&
+        request.resource.data.phone.size() <= 30 &&
+
+        request.resource.data.nationalId is string &&
+        request.resource.data.nationalId.size() >= 5 &&
+        request.resource.data.nationalId.size() <= 30 &&
+
+        request.resource.data.activityType is string &&
+        request.resource.data.activityType.size() <= 80 &&
+
+        request.resource.data.area is string &&
+        request.resource.data.area.size() >= 2 &&
+        request.resource.data.area.size() <= 120 &&
+
+        request.resource.data.description is string &&
+        request.resource.data.description.size() <= 1000 &&
+
+        request.resource.data.locationUrl is string &&
+        request.resource.data.locationUrl.size() <= 1000 &&
+
+        request.resource.data.latitude is number &&
+        request.resource.data.latitude >= -90 &&
+        request.resource.data.latitude <= 90 &&
+
+        request.resource.data.longitude is number &&
+        request.resource.data.longitude >= -180 &&
+        request.resource.data.longitude <= 180 &&
+
+        request.resource.data.payoutOwnerName is string &&
+        request.resource.data.payoutOwnerName.size() >= 2 &&
+        request.resource.data.payoutOwnerName.size() <= 120 &&
+
+        request.resource.data.payoutMethod is string &&
+        request.resource.data.payoutMethod.size() >= 2 &&
+        request.resource.data.payoutMethod.size() <= 120 &&
+
+        request.resource.data.payoutAccount is string &&
+        request.resource.data.payoutAccount.size() >= 2 &&
+        request.resource.data.payoutAccount.size() <= 160 &&
+
+        request.resource.data.identityDocumentRef is string &&
+        request.resource.data.identityDocumentRef.size() <= 1000 &&
+
+        request.resource.data.businessDocumentRef is string &&
+        request.resource.data.businessDocumentRef.size() <= 1000 &&
+
+        request.resource.data.payoutDocumentRef is string &&
+        request.resource.data.payoutDocumentRef.size() <= 1000 &&
+
+        request.resource.data.commissionRate == 10 &&
+        request.resource.data.commissionAppliesTo == 'products_only' &&
+        request.resource.data.subscriptionFee == 0 &&
+
+        request.resource.data.acceptedPartnerAgreement == true &&
+        request.resource.data.acceptedPrivacyPolicy == true &&
+        request.resource.data.agreementVersion is string &&
+
+        request.resource.data.identityVerified == false &&
+        request.resource.data.businessVerified == false &&
+        request.resource.data.payoutVerified == false &&
+
+        request.resource.data.merchantEnabled == false &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.source == 'partner_web';
+
+      // بيانات طلبات الشركاء والتوثيق خاصة بالأدمن.
+      allow read: if isAdmin();
+
+      // فقط الأدمن يستطيع:
+      // - قبول أو رفض الطلب
+      // - تعديل نسبة العمولة
+      // - تأكيد الهوية والنشاط والحساب
+      // - ربط حساب المستخدم
+      // - تفعيل التاجر
+      allow update, delete: if isAdmin();
+    }
+
+    match /customer_service_applications/{userId} {
+      allow create: if signedIn() &&
+        request.auth.uid == userId &&
+        get(/databases/$(database)/documents/app_settings/customer_service_recruitment).data.hiringOpen == true &&
+        request.resource.data.keys().hasOnly([
+          'userId', 'fullName', 'phone', 'email', 'city', 'experience',
+          'availability', 'motivation', 'status', 'source', 'createdAt',
+          'updatedAt'
+        ]) &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.fullName is string &&
+        request.resource.data.fullName.size() >= 2 &&
+        request.resource.data.fullName.size() <= 120 &&
+        request.resource.data.phone is string &&
+        request.resource.data.phone.size() >= 6 &&
+        request.resource.data.phone.size() <= 30 &&
+        request.resource.data.email is string &&
+        request.resource.data.email.size() <= 180 &&
+        request.resource.data.city is string &&
+        request.resource.data.city.size() <= 120 &&
+        request.resource.data.experience is string &&
+        request.resource.data.experience.size() <= 1200 &&
+        request.resource.data.motivation is string &&
+        request.resource.data.motivation.size() <= 1200 &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.source == 'barakah_app';
+      allow read: if isAdmin() ||
+        (signedIn() && request.auth.uid == userId);
+      allow update, delete: if isAdmin();
+    }
+
+    match /employment_contracts/{userId} {
+      allow read: if isAdmin() ||
+        (signedIn() && request.auth.uid == userId);
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() ||
+        (signedIn() && request.auth.uid == userId &&
+          resource.data.userId == request.auth.uid &&
+          resource.data.status == 'awaiting_signature' &&
+          request.resource.data.status == 'accepted' &&
+          request.resource.data.acceptedBy == request.auth.uid &&
+          request.resource.data.acceptedAt == request.time &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'acceptedAt', 'acceptedBy'
+          ]));
+    }
+
+    match /customer_service_presence/{agentId} {
+      allow read: if signedIn();
+      allow create, update: if isAdmin() ||
+        (isCustomerService() && request.auth.uid == agentId &&
+          request.resource.data.keys().hasOnly([
+            'displayName', 'isAvailable', 'updatedAt'
+          ]) &&
+          request.resource.data.isAvailable is bool);
+      allow delete: if isAdmin();
+    }
+
+    match /recruitment_chats/{applicantId} {
+      allow read: if isAdmin() ||
+        (signedIn() && request.auth.uid == applicantId);
+      allow create, update: if isAdmin() ||
+        (signedIn() && request.auth.uid == applicantId &&
+          request.resource.data.applicantId == request.auth.uid);
+      allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        allow read: if isAdmin() ||
+          (signedIn() && request.auth.uid == applicantId);
+        allow create: if signedIn() &&
+          request.resource.data.senderId == request.auth.uid &&
+          request.resource.data.text is string &&
+          request.resource.data.text.size() > 0 &&
+          request.resource.data.text.size() <= 4000 &&
+          ((request.resource.data.senderRole == 'admin' && isAdmin()) ||
+           (request.resource.data.senderRole == 'applicant' &&
+            request.auth.uid == applicantId));
+        allow update, delete: if false;
+      }
+    }
+
+    match /support_threads/{threadId} {
+      allow create: if signedIn() &&
+        request.resource.data.customerId == request.auth.uid &&
+        request.resource.data.keys().hasOnly([
+          'customerId', 'customerName', 'customerEmail', 'status',
+          'assignedAgentId', 'assignedAgentName', 'lastMessage',
+          'createdAt', 'updatedAt'
+        ]) &&
+        ((request.resource.data.status == 'open' &&
+          request.resource.data.assignedAgentId == '') ||
+         (request.resource.data.status == 'assigned' &&
+          request.resource.data.assignedAgentId is string &&
+          request.resource.data.assignedAgentId.size() > 0 &&
+          get(/databases/$(database)/documents/customer_service_presence/$(request.resource.data.assignedAgentId)).data.isAvailable == true));
+      allow read: if isAdmin() ||
+        (isCustomerService() &&
+          resource.data.assignedAgentId == request.auth.uid) ||
+        (signedIn() &&
+          (threadId == request.auth.uid ||
+           resource.data.customerId == request.auth.uid));
+      allow update: if isAdmin() ||
+        (isCustomerService() &&
+          resource.data.assignedAgentId == request.auth.uid &&
+          request.resource.data.assignedAgentId == request.auth.uid &&
+          request.resource.data.customerId == resource.data.customerId &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'assignedAgentId', 'assignedAgentName', 'status', 'lastMessage',
+            'lastMessageAt', 'updatedAt'
+          ])) ||
+        (signedIn() && resource.data.customerId == request.auth.uid &&
+          request.resource.data.customerId == resource.data.customerId &&
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'status', 'lastMessage', 'lastMessageAt', 'updatedAt'
+            ]) ||
+           (resource.data.assignedAgentId == '' &&
+            request.resource.data.status == 'assigned' &&
+            request.resource.data.assignedAgentId is string &&
+            request.resource.data.assignedAgentId.size() > 0 &&
+            get(/databases/$(database)/documents/customer_service_presence/$(request.resource.data.assignedAgentId)).data.isAvailable == true &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'assignedAgentId', 'assignedAgentName', 'status', 'updatedAt'
+            ]))));
+      allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        allow read: if isAdmin() ||
+          (isCustomerService() &&
+            get(/databases/$(database)/documents/support_threads/$(threadId)).data.assignedAgentId == request.auth.uid) ||
+          (signedIn() &&
+            get(/databases/$(database)/documents/support_threads/$(threadId)).data.customerId == request.auth.uid);
+        allow create: if signedIn() &&
+          request.resource.data.keys().hasOnly([
+            'senderId', 'senderRole', 'senderName', 'text', 'createdAt'
+          ]) &&
+          request.resource.data.senderId == request.auth.uid &&
+          request.resource.data.text is string &&
+          request.resource.data.text.size() > 0 &&
+          request.resource.data.text.size() <= 4000 &&
+          ((request.resource.data.senderRole == 'customer' &&
+            get(/databases/$(database)/documents/support_threads/$(threadId)).data.customerId == request.auth.uid) ||
+           (request.resource.data.senderRole == 'customer_service' &&
+            isCustomerService() &&
+            get(/databases/$(database)/documents/support_threads/$(threadId)).data.assignedAgentId == request.auth.uid));
+        allow update, delete: if false;
+      }
+    }
+
+    match /app_settings/{settingId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+  }
+}

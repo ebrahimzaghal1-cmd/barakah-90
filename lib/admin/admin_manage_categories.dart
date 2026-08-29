@@ -1,8 +1,24 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
+import 'package:image_picker/image_picker.dart';
+import '../theme/app_theme.dart';
 
 class AdminManageCategories extends StatefulWidget {
-  const AdminManageCategories({super.key});
+  const AdminManageCategories({
+    super.key,
+    this.collectionName = 'categories',
+    this.title = 'إدارة التصنيفات',
+    this.seedItems = const [],
+  });
+
+  final String collectionName;
+  final String title;
+  final List<Map<String, String>> seedItems;
 
   @override
   State<AdminManageCategories> createState() => _AdminManageCategoriesState();
@@ -10,90 +26,227 @@ class AdminManageCategories extends StatefulWidget {
 
 class _AdminManageCategoriesState extends State<AdminManageCategories> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final ImagePicker _imagePicker = ImagePicker();
+
+  CollectionReference<Map<String, dynamic>> get _collection =>
+      _firestore.collection(widget.collectionName);
+
+  Future<void> _seedItems() async {
+    final batch = _firestore.batch();
+    for (final item in widget.seedItems) {
+      batch.set(_collection.doc(), item);
+    }
+    await batch.commit();
+  }
+
+  Future<String> uploadImage(File image) async {
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('https://barakah-90-production-384c.up.railway.app/upload'),
+    );
+    request.files.add(
+      await http.MultipartFile.fromPath(
+        'image',
+        image.path,
+        contentType: MediaType('image', 'jpeg'),
+      ),
+    );
+
+    final response = await request.send();
+    if (response.statusCode != 200) {
+      throw Exception('Image upload failed');
+    }
+
+    final body = await response.stream.bytesToString();
+    final json = jsonDecode(body) as Map<String, dynamic>;
+    final imageUrl = json['url']?.toString();
+    if (imageUrl == null || imageUrl.isEmpty) {
+      throw Exception('Image upload returned no URL');
+    }
+
+    return imageUrl;
+  }
 
   Future<void> _showCategoryDialog({DocumentSnapshot? doc}) async {
-    final titleController = TextEditingController(text: doc?['title'] ?? '');
-    final imageController = TextEditingController(text: doc?['image'] ?? '');
-    final typeController = TextEditingController(text: doc?['type'] ?? '');
+    final category = doc?.data() as Map<String, dynamic>? ?? {};
+    final titleController =
+        TextEditingController(text: category['title'] ?? '');
+    final descriptionController =
+        TextEditingController(text: category['desc'] ?? '');
+    final typeController = TextEditingController(text: category['type'] ?? '');
+    var imageUrl = category['image']?.toString() ?? '';
+    File? selectedImage;
+    var isSaving = false;
 
     await showDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(doc == null ? 'إضافة تصنيف' : 'تعديل التصنيف'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: titleController,
-                  decoration: const InputDecoration(
-                    labelText: 'اسم التصنيف',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: imageController,
-                  decoration: const InputDecoration(
-                    labelText: 'رابط الصورة',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: typeController,
-                  decoration: const InputDecoration(
-                    labelText: 'النوع',
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('إلغاء'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final title = titleController.text.trim();
-                final image = imageController.text.trim();
-                final type = typeController.text.trim();
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            Future<void> chooseImage() async {
+              try {
+                final pickedImage = await _imagePicker.pickImage(
+                  source: ImageSource.gallery,
+                  imageQuality: 85,
+                );
+                if (pickedImage != null) {
+                  setDialogState(() => selectedImage = File(pickedImage.path));
+                }
+              } catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('تعذر اختيار الصورة.')),
+                  );
+                }
+              }
+            }
 
-                if (title.isEmpty) return;
+            Future<void> saveCategory() async {
+              final title = titleController.text.trim();
+              if (title.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('يرجى إدخال اسم التصنيف.')),
+                );
+                return;
+              }
 
-                if (doc == null) {
-                  await _firestore.collection('categories').add({
-                    'title': title,
-                    'image': image,
-                    'type': type,
-                  });
-                } else {
-                  await _firestore.collection('categories').doc(doc.id).update({
-                    'title': title,
-                    'image': image,
-                    'type': type,
-                  });
+              setDialogState(() => isSaving = true);
+              try {
+                if (selectedImage != null) {
+                  imageUrl = await uploadImage(selectedImage!);
                 }
 
-                if (mounted) Navigator.pop(context);
-              },
-              child: const Text('حفظ'),
-            ),
-          ],
+                final data = {
+                  'title': title,
+                  'image': imageUrl,
+                  'desc': descriptionController.text.trim(),
+                  'type': typeController.text.trim(),
+                };
+                if (doc == null) {
+                  await _collection.add(data);
+                } else {
+                  await _collection.doc(doc.id).update(data);
+                }
+
+                if (context.mounted) Navigator.of(dialogContext).pop();
+              } catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                        content: Text('تعذر حفظ التصنيف. حاول مرة أخرى.')),
+                  );
+                }
+              } finally {
+                if (context.mounted) setDialogState(() => isSaving = false);
+              }
+            }
+
+            final preview = selectedImage != null
+                ? Image.file(selectedImage!, fit: BoxFit.cover)
+                : imageUrl.isNotEmpty
+                    ? Image.network(
+                        imageUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const Icon(
+                          Icons.image_not_supported_outlined,
+                          size: 42,
+                        ),
+                      )
+                    : const Icon(Icons.add_photo_alternate_outlined, size: 42);
+
+            return AlertDialog(
+              title: Text(doc == null ? 'إضافة تصنيف' : 'تعديل التصنيف'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    InkWell(
+                      onTap: isSaving ? null : chooseImage,
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        height: 150,
+                        width: double.infinity,
+                        clipBehavior: Clip.antiAlias,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            preview,
+                            Positioned(
+                              bottom: 8,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 5,
+                                ),
+                                color: Colors.black54,
+                                child: Text(
+                                  imageUrl.isEmpty && selectedImage == null
+                                      ? 'اختيار صورة'
+                                      : 'تغيير الصورة',
+                                  style: const TextStyle(color: Colors.white),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: titleController,
+                      decoration:
+                          const InputDecoration(labelText: 'اسم التصنيف'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: descriptionController,
+                      decoration: const InputDecoration(labelText: 'وصف قصير'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: typeController,
+                      decoration: const InputDecoration(labelText: 'النوع'),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSaving ? null : () => Navigator.pop(context),
+                  child: const Text('إلغاء'),
+                ),
+                ElevatedButton(
+                  onPressed: isSaving ? null : saveCategory,
+                  child: isSaving
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('حفظ'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
   }
 
   Future<void> _deleteCategory(String id) async {
-    await _firestore.collection('categories').doc(id).delete();
+    await _collection.doc(id).delete();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('إدارة التصنيفات'),
+        title: Text(widget.title),
         centerTitle: true,
       ),
       floatingActionButton: FloatingActionButton(
@@ -101,17 +254,24 @@ class _AdminManageCategoriesState extends State<AdminManageCategories> {
         child: const Icon(Icons.add),
       ),
       body: StreamBuilder<QuerySnapshot>(
-        stream: _firestore.collection('categories').snapshots(),
+        stream: _collection.snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
 
           if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const Center(
-              child: Text(
-                'لا يوجد تصنيفات حالياً',
-                style: TextStyle(fontSize: 18),
+            if (widget.seedItems.isEmpty) {
+              return const Center(
+                child: Text('لا يوجد تصنيفات حالياً',
+                    style: TextStyle(fontSize: 18)),
+              );
+            }
+            return Center(
+              child: ElevatedButton.icon(
+                onPressed: _seedItems,
+                icon: const Icon(Icons.auto_awesome),
+                label: const Text('تهيئة أقسام الماركت الحالية'),
               ),
             );
           }
@@ -142,12 +302,12 @@ class _AdminManageCategoriesState extends State<AdminManageCategories> {
                 ),
                 child: ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: Colors.pink.withOpacity(0.12),
+                    backgroundColor: AppTheme.coolYellow.withOpacity(0.25),
                     backgroundImage: image.toString().isNotEmpty
                         ? NetworkImage(image.toString())
                         : null,
                     child: image.toString().isEmpty
-                        ? const Icon(Icons.category, color: Colors.pink)
+                        ? const Icon(Icons.category, color: AppTheme.deepYellow)
                         : null,
                   ),
                   title: Text(

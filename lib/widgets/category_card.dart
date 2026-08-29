@@ -32,7 +32,8 @@ class CategoryCard extends StatelessWidget {
                         return const Center(child: CircularProgressIndicator());
                       },
                       errorBuilder: (context, error, stackTrace) {
-                        return const Icon(Icons.broken_image, color: Colors.grey);
+                        return const Icon(Icons.broken_image,
+                            color: Colors.grey);
                       },
                     )
                   : Image.asset(

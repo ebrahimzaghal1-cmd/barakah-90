@@ -1,13 +1,51 @@
 {
   "project_info": {
-    "project_number": "584371966532",
-    "project_id": "ebrahimzaghal1-f0347",
-    "storage_bucket": "ebrahimzaghal1-f0347.firebasestorage.app"
+    "project_number": "783945761203",
+    "project_id": "barakah-new",
+    "storage_bucket": "barakah-new.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:584371966532:android:46b12853c4e83bdf252211",
+        "mobilesdk_app_id": "1:783945761203:android:cfadd7d529ce3563684bc6",
+        "android_client_info": {
+          "package_name": "com.barakah.market"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAlLVHX877n2NauF7c7Ap6nV0PRxwc6CGs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:783945761203:android:aa2fd04fb5070c97684bc6",
+        "android_client_info": {
+          "package_name": "com.example.barakah90"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAlLVHX877n2NauF7c7Ap6nV0PRxwc6CGs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:783945761203:android:18ae54715f8f2aae684bc6",
         "android_client_info": {
           "package_name": "com.example.barakah_app"
         }
@@ -15,7 +53,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyAjh-aBxXBkPaUyuZbqt6eJQnT-tpF-sws"
+          "current_key": "AIzaSyAlLVHX877n2NauF7c7Ap6nV0PRxwc6CGs"
         }
       ],
       "services": {

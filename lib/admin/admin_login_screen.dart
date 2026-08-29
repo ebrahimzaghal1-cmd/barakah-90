@@ -65,7 +65,8 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
 
       // تحقق إذا المستخدم مسموح له بالدخول (هنا البريد الأدمن)
       const adminUserEmail = "admin@example.com"; // عدل البريد للأدمن الحقيقي
-      if (userCredential.user != null && userCtrl.text.trim() == adminUserEmail) {
+      if (userCredential.user != null &&
+          userCtrl.text.trim() == adminUserEmail) {
         Navigator.pushReplacementNamed(context, "/admin-dashboard");
       } else {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -1,4 +1,4 @@
-import 'package:barakah90/navigation/main_navigation_bar.dart';
+import 'package:barakah90/main.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -31,7 +31,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (_) => const MainNavBar(),
+        builder: (_) => const AuthGate(),
       ),
     );
   }

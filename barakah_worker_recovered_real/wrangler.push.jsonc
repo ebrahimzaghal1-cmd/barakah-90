@@ -1,0 +1,12 @@
+{
+  "name": "barakah-secure-api",
+  "main": "worker_fixed.mjs",
+  "compatibility_date": "2026-08-01",
+  "keep_vars": true,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_id": "66681e60-4155-4b5e-82dd-1c613bb7ea66"
+    }
+  ]
+}

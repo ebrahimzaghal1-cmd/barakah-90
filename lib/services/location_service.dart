@@ -1,6 +1,11 @@
 import 'package:geolocator/geolocator.dart';
 
 class LocationService {
+  static double distanceBetween(double startLatitude, double startLongitude,
+          double endLatitude, double endLongitude) =>
+      Geolocator.distanceBetween(
+          startLatitude, startLongitude, endLatitude, endLongitude);
+
   static Future<Position> getCurrentLocation() async {
     bool serviceEnabled;
     LocationPermission permission;

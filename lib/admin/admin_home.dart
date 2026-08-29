@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'admin_manage_categories.dart';
 import 'admin_manage_products.dart';
+import 'admin_business_accounting_screen.dart';
 import '../data/restaurants_data.dart';
 
 class AdminHome extends StatelessWidget {
@@ -12,10 +13,12 @@ class AdminHome extends StatelessWidget {
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.pink,
-        title: const Text("لوحة التحكم", style: TextStyle(color: Colors.white)),
+        title: const Text(
+          "لوحة التحكم",
+          style: TextStyle(color: Colors.white),
+        ),
         centerTitle: true,
       ),
-
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
@@ -26,20 +29,35 @@ class AdminHome extends StatelessWidget {
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const AdminManageCategories()),
+                  MaterialPageRoute(
+                    builder: (_) => const AdminManageCategories(),
+                  ),
                 );
               },
             ),
-
             const SizedBox(height: 20),
-
             _adminButton(
               title: "إدارة المنتجات",
               icon: Icons.shopping_basket,
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const AdminManageProducts()),
+                  MaterialPageRoute(
+                    builder: (_) => const AdminManageProducts(),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 20),
+            _adminButton(
+              title: "محاسبة المحلات",
+              icon: Icons.account_balance_wallet,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const AdminBusinessAccountingScreen(),
+                  ),
                 );
               },
             ),
@@ -49,13 +67,20 @@ class AdminHome extends StatelessWidget {
     );
   }
 
-  Widget _adminButton({required String title, required IconData icon, required VoidCallback onTap}) {
+  Widget _adminButton({
+    required String title,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
         color: Colors.white12,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.pinkAccent, width: 2),
+        border: Border.all(
+          color: Colors.pinkAccent,
+          width: 2,
+        ),
       ),
       child: Material(
         color: Colors.transparent,
@@ -66,7 +91,11 @@ class AdminHome extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, color: Colors.pinkAccent, size: 28),
+                Icon(
+                  icon,
+                  color: Colors.pinkAccent,
+                  size: 28,
+                ),
                 const SizedBox(width: 10),
                 Text(
                   title,
@@ -75,7 +104,7 @@ class AdminHome extends StatelessWidget {
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
                   ),
-                )
+                ),
               ],
             ),
           ),

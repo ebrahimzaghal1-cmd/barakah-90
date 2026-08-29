@@ -11,33 +11,85 @@ dependencies:
   flutter:
     sdk: flutter
 
+  flutter_localizations:
+    sdk: flutter
+
   cupertino_icons: ^1.0.8
 
-  # Firebase
   firebase_core: ^4.12.1
   firebase_auth: ^6.5.6
   cloud_firestore: ^6.7.1
-  firebase_storage: ^13.0.2
 
-  # Image Picker
   image_picker: ^1.1.2
 
-  # Local Storage
-  shared_preferences: ^2.2.3
+  http: ^1.2.2
+  http_parser: ^4.1.2
 
-  # Location
+  shared_preferences: ^2.2.3
   geolocator: ^11.0.0
+
+  flutter_map: ^8.3.1
+  latlong2: ^0.10.1
+
+  url_launcher: ^6.3.2
+  share_plus: ^10.1.4
+  pdf: ^3.11.3
+  printing: ^5.14.2
+  web: ^1.1.1
+  crypto: ^3.0.6
+  video_player: ^2.9.2
+  qr_flutter: ^4.1.0
+
+  cloud_functions: ^6.3.6
+  firebase_messaging: ^16.5.0
+
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
   flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.14.4
+
 
 flutter:
   uses-material-design: true
 
+  fonts:
+    - family: Cairo
+      fonts:
+        - asset: assets/fonts/Cairo-Regular.ttf
+
   assets:
+    - assets/fonts/Cairo-Regular.ttf
+    - assets/images/
+    - assets/images/home_icons/
+    - assets/images/offers/
+    - assets/images/splash/
+    - assets/images/barakah_app_icon.png
     - assets/images/categories/
     - assets/images/backgrounds/
     - assets/images/restaurants/
+    - assets/images/onboard1.png
+    - assets/images/onboard2.jpg
+    - assets/images/onboard3.jpg
+    - assets/images/onboard4.jpg
+    - assets/images/onboard5.jpg
+    - assets/images/onboard6.jpg
+    - assets/images/reactions/ 
+    - assets/images/bunny_stickers/
+
+# إعداد أيقونة تطبيق بركة
+flutter_launcher_icons:
+  android: true
+  ios: true
+  web:
+    generate: true
+    image_path: "assets/images/barakah_app_icon.png"
+
+  image_path: "assets/images/barakah_app_icon.png"
+
+  remove_alpha_ios: true
+
+  adaptive_icon_background: "#F3C43B"
+  adaptive_icon_foreground: "assets/images/barakah_app_icon.png"

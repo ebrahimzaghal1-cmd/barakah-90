@@ -1,11 +1,11 @@
 {
-    "name": "barakah_app",
-    "short_name": "barakah_app",
+    "name": "بركة | BARAKAH",
+    "short_name": "بركة",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#071F49",
+    "theme_color": "#071F49",
+    "description": "بركة — كل ما تتمنوه تحت سقف واحد",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

@@ -1,0 +1,29 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "barakah-secure-api",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": [
+    "global_fetch_strictly_public"
+  ],
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "barakah-secure-api",
+      "database_id": "66681e60-4155-4b5e-82dd-1c613bb7ea66"
+    }
+  ],
+
+  "vars": {
+    "FIREBASE_PROJECT_ID": "barakah-new",
+    "FIREBASE_WEB_API_KEY": "AIzaSyA8vUPyQHotiybswHkP5bAXqrXIkggM0Us",
+    "ALLOWED_ORIGINS": "https://barakah-new.web.app"
+  },
+
+  "observability": {
+    "enabled": true
+  },
+
+  "upload_source_maps": true
+}

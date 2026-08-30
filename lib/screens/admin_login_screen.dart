@@ -75,6 +75,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
       if (!mounted) return;
       if (!isAdmin) {
         await FirebaseAuth.instance.signOut();
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('هذا الحساب لا يملك صلاحية الأدمن.'),
             backgroundColor: Colors.red));
@@ -83,10 +84,11 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
       Navigator.pushReplacement(
           context, MaterialPageRoute(builder: (_) => const AdminDashboard()));
     } on FirebaseAuthException catch (error) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text(error.message ?? 'تعذر تسجيل الدخول.'),
             backgroundColor: Colors.red));
+      }
     } finally {
       if (mounted) setState(() => isLoading = false);
     }
@@ -149,7 +151,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(20),
-                boxShadow: [
+                boxShadow: const [
                   BoxShadow(
                     color: Colors.black12,
                     blurRadius: 10,
@@ -159,24 +161,24 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
               ),
               child: Column(
                 children: [
-                  CircleAvatar(
+                  const CircleAvatar(
                     radius: 34,
-                    backgroundColor: const Color(0xFFFFF1B8),
+                    backgroundColor: Color(0xFFFFF1B8),
                     child: Icon(
                       Icons.admin_panel_settings,
                       color: AppTheme.deepYellow,
                       size: 34,
                     ),
                   ),
-                  SizedBox(height: 16),
-                  Text(
+                  const SizedBox(height: 16),
+                  const Text(
                     'دخول الأدمن',
                     style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  SizedBox(height: 20),
+                  const SizedBox(height: 20),
                   TextField(
                     controller: emailController,
                     keyboardType: TextInputType.emailAddress,
@@ -186,7 +188,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                           borderRadius: BorderRadius.circular(14)),
                     ),
                   ),
-                  SizedBox(height: 14),
+                  const SizedBox(height: 14),
                   TextField(
                     controller: passwordController,
                     obscureText: true,
@@ -204,7 +206,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                       child: const Text('نسيت كلمة السر؟'),
                     ),
                   ),
-                  SizedBox(height: 20),
+                  const SizedBox(height: 20),
                   SizedBox(
                     width: double.infinity,
                     height: 52,

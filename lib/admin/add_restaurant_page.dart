@@ -13,16 +13,16 @@ class _AddRestaurantPageState extends State<AddRestaurantPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("إضافة مطعم")),
+      appBar: AppBar(title: const Text("إضافة مطعم")),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
             TextField(
               controller: nameController,
-              decoration: InputDecoration(labelText: "اسم المطعم"),
+              decoration: const InputDecoration(labelText: "اسم المطعم"),
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () {
                 Navigator.pop(context, {
@@ -30,7 +30,7 @@ class _AddRestaurantPageState extends State<AddRestaurantPage> {
                   'image': 'assets/images/restaurants/burger.jpeg',
                 });
               },
-              child: Text("حفظ"),
+              child: const Text("حفظ"),
             )
           ],
         ),

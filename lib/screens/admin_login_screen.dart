@@ -39,31 +39,24 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
 
       final user = result.user;
 
-      print('===== ADMIN RECOVERY DEBUG =====');
-      print('uid: ${user?.uid}');
-      print('email: $email');
-
       if (user != null &&
           user.uid == 'Y3YeLin9gYTbqN4if72o3iTrUSn2' &&
           email.toLowerCase() == 'ebrahimzaghal1@gmail.com') {
         final token = await user.getIdToken();
 
-        print('tokenExists: ${token != null && token.isNotEmpty}');
-
         if (token != null && token.isNotEmpty) {
-          final response = await http.post(
-            Uri.parse(
-              'https://barakah-secure-api.ebrahimzaghal1.workers.dev/v1/recover-admin',
-            ),
-            headers: {
-              'Authorization': 'Bearer $token',
-              'Content-Type': 'application/json',
-            },
-            body: '{}',
-          );
-
-          print('recoverStatus: ${response.statusCode}');
-          print('recoverBody: ${response.body}');
+          final response = await http
+              .post(
+                Uri.parse(
+                  'https://barakah-secure-api.ebrahimzaghal1.workers.dev/v1/recover-admin',
+                ),
+                headers: {
+                  'Authorization': 'Bearer $token',
+                  'Content-Type': 'application/json',
+                },
+                body: '{}',
+              )
+              .timeout(const Duration(seconds: 25));
 
           if (response.statusCode < 200 || response.statusCode >= 300) {
             throw StateError('تعذر استرجاع صلاحية الأدمن.');
@@ -88,6 +81,14 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text(error.message ?? 'تعذر تسجيل الدخول.'),
             backgroundColor: Colors.red));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'تعذر إكمال تسجيل دخول الأدمن. تحقق من الاتصال وحاول مجددًا.'),
+          backgroundColor: Colors.red,
+        ));
       }
     } finally {
       if (mounted) setState(() => isLoading = false);

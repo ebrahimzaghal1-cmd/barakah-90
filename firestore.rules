@@ -95,14 +95,14 @@ service cloud.firestore {
             request.resource.data.diff(resource.data).affectedKeys().hasOnly([
               'displayName', 'phone', 'address', 'agentLocation',
               'agentLatitude', 'agentLongitude', 'language', 'lastLoginAt',
-              'updatedAt'
+              'updatedAt', 'fcmTokens', 'fcmTokenUpdatedAt'
             ])) ||
            (resource.data.role != 'customer' &&
             request.resource.data.diff(resource.data).affectedKeys().hasOnly([
               'displayName', 'phone', 'address', 'gender', 'language',
               'agentNumber', 'agentLocation', 'agentLatitude', 'agentLongitude',
               'facebookUrl', 'instagramUrl', 'tiktokUrl', 'lastLoginAt',
-              'updatedAt'
+              'updatedAt', 'fcmTokens', 'fcmTokenUpdatedAt'
             ])))) ||
         (
           signedIn() &&
@@ -129,6 +129,25 @@ service cloud.firestore {
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'driverAvailable', 'driverBusy', 'driverLatitude', 'driverLongitude',
             'driverLocationUpdatedAt', 'activeOrderId'
+          ]));
+      allow delete: if isAdmin();
+    }
+
+    match /account_deletion_requests/{userId} {
+      allow read: if signedIn() &&
+        (request.auth.uid == userId || isAdmin());
+      allow create: if signedIn() && request.auth.uid == userId &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.keys().hasOnly([
+          'userId', 'email', 'status', 'source', 'requestedAt'
+        ]);
+      allow update: if isAdmin() ||
+        (signedIn() && request.auth.uid == userId &&
+          request.resource.data.userId == resource.data.userId &&
+          request.resource.data.status == 'pending' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'email', 'status', 'source', 'requestedAt'
           ]));
       allow delete: if isAdmin();
     }

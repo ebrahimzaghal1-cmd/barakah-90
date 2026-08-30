@@ -1,61 +1,22 @@
-import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:http/http.dart' as http;
-import 'package:http_parser/http_parser.dart';
 
 import '../admin/admin_manage_products.dart';
 import 'location_picker_screen.dart';
 import 'restaurant_details_screen.dart';
 import '../services/order_service.dart';
+import '../services/media_upload_service.dart';
 import '../theme/app_theme.dart';
 
 class MerchantDashboard extends StatelessWidget {
   const MerchantDashboard({super.key});
 
   Future<String> _uploadStoreImage(XFile image) async {
-    final bytes = await image.readAsBytes();
-
-    final request = http.MultipartRequest(
-      'POST',
-      Uri.parse(
-        'https://barakah-90-production-384c.up.railway.app/upload',
-      ),
-    );
-
-    request.files.add(
-      http.MultipartFile.fromBytes(
-        'image',
-        bytes,
-        filename: image.name.isNotEmpty ? image.name : 'store.jpg',
-        contentType: MediaType('image', 'jpeg'),
-      ),
-    );
-
-    final response = await request.send();
-
-    if (response.statusCode != 200) {
-      throw StateError('تعذر رفع صورة المتجر.');
-    }
-
-    final body = await response.stream.bytesToString();
-    final decoded = jsonDecode(body);
-
-    if (decoded is! Map) {
-      throw StateError('استجابة رفع الصورة غير صحيحة.');
-    }
-
-    final imageUrl = decoded['url']?.toString().trim() ?? '';
-
-    if (imageUrl.isEmpty) {
-      throw StateError('لم يتم إرجاع رابط للصورة.');
-    }
-
-    return imageUrl;
+    return MediaUploadService().upload(image, isVideo: false);
   }
 
   Future<void> _editBusiness(

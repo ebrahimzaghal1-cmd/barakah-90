@@ -16,6 +16,13 @@ var index_default = {
         return json({ ok: true, service: "barakah-secure-api" }, 200, cors);
       }
       const user = await authenticate(request, env);
+      if (request.method === "POST" && url.pathname === "/v1/media/upload-auth") {
+        return json(
+          await createImageKitUploadAuth(env, user),
+          200,
+          cors
+        );
+      }
       if (request.method === "POST" && url.pathname === "/v1/recover-admin") {
         const allowedUid = "Y3YeLin9gYTbqN4if72o3iTrUSn2";
         const allowedEmail = "ebrahimzaghal1@gmail.com";
@@ -332,6 +339,59 @@ async function firestoreGet(env, token, path) {
   return decodeDocument(await response.json());
 }
 __name(firestoreGet, "firestoreGet");
+async function createImageKitUploadAuth(env, user) {
+  if (!env.IMAGEKIT_PRIVATE_KEY || !env.IMAGEKIT_PUBLIC_KEY) {
+    fail(503, "media-not-configured", "خدمة رفع الصور غير مهيأة بعد.");
+  }
+  const serviceAccessToken = await serviceToken(env);
+  const actor = await firestoreGet(
+    env,
+    serviceAccessToken,
+    `users/${encodeURIComponent(user.uid)}`
+  );
+  if (!canUploadMedia(actor)) {
+    fail(403, "permission-denied", "غير مسموح لهذا الحساب برفع الصور.");
+  }
+  const uploadToken = crypto.randomUUID();
+  const expire = Math.floor(Date.now() / 1e3) + 30 * 60;
+  const signature = await createImageKitSignature(
+    env.IMAGEKIT_PRIVATE_KEY,
+    uploadToken,
+    expire
+  );
+  return {
+    token: uploadToken,
+    expire,
+    signature,
+    publicKey: env.IMAGEKIT_PUBLIC_KEY
+  };
+}
+__name(createImageKitUploadAuth, "createImageKitUploadAuth");
+function canUploadMedia(actor) {
+  // يتطلب المزاد رفع الصور من الزبائن أيضاً، لذلك نسمح لأي حساب مسجل
+  // يملك ملف مستخدم ودوراً معروفاً، لا للأدمن والتاجر فقط.
+  return !!actor && typeof actor === "object" && typeof actor.role === "string" && actor.role.trim().length > 0;
+}
+__name(canUploadMedia, "canUploadMedia");
+async function createImageKitSignature(privateKey, token, expire) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(privateKey),
+    { name: "HMAC", hash: "SHA-1" },
+    false,
+    ["sign"]
+  );
+  const digest = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(`${token}${expire}`)
+  );
+  const signature = Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  return signature;
+}
+__name(createImageKitSignature, "createImageKitSignature");
 async function firestoreCreate(env, token, collection, documentId, data) {
   const url = `${firestoreBase(env)}/${collection}?documentId=${encodeURIComponent(documentId)}`;
   const response = await fetch(url, {
@@ -2519,6 +2579,7 @@ function finiteOrNull(value) {
 }
 __name(finiteOrNull, "finiteOrNull");
 export {
+  canUploadMedia,
+  createImageKitSignature,
   index_default as default
 };
-//# sourceMappingURL=index.js.map

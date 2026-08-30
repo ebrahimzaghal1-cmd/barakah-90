@@ -10,6 +10,10 @@
 include: package:flutter_lints/flutter.yaml
 
 analyzer:
+  exclude:
+    # هذه ملفات أرشيفية للمقارنة وليست جزءاً من التطبيق الذي يتم بناؤه.
+    - backup/**
+    - lib/**/*.before_*.dart
   errors:
     deprecated_member_use: ignore
     unused_import: ignore

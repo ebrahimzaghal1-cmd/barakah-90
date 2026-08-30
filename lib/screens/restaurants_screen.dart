@@ -17,6 +17,7 @@ import '../services/admin_notification_service.dart';
 import '../services/firebase_state.dart';
 import '../services/analytics_service.dart';
 import '../services/location_service.dart';
+import '../services/media_upload_service.dart';
 import '../theme/app_theme.dart';
 import '../games/play_hub_screen.dart';
 import 'categories_screen.dart';
@@ -2563,47 +2564,8 @@ class BarakahAuctionScreen extends StatefulWidget {
 }
 
 class _BarakahAuctionScreenState extends State<BarakahAuctionScreen> {
-  static const String _auctionUploadEndpoint =
-      'https://barakah-90-production-384c.up.railway.app/upload';
-
   Future<String> _uploadAuctionImage(XFile image) async {
-    final bytes = await image.readAsBytes();
-
-    final request = http.MultipartRequest(
-      'POST',
-      Uri.parse(_auctionUploadEndpoint),
-    );
-
-    request.files.add(
-      http.MultipartFile.fromBytes(
-        'image',
-        bytes,
-        filename: image.name,
-      ),
-    );
-
-    final streamed = await request.send();
-    final response = await http.Response.fromStream(streamed);
-
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception(
-        'تعذر رفع الصورة. رمز الخادم: ${response.statusCode}',
-      );
-    }
-
-    final decoded = jsonDecode(response.body);
-
-    if (decoded is! Map<String, dynamic>) {
-      throw Exception('استجابة خادم الصور غير صالحة.');
-    }
-
-    final url = decoded['url']?.toString().trim() ?? '';
-
-    if (url.isEmpty || Uri.tryParse(url)?.hasScheme != true) {
-      throw Exception('لم يرجع خادم الصور رابطاً صالحاً.');
-    }
-
-    return url;
+    return MediaUploadService().upload(image, isVideo: false);
   }
 
   Future<void> _buyAuctionItem(

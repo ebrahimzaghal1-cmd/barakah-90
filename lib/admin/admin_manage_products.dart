@@ -1,13 +1,12 @@
 import 'dart:convert';
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
+import '../services/media_upload_service.dart';
 import '../theme/app_theme.dart';
 
 class AdminManageProducts extends StatefulWidget {
@@ -30,51 +29,8 @@ class _AdminManageProductsState extends State<AdminManageProducts> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final ImagePicker _imagePicker = ImagePicker();
 
-  Future<String> uploadImage(XFile image) async {
-    final request = http.MultipartRequest(
-      'POST',
-      Uri.parse('https://barakah-90-production-384c.up.railway.app/upload'),
-    );
-
-    if (kIsWeb) {
-      final bytes = await image.readAsBytes();
-
-      request.files.add(
-        http.MultipartFile.fromBytes(
-          'image',
-          bytes,
-          filename: image.name,
-          contentType: MediaType('image', 'jpeg'),
-        ),
-      );
-    } else {
-      request.files.add(
-        await http.MultipartFile.fromPath(
-          'image',
-          image.path,
-          contentType: MediaType('image', 'jpeg'),
-        ),
-      );
-    }
-
-    final response = await request.send();
-
-    if (response.statusCode != 200) {
-      throw Exception(
-        'Image upload failed: ${response.statusCode}',
-      );
-    }
-
-    final body = await response.stream.bytesToString();
-    final json = jsonDecode(body) as Map<String, dynamic>;
-    final imageUrl = json['url']?.toString();
-
-    if (imageUrl == null || imageUrl.isEmpty) {
-      throw Exception('Image upload returned no URL');
-    }
-
-    return imageUrl;
-  }
+  Future<String> uploadImage(XFile image) =>
+      MediaUploadService().upload(image, isVideo: false);
 
   Future<void> _showProductDialog({DocumentSnapshot? doc}) async {
     final product = doc?.data() as Map<String, dynamic>? ?? {};

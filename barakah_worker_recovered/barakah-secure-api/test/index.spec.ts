@@ -1,54 +1,53 @@
-import {
-	env,
-	createExecutionContext,
-	waitOnExecutionContext,
-	SELF,
-} from "cloudflare:test";
 import { describe, it, expect } from "vitest";
-import worker from "../src";
+import worker, {
+	canUploadMedia,
+	createImageKitSignature,
+} from "../src/index.js";
 
-describe("Hello World user worker", () => {
-	describe("request for /message", () => {
-		it('/ responds with "Hello, World!" (unit style)', async () => {
-			const request = new Request<unknown, IncomingRequestCfProperties>(
-				"http://example.com/message"
-			);
-			// Create an empty context to pass to `worker.fetch()`.
-			const ctx = createExecutionContext();
-			const response = await worker.fetch(request, env, ctx);
-			// Wait for all `Promise`s passed to `ctx.waitUntil()` to settle before running test assertions
-			await waitOnExecutionContext(ctx);
-			expect(await response.text()).toMatchInlineSnapshot(`"Hello, World!"`);
-		});
+describe("Barakah secure API", () => {
+	it("reports service health", async () => {
+		const response = await worker.fetch(
+			new Request("http://example.com/health"),
+			{},
+		);
 
-		it('responds with "Hello, World!" (integration style)', async () => {
-			const request = new Request("http://example.com/message");
-			const response = await SELF.fetch(request);
-			expect(await response.text()).toMatchInlineSnapshot(`"Hello, World!"`);
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({
+			ok: true,
+			service: "barakah-secure-api",
 		});
 	});
 
-	describe("request for /random", () => {
-		it("/ responds with a random UUID (unit style)", async () => {
-			const request = new Request<unknown, IncomingRequestCfProperties>(
-				"http://example.com/random"
-			);
-			// Create an empty context to pass to `worker.fetch()`.
-			const ctx = createExecutionContext();
-			const response = await worker.fetch(request, env, ctx);
-			// Wait for all `Promise`s passed to `ctx.waitUntil()` to settle before running test assertions
-			await waitOnExecutionContext(ctx);
-			expect(await response.text()).toMatch(
-				/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/
-			);
-		});
+	it("rejects upload authorization without a Firebase session", async () => {
+		const response = await worker.fetch(
+			new Request("http://example.com/v1/media/upload-auth", {
+				method: "POST",
+			}),
+			{},
+		);
 
-		it("responds with a random UUID (integration style)", async () => {
-			const request = new Request("http://example.com/random");
-			const response = await SELF.fetch(request);
-			expect(await response.text()).toMatch(
-				/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/
-			);
+		expect(response.status).toBe(401);
+		expect(await response.json()).toMatchObject({
+			error: "unauthenticated",
 		});
+	});
+
+	it("allows every registered app role needed by media features", () => {
+		expect(canUploadMedia({ role: "customer" })).toBe(true);
+		expect(canUploadMedia({ role: "merchant", merchantEnabled: true })).toBe(true);
+		expect(canUploadMedia({ role: "admin" })).toBe(true);
+		expect(canUploadMedia({ role: "driver" })).toBe(true);
+		expect(canUploadMedia(null)).toBe(false);
+		expect(canUploadMedia({})).toBe(false);
+	});
+
+	it("generates the HMAC-SHA1 signature required by ImageKit", async () => {
+		const signature = await createImageKitSignature(
+			"private-key",
+			"upload-token",
+			1893456000,
+		);
+
+		expect(signature).toBe("261aae1a788cf629dacfc179cbfd35d2200daaf2");
 	});
 });

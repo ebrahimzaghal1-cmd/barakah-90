@@ -1,12 +1,10 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
 import '../screens/location_picker_screen.dart';
+import '../services/media_upload_service.dart';
 import '../theme/app_theme.dart';
 import 'admin_manage_products.dart';
 
@@ -31,19 +29,10 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
   final ImagePicker _imagePicker = ImagePicker();
 
   Future<String> _uploadImage(File image) async {
-    final request = http.MultipartRequest('POST',
-        Uri.parse('https://barakah-90-production-384c.up.railway.app/upload'));
-    request.files.add(await http.MultipartFile.fromPath('image', image.path,
-        contentType: MediaType('image', 'jpeg')));
-    final response = await request.send();
-    if (response.statusCode != 200) throw Exception('Image upload failed');
-    final json = jsonDecode(await response.stream.bytesToString())
-        as Map<String, dynamic>;
-    final imageUrl = json['url']?.toString();
-    if (imageUrl == null || imageUrl.isEmpty) {
-      throw Exception('Image upload returned no URL');
-    }
-    return imageUrl;
+    return MediaUploadService().upload(
+      XFile(image.path),
+      isVideo: false,
+    );
   }
 
   Future<void> _showRestaurantDialog({DocumentSnapshot? doc}) async {

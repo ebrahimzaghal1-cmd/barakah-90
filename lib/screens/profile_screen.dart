@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../services/auth_service.dart';
+import '../services/admin_notification_service.dart';
 import '../services/app_language_service.dart';
 import '../services/firebase_state.dart';
 import '../services/loyalty_service.dart';
@@ -276,7 +277,21 @@ class _ProfileBody extends StatelessWidget {
               _ProfileAction(
                 icon: Icons.notifications_none_rounded,
                 title: 'الإشعارات',
-                onTap: () => showMessage('ستظهر إشعارات بركة الجديدة هنا.'),
+                onTap: () => requireLogin(() async {
+                  final enabled = await AdminNotificationService.instance
+                      .requestPermissionForCurrentUser();
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        enabled
+                            ? 'تم تفعيل إشعارات بركة على هذا الجهاز ✅'
+                            : 'لم يتم التفعيل. اسمح بالإشعارات من إعدادات الهاتف.',
+                      ),
+                      backgroundColor: enabled ? Colors.green : Colors.orange,
+                    ),
+                  );
+                }),
               ),
               _ProfileAction(
                 icon: Icons.settings_outlined,
@@ -306,6 +321,12 @@ class _ProfileBody extends StatelessWidget {
                   ),
                 ),
               ),
+              if (user != null)
+                _ProfileAction(
+                  icon: Icons.person_remove_outlined,
+                  title: 'طلب حذف الحساب',
+                  onTap: () => _requestAccountDeletion(context, user!),
+                ),
               _ProfileAction(
                 icon: Icons.ios_share_rounded,
                 title: 'مشاركة بركة',
@@ -547,6 +568,59 @@ class _ProfileBody extends StatelessWidget {
         ),
       ]),
     );
+  }
+
+  Future<void> _requestAccountDeletion(BuildContext context, User user) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('طلب حذف الحساب'),
+        content: const Text(
+          'سيصل الطلب إلى فريق بركة لمراجعته. '
+          'سيتم حذف الحساب والبيانات الشخصية المرتبطة به، '
+          'مع الاحتفاظ بالسجلات المطلوبة قانونًا عند الحاجة.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('إرسال الطلب'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('account_deletion_requests')
+          .doc(user.uid)
+          .set({
+        'userId': user.uid,
+        'email': user.email ?? '',
+        'status': 'pending',
+        'source': 'app',
+        'requestedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('تم إرسال طلب حذف الحساب بنجاح.'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('تعذر إرسال الطلب. حاول مرة أخرى.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Future<void> _openSocialLink(BuildContext context, String value) async {

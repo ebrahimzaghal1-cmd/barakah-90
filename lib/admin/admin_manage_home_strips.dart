@@ -396,9 +396,11 @@ class _AdminManageHomeStripsState extends State<AdminManageHomeStrips> {
               );
               return;
             }
-            final usesEditableCards =
+            final usesRestaurantCards =
                 surface == 'restaurants' && stripType == 'custom';
-            if (!usesEditableCards &&
+            final usesMarketCards =
+                surface == 'market' && stripType == 'custom';
+            if (!usesRestaurantCards &&
                 stripType == 'categories' &&
                 !showAllCategories &&
                 selectedIds.isEmpty) {
@@ -411,7 +413,7 @@ class _AdminManageHomeStripsState extends State<AdminManageHomeStrips> {
               );
               return;
             }
-            if (stripType == 'custom' && customItems.isEmpty) {
+            if (usesMarketCards && customItems.isEmpty) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('أضف بطاقة مخصصة واحدة على الأقل.'),
@@ -419,7 +421,7 @@ class _AdminManageHomeStripsState extends State<AdminManageHomeStrips> {
               );
               return;
             }
-            if (usesEditableCards && quickItems.isEmpty) {
+            if (usesRestaurantCards && quickItems.isEmpty) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text('أضف اختصاراً واحداً على الأقل.'),
@@ -433,7 +435,7 @@ class _AdminManageHomeStripsState extends State<AdminManageHomeStrips> {
               'surface': surface,
               'order': int.tryParse(order.text.trim()) ?? 0,
               'enabled': enabled,
-              'useQuickActions': usesEditableCards,
+              'useQuickActions': usesRestaurantCards,
               'stripType': stripType,
               'showAllCategories': showAllCategories,
               'categoryIds': selectedIds.toList(),

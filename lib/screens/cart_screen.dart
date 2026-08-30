@@ -867,77 +867,83 @@ class _CheckoutSheetState extends State<_CheckoutSheet> {
           .get();
 
       final businessData = businessSnapshot.data();
-      if (businessData == null) {
-        throw StateError('تعذر العثور على بيانات المحل.');
-      }
+      // بعض المحلات القديمة لا تملك وثيقة محل مستقلة رغم أن منتجاتها
+      // صالحة. في هذه الحالة نترك التحقق النهائي للخادم، فهو يعيد بناء
+      // بيانات المحل من المنتجات ويتحقق من السعر والمخزون بأمان.
+      if (businessData != null) {
+        final openingTime =
+            businessData['openingTime']?.toString().trim() ?? '';
+        final closingTime =
+            businessData['closingTime']?.toString().trim() ?? '';
 
-      final openingTime = businessData['openingTime']?.toString().trim() ?? '';
-      final closingTime = businessData['closingTime']?.toString().trim() ?? '';
+        final minimumOrderAmount =
+            (businessData['minimumOrderAmount'] as num?) ?? 0;
 
-      final minimumOrderAmount =
-          (businessData['minimumOrderAmount'] as num?) ?? 0;
+        if (minimumOrderAmount > 0 && cart.total < minimumOrderAmount) {
+          final missing = minimumOrderAmount - cart.total;
 
-      if (minimumOrderAmount > 0 && cart.total < minimumOrderAmount) {
-        final missing = minimumOrderAmount - cart.total;
-
-        String money(num value) {
-          return value == value.roundToDouble()
-              ? value.toInt().toString()
-              : value.toStringAsFixed(2);
-        }
-
-        throw StateError(
-          'الحد الأدنى للطلب من هذا المتجر هو '
-          '${money(minimumOrderAmount)} ₪. '
-          'أضف ${money(missing)} ₪ لإتمام الطلب.',
-        );
-      }
-
-      if (_scheduledFor != null) {
-        if (!_scheduledFor!.isAfter(DateTime.now())) {
-          throw StateError('اختر وقتًا لاحقًا للطلب.');
-        }
-
-        final scheduledStatus = BusinessHoursService.resolve(
-          data: businessData,
-          now: _scheduledFor,
-        );
-
-        if (!scheduledStatus.isAcceptingOrders) {
-          if (scheduledStatus.code == 'temporarily_closed') {
-            throw StateError(
-              'المحل مغلق مؤقتًا ولا يمكن جدولة طلب له الآن.',
-            );
+          String money(num value) {
+            return value == value.roundToDouble()
+                ? value.toInt().toString()
+                : value.toStringAsFixed(2);
           }
-
-          final hoursText = openingTime.isNotEmpty && closingTime.isNotEmpty
-              ? ' ساعات العمل: $openingTime - $closingTime.'
-              : '';
 
           throw StateError(
-            'الوقت المختار خارج ساعات عمل المحل.$hoursText',
+            'الحد الأدنى للطلب من هذا المتجر هو '
+            '${money(minimumOrderAmount)} ₪. '
+            'أضف ${money(missing)} ₪ لإتمام الطلب.',
           );
         }
-      } else {
-        final hoursStatus = BusinessHoursService.resolve(data: businessData);
 
-        if (!hoursStatus.isAcceptingOrders) {
-          var message = hoursStatus.label;
-
-          if (hoursStatus.code == 'temporarily_closed') {
-            message = 'المحل مغلق مؤقتًا ولا يستقبل طلبات الآن.';
-          } else if (hoursStatus.code == 'opening_soon') {
-            message = openingTime.isEmpty
-                ? 'المحل يفتح قريبًا.'
-                : 'المحل يفتح قريبًا الساعة $openingTime.';
-          } else if (hoursStatus.code == 'closed') {
-            message = openingTime.isEmpty
-                ? 'المحل مغلق الآن.'
-                : 'المحل مغلق الآن — يفتح الساعة $openingTime.';
+        if (_scheduledFor != null) {
+          if (!_scheduledFor!.isAfter(DateTime.now())) {
+            throw StateError('اختر وقتًا لاحقًا للطلب.');
           }
 
-          throw StateError(message);
+          final scheduledStatus = BusinessHoursService.resolve(
+            data: businessData,
+            now: _scheduledFor,
+          );
+
+          if (!scheduledStatus.isAcceptingOrders) {
+            if (scheduledStatus.code == 'temporarily_closed') {
+              throw StateError(
+                'المحل مغلق مؤقتًا ولا يمكن جدولة طلب له الآن.',
+              );
+            }
+
+            final hoursText = openingTime.isNotEmpty && closingTime.isNotEmpty
+                ? ' ساعات العمل: $openingTime - $closingTime.'
+                : '';
+
+            throw StateError(
+              'الوقت المختار خارج ساعات عمل المحل.$hoursText',
+            );
+          }
+        } else {
+          final hoursStatus = BusinessHoursService.resolve(data: businessData);
+
+          if (!hoursStatus.isAcceptingOrders) {
+            var message = hoursStatus.label;
+
+            if (hoursStatus.code == 'temporarily_closed') {
+              message = 'المحل مغلق مؤقتًا ولا يستقبل طلبات الآن.';
+            } else if (hoursStatus.code == 'opening_soon') {
+              message = openingTime.isEmpty
+                  ? 'المحل يفتح قريبًا.'
+                  : 'المحل يفتح قريبًا الساعة $openingTime.';
+            } else if (hoursStatus.code == 'closed') {
+              message = openingTime.isEmpty
+                  ? 'المحل مغلق الآن.'
+                  : 'المحل مغلق الآن — يفتح الساعة $openingTime.';
+            }
+
+            throw StateError(message);
+          }
         }
+      } else if (_scheduledFor != null &&
+          !_scheduledFor!.isAfter(DateTime.now())) {
+        throw StateError('اختر وقتًا لاحقًا للطلب.');
       }
 
       await OrderService().createOrder(

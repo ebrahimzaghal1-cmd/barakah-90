@@ -10,6 +10,7 @@ import 'admin_operations_screen.dart';
 import 'admin_add_item_screen.dart';
 import 'admin_manage_ads.dart';
 import 'admin_manage_drivers.dart';
+import 'admin_account_deletion_requests.dart';
 import 'admin_loyalty_settings.dart';
 import 'admin_app_hours.dart';
 import 'admin_manage_trends.dart';
@@ -327,6 +328,17 @@ class AdminDashboard extends StatelessWidget {
                         context,
                         MaterialPageRoute(
                           builder: (_) => const AdminManageDrivers(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    _AdminRequestShortcut(
+                      title: 'طلبات حذف الحساب',
+                      icon: Icons.person_remove_rounded,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const AdminAccountDeletionRequests(),
                         ),
                       ),
                     ),

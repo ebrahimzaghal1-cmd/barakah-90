@@ -72,6 +72,50 @@ var index_default = {
           cors
         );
       }
+      if (request.method === "POST" && url.pathname === "/v1/admin/account/delete") {
+        const body = await readJson(request);
+        const targetUid = String(body?.userId || "").trim();
+
+        if (!targetUid) {
+          fail(400, "missing-user-id", "معرّف المستخدم مطلوب.");
+        }
+
+        const token = await serviceToken(env);
+        const actor = await firestoreGet(
+          env,
+          token,
+          `users/${encodeURIComponent(user.uid)}`
+        );
+
+        if (actor?.role !== "admin") {
+          fail(403, "permission-denied", "غير مسموح بتنفيذ حذف الحسابات.");
+        }
+
+        const deletionRequest = await firestoreGet(
+          env,
+          token,
+          `account_deletion_requests/${encodeURIComponent(targetUid)}`
+        );
+
+        if (
+          !deletionRequest ||
+          deletionRequest.userId !== targetUid ||
+          deletionRequest.status !== "pending"
+        ) {
+          fail(
+            409,
+            "deletion-request-not-pending",
+            "لا يوجد طلب حذف معلّق لهذا الحساب."
+          );
+        }
+
+        return json(
+          await deleteCurrentAccount(env, user, targetUid, true),
+          200,
+          cors
+        );
+      }
+
       if (request.method === "POST" && url.pathname === "/v1/barakah-card/reset-pin") {
         return json(
           await resetBarakahPin(request, env, user),
@@ -286,7 +330,7 @@ async function serviceToken(env) {
     aud: "https://oauth2.googleapis.com/token",
     iat: now,
     exp: now + 3600,
-    scope: "https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/firebase.messaging"
+    scope: "https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/firebase.messaging https://www.googleapis.com/auth/identitytoolkit"
   }));
   const key = await crypto.subtle.importKey(
     "pkcs8",
@@ -720,11 +764,14 @@ function encodeValue(value) {
   return { stringValue: String(value) };
 }
 __name(encodeValue, "encodeValue");
-async function deleteCurrentAccount(env, user) {
+async function deleteCurrentAccount(env, user, targetUid = user.uid, adminDelete = false) {
   // Firebase considers deletion sensitive. Require a recent sign-in so a
   // stolen long-lived session cannot permanently remove an account.
   const nowSeconds = Math.floor(Date.now() / 1e3);
-  if (!user.authTime || nowSeconds - user.authTime > 600) {
+  if (
+    !adminDelete &&
+    (!user.authTime || nowSeconds - user.authTime > 600)
+  ) {
     fail(
       401,
       "recent-login-required",
@@ -737,7 +784,7 @@ async function deleteCurrentAccount(env, user) {
   const profile = await firestoreGet(
     env,
     token,
-    `users/${encodeURIComponent(user.uid)}`
+    `users/${encodeURIComponent(targetUid)}`
   );
 
   if (profile?.role === "admin") {
@@ -758,25 +805,25 @@ async function deleteCurrentAccount(env, user) {
     auctionSalesSeller
   ] = await Promise.all([
     firestoreQuery(env, token, "orders", [
-      fieldEquals("customerId", user.uid)
+      fieldEquals("customerId", targetUid)
     ]),
     firestoreQuery(env, token, "coupons", [
-      fieldEquals("customerId", user.uid)
+      fieldEquals("customerId", targetUid)
     ]),
     firestoreQuery(env, token, "driver_applications", [
-      fieldEquals("userId", user.uid)
+      fieldEquals("userId", targetUid)
     ]),
     firestoreQuery(env, token, "merchant_applications", [
-      fieldEquals("userId", user.uid)
+      fieldEquals("userId", targetUid)
     ]).catch(() => []),
     firestoreQuery(env, token, "auction_requests", [
-      fieldEquals("userId", user.uid)
+      fieldEquals("userId", targetUid)
     ]),
     firestoreQuery(env, token, "auction_sales", [
-      fieldEquals("buyerId", user.uid)
+      fieldEquals("buyerId", targetUid)
     ]),
     firestoreQuery(env, token, "auction_sales", [
-      fieldEquals("sellerId", user.uid)
+      fieldEquals("sellerId", targetUid)
     ])
   ]);
 
@@ -897,7 +944,7 @@ async function deleteCurrentAccount(env, user) {
     writes.push(
       deleteWrite(
         env,
-        `users/${encodeURIComponent(user.uid)}`
+        `users/${encodeURIComponent(targetUid)}`
       )
     );
   }
@@ -924,18 +971,32 @@ async function deleteCurrentAccount(env, user) {
   }
 
   // Finally delete the Firebase Authentication identity.
-  const deleteResponse = await fetch(
-    `https://identitytoolkit.googleapis.com/v1/accounts:delete?key=${encodeURIComponent(env.FIREBASE_WEB_API_KEY)}`,
-    {
-      method: "POST",
-      headers: JSON_HEADERS,
-      body: JSON.stringify({
-        idToken: user.idToken
-      })
-    }
-  );
+  const deleteResponse = adminDelete
+      ? await fetch(
+          `https://identitytoolkit.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/accounts:delete`,
+          {
+            method: "POST",
+            headers: {
+              ...JSON_HEADERS,
+              authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              localId: targetUid
+            })
+          }
+        )
+      : await fetch(
+          `https://identitytoolkit.googleapis.com/v1/accounts:delete?key=${encodeURIComponent(env.FIREBASE_WEB_API_KEY)}`,
+          {
+            method: "POST",
+            headers: JSON_HEADERS,
+            body: JSON.stringify({
+              idToken: user.idToken
+            })
+          }
+        );
 
-  if (!deleteResponse.ok) {
+    if (!deleteResponse.ok) {
     const message = await deleteResponse.text();
 
     console.error(
@@ -951,7 +1012,24 @@ async function deleteCurrentAccount(env, user) {
     );
   }
 
-  return {
+  if (adminDelete) {
+      try {
+        await firestoreCommit(env, token, [
+          deleteWrite(
+            env,
+            `account_deletion_requests/${encodeURIComponent(targetUid)}`
+          )
+        ]);
+      } catch (error) {
+        console.error(
+          "account_deletion_request_cleanup_failed",
+          targetUid,
+          String(error)
+        );
+      }
+    }
+
+    return {
     ok: true,
     accountDeleted: true
   };

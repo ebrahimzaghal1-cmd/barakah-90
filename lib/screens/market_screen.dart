@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -16,7 +17,10 @@ import '../widgets/barakah_brand.dart';
 import '../widgets/barakah_media_image.dart';
 import '../widgets/home_strip_card.dart';
 import '../widgets/favorite_button.dart';
+import '../widgets/restaurant_card.dart';
 import 'categories_screen.dart';
+import 'authentication_screen.dart';
+import 'favorites_screen.dart';
 import 'products_screen.dart';
 import 'restaurant_details_screen.dart';
 import 'restaurants_screen.dart';
@@ -1227,35 +1231,82 @@ class _MarketOffersScreen extends StatelessWidget {
           ),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(24),
-            child: Image.asset(
-              'assets/images/offers/market_offers.png',
-              width: double.infinity,
-              fit: BoxFit.contain,
+      body: !FirebaseState.isReady
+          ? const Center(child: Text('تتوفر العروض بعد ربط قاعدة البيانات.'))
+          : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream:
+                  FirebaseFirestore.instance.collection('items').snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final offers = (snapshot.data?.docs ?? []).where((doc) {
+                  final data = doc.data();
+                  return data['type']?.toString().toLowerCase() == 'market' &&
+                      data['isActive'] != false &&
+                      ((data['discountPercent'] as num?)?.toDouble() ?? 0) > 0;
+                }).toList();
+                return ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(24),
+                      child: Image.asset(
+                        'assets/images/offers/market_offers.png',
+                        width: double.infinity,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    const Text(
+                      '🔥 أحدث عروض الماركت',
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF172B4D),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (offers.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Text(
+                          'لا توجد عروض ماركت حالياً. ستظهر هنا تلقائياً عند إضافتها من لوحة الإدارة.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 15, color: Colors.black54),
+                        ),
+                      )
+                    else
+                      GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: offers.length,
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                          childAspectRatio: .66,
+                        ),
+                        itemBuilder: (context, index) {
+                          final item = offers[index];
+                          return GestureDetector(
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    RestaurantDetailsScreen(restaurant: item),
+                              ),
+                            ),
+                            child: RestaurantCard(restaurant: item),
+                          );
+                        },
+                      ),
+                  ],
+                );
+              },
             ),
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            '🔥 أحدث عروض الماركت',
-            textAlign: TextAlign.right,
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF172B4D),
-            ),
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'ستظهر هنا عروض الماركت التي يتم إضافتها من لوحة الإدارة.',
-            textAlign: TextAlign.right,
-            style: TextStyle(fontSize: 15, color: Colors.black54),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -1518,24 +1569,53 @@ class _MarketCard extends StatelessWidget {
 class _MarketMenu extends StatelessWidget {
   const _MarketMenu();
 
+  Future<void> _openFavorites(BuildContext context) async {
+    Navigator.of(context).pop();
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const AuthenticationScreen()),
+      );
+      return;
+    }
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => FavoritesScreen(user: user)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => Drawer(
         child: SafeArea(
-          child: ListView(padding: const EdgeInsets.all(16), children: const [
-            ListTile(
-              leading:
-                  Icon(Icons.storefront_rounded, color: AppTheme.deepYellow),
-              title: Text('ماركت بركة',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-              subtitle: Text('تصفح الأقسام والمتاجر القريبة'),
-            ),
-            Divider(),
-            ListTile(
-                leading: Icon(Icons.local_offer_outlined),
-                title: Text('العروض')),
-            ListTile(
-                leading: Icon(Icons.favorite_border), title: Text('المفضلة')),
-          ]),
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              const ListTile(
+                leading:
+                    Icon(Icons.storefront_rounded, color: AppTheme.deepYellow),
+                title: Text('ماركت بركة',
+                    style:
+                        TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                subtitle: Text('تصفح الأقسام والمتاجر القريبة'),
+              ),
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.local_offer_outlined),
+                title: const Text('العروض'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                        builder: (_) => const _MarketOffersScreen()),
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.favorite_border),
+                title: const Text('المفضلة'),
+                onTap: () => _openFavorites(context),
+              ),
+            ],
+          ),
         ),
       );
 }

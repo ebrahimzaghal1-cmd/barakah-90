@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart'; // المكتبة الأساسية للربط
@@ -22,19 +24,38 @@ import 'services/admin_notification_service.dart';
 
 import 'widgets/barakah_waiting_screen.dart';
 
-void main() async {
-  // 1. التأكد من تهيئة أدوات فلاتر
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // ارسم أول واجهة فورًا. لا نترك شاشة iOS معلقة بانتظار Firebase أو
+  // الإشعارات أو التخزين المحلي، خصوصًا عند ضعف الشبكة على iPhone.
+  runApp(const MyApp());
+  unawaited(_initializeAppServices());
+}
+
+Future<void> _initializeAppServices() async {
   try {
-    // 2. تهيئة Firebase - الخطوة التي كانت مفقودة في لقطة الشاشة 2.21.14 ص
+    final preferences = await SharedPreferences.getInstance()
+        .timeout(const Duration(seconds: 5));
+    AppLanguageService.instance.initialize(preferences);
+  } catch (error) {
+    debugPrint('تعذر تحميل إعدادات اللغة: $error');
+  }
+
+  try {
     await Firebase.initializeApp(
       options: !kIsWeb && defaultTargetPlatform == TargetPlatform.android
           ? null
           : DefaultFirebaseOptions.currentPlatform,
-    );
+    ).timeout(const Duration(seconds: 12));
     FirebaseState.isReady = true;
-    await AdminNotificationService.instance.initialize();
+    // لا نؤخر أول شاشة بانتظار APNs/FCM على iPhone. قد يستغرق تسجيل
+    // الإشعارات وقتًا عند التشغيل الأول أو مع الاتصال اللاسلكي.
+    unawaited(
+      AdminNotificationService.instance.initialize().catchError((error) {
+        debugPrint('تعذر بدء الإشعارات في الخلفية: $error');
+      }),
+    );
 
     if (kIsWeb) {
       try {
@@ -43,16 +64,9 @@ void main() async {
         debugPrint('تعذر حفظ جلسة Firebase على الويب: $e');
       }
     }
-
-    // 3. رفع البيانات (يفضل تشغيلها مرة واحدة فقط ثم إغلاقها)
-    // await uploadRestaurants();
-  } catch (e) {
-    print("خطأ في تهيئة Firebase: $e");
+  } catch (error) {
+    debugPrint('خطأ في تهيئة Firebase: $error');
   }
-
-  final preferences = await SharedPreferences.getInstance();
-  AppLanguageService.instance.initialize(preferences);
-  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {

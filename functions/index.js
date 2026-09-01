@@ -353,6 +353,98 @@ exports.notifyAdminsOnNewOrder = onDocumentCreated(
         status: order.status || "new",
       },
     );
+
+    // أرسل الطلب للمتجر المرتبط به فقط.
+    const businessId = String(order.businessId || "").trim();
+    if (businessId) {
+      const businessSnapshot = await db.collection("items").doc(businessId).get();
+      const ownerIds = new Set();
+      if (businessSnapshot.exists) {
+        const ownerId = String(businessSnapshot.data()?.ownerId || "").trim();
+        if (ownerId) ownerIds.add(ownerId);
+      }
+      const linkedMerchants = await db.collection("users")
+        .where("merchantBusinessId", "==", businessId)
+        .get();
+      linkedMerchants.docs.forEach((doc) => ownerIds.add(doc.id));
+
+      const merchantTokens = [
+        ...new Set((await Promise.all(
+          [...ownerIds].map((uid) => tokensForUser(db, uid)),
+        )).flat()),
+      ];
+      await sendPushToTokens(
+        merchantTokens,
+        {
+          title: "طلب جديد لمتجرك 🛍️",
+          body: `طلب ${order.orderNumber || event.params.orderId} بانتظار قبولك.`,
+        },
+        {
+          type: "merchant_new_order",
+          orderId: event.params.orderId,
+          orderNumber: order.orderNumber || "",
+          businessId,
+        },
+      );
+    }
+  },
+);
+
+exports.notifyAdminsOnPartnerApplication = onDocumentCreated(
+  "merchant_applications/{applicationId}",
+  async (event) => {
+    const application = event.data?.data() || {};
+    const db = getFirestore();
+    const [roleAdmins, flagAdmins] = await Promise.all([
+      db.collection("users").where("role", "==", "admin").get(),
+      db.collection("users").where("isAdmin", "==", true).get(),
+    ]);
+    const adminIds = new Set([
+      ...roleAdmins.docs.map((doc) => doc.id),
+      ...flagAdmins.docs.map((doc) => doc.id),
+    ]);
+    const tokens = [
+      ...new Set((await Promise.all(
+        [...adminIds].map((uid) => tokensForUser(db, uid)),
+      )).flat()),
+    ];
+    await sendPushToTokens(
+      tokens,
+      {
+        title: "طلب انضمام شريك جديد 🤝",
+        body: `${application.businessName || "متجر جديد"} بانتظار المراجعة.`,
+      },
+      {
+        type: "partner_application",
+        applicationId: event.params.applicationId,
+      },
+    );
+  },
+);
+
+exports.notifyDriverOnAssignment = onDocumentUpdated(
+  "orders/{orderId}",
+  async (event) => {
+    const before = event.data.before.data() || {};
+    const after = event.data.after.data() || {};
+    const driverId = String(after.driverId || "").trim();
+    if (!driverId || driverId === String(before.driverId || "").trim()) return;
+
+    const db = getFirestore();
+    const tokens = await tokensForUser(db, driverId);
+    await sendPushToTokens(
+      tokens,
+      {
+        title: "لديك طلب توصيل جديد 🛵",
+        body: `الطلب ${after.orderNumber || event.params.orderId} جاهز للاستلام.`,
+      },
+      {
+        type: "driver_assignment",
+        orderId: event.params.orderId,
+        orderNumber: after.orderNumber || "",
+        businessId: after.businessId || "",
+      },
+    );
   },
 );
 

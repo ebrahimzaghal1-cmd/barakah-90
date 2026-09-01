@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
 import '../theme/app_theme.dart';
 import 'legal_documents_screen.dart';
@@ -134,41 +137,47 @@ class _PartnerRegistrationScreenState extends State<PartnerRegistrationScreen> {
     setState(() => _saving = true);
 
     try {
-      await FirebaseFirestore.instance.collection('merchant_applications').add({
-        'businessName': _businessName.text.trim(),
-        'ownerName': _ownerName.text.trim(),
-        'email': _email.text.trim(),
-        'phone': _phone.text.trim(),
-        'nationalId': _nationalId.text.trim(),
-        'activityType': _activityType,
-        'businessCategory': _businessCategory,
-        'area': _area.text.trim(),
-        'description': _description.text.trim(),
-        'locationUrl': _locationUrl.text.trim(),
-        'latitude': _latitude,
-        'longitude': _longitude,
-        'payoutOwnerName': _payoutOwnerName.text.trim(),
-        'payoutMethod': _payoutMethod.text.trim(),
-        'payoutAccount': _payoutAccount.text.trim(),
-        'identityDocumentRef': _identityDocumentRef.text.trim(),
-        'businessDocumentRef': _businessDocumentRef.text.trim(),
-        'payoutDocumentRef': _payoutDocumentRef.text.trim(),
-        'commissionRate': _defaultCommissionRate,
-        'commissionAppliesTo': 'products_only',
-        'subscriptionFee': 0,
-        'acceptedPartnerAgreement': true,
-        'acceptedPrivacyPolicy': true,
-        'agreementVersion': _agreementVersion,
-        'agreementAcceptedAt': FieldValue.serverTimestamp(),
-        'identityVerified': false,
-        'businessVerified': false,
-        'payoutVerified': false,
-        'merchantEnabled': false,
-        'status': 'pending',
-        'source': 'partner_web',
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      final response = await http
+          .post(
+            Uri.parse(
+              'https://barakah-secure-api.ebrahimzaghal1.workers.dev/v1/partner-applications',
+            ),
+            headers: const {'content-type': 'application/json; charset=utf-8'},
+            body: jsonEncode({
+              'businessName': _businessName.text.trim(),
+              'ownerName': _ownerName.text.trim(),
+              'email': _email.text.trim(),
+              'phone': _phone.text.trim(),
+              'nationalId': _nationalId.text.trim(),
+              'activityType': _activityType,
+              'businessCategory': _businessCategory,
+              'area': _area.text.trim(),
+              'description': _description.text.trim(),
+              'locationUrl': _locationUrl.text.trim(),
+              'latitude': _latitude,
+              'longitude': _longitude,
+              'payoutOwnerName': _payoutOwnerName.text.trim(),
+              'payoutMethod': _payoutMethod.text.trim(),
+              'payoutAccount': _payoutAccount.text.trim(),
+              'identityDocumentRef': _identityDocumentRef.text.trim(),
+              'businessDocumentRef': _businessDocumentRef.text.trim(),
+              'payoutDocumentRef': _payoutDocumentRef.text.trim(),
+              'commissionRate': _defaultCommissionRate,
+              'commissionAppliesTo': 'products_only',
+              'subscriptionFee': 0,
+              'acceptedPartnerAgreement': true,
+              'acceptedPrivacyPolicy': true,
+              'agreementVersion': _agreementVersion,
+            }),
+          )
+          .timeout(const Duration(seconds: 25));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final decoded = response.body.isEmpty
+            ? const <String, dynamic>{}
+            : jsonDecode(utf8.decode(response.bodyBytes));
+        final message = decoded is Map ? decoded['message']?.toString() : null;
+        throw StateError(message ?? 'تعذر إرسال طلب الانضمام.');
+      }
 
       if (!mounted) return;
 

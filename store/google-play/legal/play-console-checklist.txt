@@ -245,10 +245,19 @@ https://barakah-new.web.app/privacy
 16. RELEASE FILE
 ========================================
 
-store/google-play/Barakah-1.0.0-build2-20260830-final.aab
+store/google-play/Barakah-1.0.0-build2.aab
 
 Official package:
 com.barakah.market
+
+Version:
+1.0.0+2 (versionCode 2)
+
+Target Android API:
+36
+
+SHA-256:
+0a51af0d5aa4982a7349bb0b8e26ff1a5aa8cf14084e5f6e091fc97bbc0c92ee
 
 Official signing:
 barakah-upload

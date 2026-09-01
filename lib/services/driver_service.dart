@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 
 import 'order_service.dart';
+import 'admin_submission_notification_service.dart';
 
 class DriverService {
   static const _apiBase =
@@ -69,6 +70,10 @@ class DriverService {
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
+    await AdminSubmissionNotificationService.notify(
+      type: 'driver_application',
+      documentId: user.uid,
+    );
   }
 
   Stream<QuerySnapshot<Map<String, dynamic>>> myOrders() {
@@ -105,13 +110,15 @@ class DriverService {
       position = await Geolocator.getCurrentPosition();
     }
 
-    await _firestore.collection('users').doc(user.uid).update({
-      'driverAvailable': available,
-      'driverBusy': !available,
-      if (position != null) 'driverLatitude': position.latitude,
-      if (position != null) 'driverLongitude': position.longitude,
-      'driverLocationUpdatedAt': FieldValue.serverTimestamp(),
-    });
+    await _request(
+      'POST',
+      '/v1/driver/availability',
+      body: {
+        'available': available,
+        if (position != null) 'latitude': position.latitude,
+        if (position != null) 'longitude': position.longitude,
+      },
+    );
   }
 
   Future<Map<String, dynamic>> _request(

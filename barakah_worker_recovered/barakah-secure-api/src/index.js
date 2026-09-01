@@ -15,7 +15,24 @@ var index_default = {
       if (request.method === "GET" && url.pathname === "/health") {
         return json({ ok: true, service: "barakah-secure-api" }, 200, cors);
       }
+      if (request.method === "POST" && url.pathname === "/v1/partner-applications") {
+        return json(
+          await createPartnerApplication(request, env),
+          201,
+          cors
+        );
+      }
       const user = await authenticate(request, env);
+      if (request.method === "POST" && url.pathname === "/v1/support/messages") {
+        return json(await sendSupportMessage(request, env, user), 201, cors);
+      }
+      if (request.method === "POST" && url.pathname === "/v1/admin/new-request") {
+        return json(
+          await notifyAdminsAboutVerifiedRequest(request, env, user),
+          200,
+          cors
+        );
+      }
       if (request.method === "POST" && url.pathname === "/v1/media/upload-auth") {
         return json(
           await createImageKitUploadAuth(env, user),
@@ -172,6 +189,13 @@ var index_default = {
       if (request.method === "GET" && url.pathname === "/v1/driver/orders/available") {
         return json(
           await listAvailableDriverOrders(env, user),
+          200,
+          cors
+        );
+      }
+      if (request.method === "POST" && url.pathname === "/v1/driver/availability") {
+        return json(
+          await setDriverAvailability(request, env, user),
           200,
           cors
         );
@@ -659,6 +683,298 @@ async function notifyAdminsAboutOrder(env, token, orderId, order) {
   );
 }
 __name(notifyAdminsAboutOrder, "notifyAdminsAboutOrder");
+async function createPartnerApplication(request, env) {
+  const data = await readJson(request);
+  const required = [
+    "businessName",
+    "ownerName",
+    "email",
+    "phone",
+    "activityType",
+    "businessCategory",
+    "area"
+  ];
+  for (const field of required) {
+    if (!String(data?.[field] || "").trim()) {
+      fail(400, "missing-field", "بيانات طلب الشريك غير مكتملة.");
+    }
+  }
+  const latitude = Number(data.latitude);
+  const longitude = Number(data.longitude);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    fail(400, "invalid-location", "موقع المحل غير صالح.");
+  }
+  if (data.acceptedPartnerAgreement !== true || data.acceptedPrivacyPolicy !== true) {
+    fail(400, "agreements-required", "يجب قبول الاتفاقية وسياسة الخصوصية.");
+  }
+
+  const text = (value, limit = 500) => String(value || "").trim().slice(0, limit);
+  const applicationId = crypto.randomUUID().replace(/-/g, "");
+  const token = await serviceToken(env);
+  const record = {
+    businessName: text(data.businessName, 120),
+    ownerName: text(data.ownerName, 120),
+    email: text(data.email, 180),
+    phone: text(data.phone, 40),
+    nationalId: text(data.nationalId, 80),
+    activityType: text(data.activityType, 80),
+    businessCategory: text(data.businessCategory, 120),
+    area: text(data.area, 160),
+    description: text(data.description, 1500),
+    locationUrl: text(data.locationUrl, 500),
+    latitude,
+    longitude,
+    payoutOwnerName: text(data.payoutOwnerName, 120),
+    payoutMethod: text(data.payoutMethod, 80),
+    payoutAccount: text(data.payoutAccount, 180),
+    identityDocumentRef: text(data.identityDocumentRef, 500),
+    businessDocumentRef: text(data.businessDocumentRef, 500),
+    payoutDocumentRef: text(data.payoutDocumentRef, 500),
+    commissionRate: 10,
+    commissionAppliesTo: "products_only",
+    subscriptionFee: 0,
+    acceptedPartnerAgreement: true,
+    acceptedPrivacyPolicy: true,
+    agreementVersion: text(data.agreementVersion, 80),
+    agreementAcceptedAt: new Date(),
+    identityVerified: false,
+    businessVerified: false,
+    payoutVerified: false,
+    merchantEnabled: false,
+    status: "pending",
+    source: "partner_web",
+    createdAt: new Date(),
+    updatedAt: new Date()
+  };
+  await firestoreCreate(
+    env,
+    token,
+    "merchant_applications",
+    applicationId,
+    record
+  );
+
+  const [roleAdmins, flagAdmins] = await Promise.all([
+    firestoreQuery(env, token, "users", [fieldEquals("role", "admin")]),
+    firestoreQuery(env, token, "users", [fieldEquals("isAdmin", true)])
+  ]);
+  const adminTokens = [...roleAdmins, ...flagAdmins].flatMap(
+    (admin) => Array.isArray(admin.fcmTokens) ? admin.fcmTokens : []
+  );
+  await sendPushToTokens(env, token, adminTokens, {
+    title: "طلب انضمام شريك جديد 🤝",
+    body: `${record.businessName} بانتظار المراجعة.`,
+    data: {
+      type: "partner_application",
+      applicationId
+    }
+  });
+  return { applicationId, status: "pending" };
+}
+__name(createPartnerApplication, "createPartnerApplication");
+async function adminPushTokens(env, token) {
+  const [roleAdmins, flagAdmins] = await Promise.all([
+    firestoreQuery(env, token, "users", [fieldEquals("role", "admin")]),
+    firestoreQuery(env, token, "users", [fieldEquals("isAdmin", true)])
+  ]);
+  return [...roleAdmins, ...flagAdmins].flatMap(
+    (admin) => Array.isArray(admin.fcmTokens) ? admin.fcmTokens : []
+  );
+}
+__name(adminPushTokens, "adminPushTokens");
+async function notifyAdminsAboutVerifiedRequest(request, env, user) {
+  const body = await readJson(request);
+  const requestType = String(body?.type || "").trim();
+  const documentId = String(body?.documentId || "").trim();
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(documentId)) {
+    fail(400, "invalid-request-id", "معرّف الطلب غير صالح.");
+  }
+  const definitions = {
+    auction_request: {
+      collection: "auction_requests",
+      title: "طلب مزاد جديد 🔨",
+      label: (record) => record.itemName || "إعلان مزاد جديد"
+    },
+    driver_application: {
+      collection: "driver_applications",
+      title: "طلب انضمام سائق جديد 🚗",
+      label: (record) => record.fullName || "متقدم جديد"
+    },
+    customer_service_application: {
+      collection: "customer_service_applications",
+      title: "طلب توظيف خدمة عملاء جديد 🎧",
+      label: (record) => record.fullName || "متقدم جديد"
+    },
+    account_deletion_request: {
+      collection: "account_deletion_requests",
+      title: "طلب حذف حساب جديد",
+      label: (record) => record.email || "أحد المستخدمين"
+    }
+  };
+  const definition = definitions[requestType];
+  if (!definition) {
+    fail(400, "invalid-request-type", "نوع الطلب غير مدعوم.");
+  }
+  const token = await serviceToken(env);
+  const record = await firestoreGet(
+    env,
+    token,
+    `${definition.collection}/${encodeURIComponent(documentId)}`
+  );
+  if (!record || record.userId !== user.uid || record.status !== "pending") {
+    fail(403, "request-not-owned", "تعذر التحقق من الطلب الجديد.");
+  }
+  const tokens = await adminPushTokens(env, token);
+  await sendPushToTokens(env, token, tokens, {
+    title: definition.title,
+    body: `${String(definition.label(record)).slice(0, 160)} بانتظار المراجعة.`,
+    data: {
+      type: requestType,
+      documentId
+    }
+  });
+  return { ok: true, type: requestType, documentId };
+}
+__name(notifyAdminsAboutVerifiedRequest, "notifyAdminsAboutVerifiedRequest");
+async function sendSupportMessage(request, env, user) {
+  const body = await readJson(request);
+  const threadId = String(body?.threadId || "").trim();
+  const message = String(body?.text || "").trim();
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(threadId)) {
+    fail(400, "invalid-thread", "محادثة خدمة العملاء غير صالحة.");
+  }
+  if (!message || message.length > 4e3) {
+    fail(400, "invalid-message", "الرسالة فارغة أو طويلة جدًا.");
+  }
+  const token = await serviceToken(env);
+  const [thread, actor] = await Promise.all([
+    firestoreGet(env, token, `support_threads/${encodeURIComponent(threadId)}`),
+    firestoreGet(env, token, `users/${encodeURIComponent(user.uid)}`)
+  ]);
+  if (!thread || !actor) {
+    fail(404, "support-thread-not-found", "محادثة خدمة العملاء غير موجودة.");
+  }
+  let senderRole;
+  let senderName;
+  let recipientTokens = [];
+  let notificationTitle;
+  if (thread.customerId === user.uid) {
+    senderRole = "customer";
+    senderName = String(actor.displayName || thread.customerName || "عميل بركة");
+    notificationTitle = "رسالة جديدة لخدمة العملاء 💬";
+    if (thread.assignedAgentId) {
+      recipientTokens.push(
+        ...await userPushTokens(env, token, thread.assignedAgentId)
+      );
+    } else {
+      const agents = await firestoreQuery(
+        env,
+        token,
+        "users",
+        [fieldEquals("role", "customer_service")]
+      );
+      recipientTokens.push(
+        ...agents.filter((agent) => agent.customerServiceEnabled === true).flatMap(
+          (agent) => Array.isArray(agent.fcmTokens) ? agent.fcmTokens : []
+        )
+      );
+    }
+    recipientTokens.push(...await adminPushTokens(env, token));
+  } else if (
+    actor.role === "customer_service" &&
+    actor.customerServiceEnabled === true &&
+    thread.assignedAgentId === user.uid
+  ) {
+    senderRole = "customer_service";
+    senderName = String(actor.displayName || "خدمة عملاء بركة");
+    notificationTitle = "رد جديد من خدمة عملاء بركة 💬";
+    recipientTokens = await userPushTokens(env, token, thread.customerId);
+  } else if (actor.role === "admin" || actor.isAdmin === true) {
+    senderRole = "admin";
+    senderName = String(actor.displayName || "إدارة بركة");
+    notificationTitle = "رد جديد من إدارة بركة 💬";
+    recipientTokens = await userPushTokens(env, token, thread.customerId);
+  } else {
+    fail(403, "support-permission-denied", "غير مسموح بإرسال رسالة في هذه المحادثة.");
+  }
+  const messageId = crypto.randomUUID().replace(/-/g, "");
+  const shouldSendWelcome = senderRole === "customer" &&
+    thread.autoWelcomeSent !== true &&
+    !String(thread.lastMessage || "").trim();
+  const welcomeMessage = "أهلًا وسهلًا بك في خدمة عملاء بركة 🌟\nتم استلام رسالتك بنجاح، وسيقوم أحد أعضاء فريقنا بالرد عليك بأقرب وقت. شكرًا لاختيارك بركة.";
+  const writes = [
+    createWrite(
+      env,
+      `support_threads/${encodeURIComponent(threadId)}/messages/${messageId}`,
+      {
+        senderId: user.uid,
+        senderRole,
+        senderName,
+        text: message,
+        createdAt: new Date()
+      }
+    ),
+    updateWrite(
+      env,
+      `support_threads/${encodeURIComponent(threadId)}`,
+      {
+        lastMessage: message,
+        lastMessageAt: new Date(),
+        updatedAt: new Date(),
+        status: senderRole === "customer" ? "open" : "active",
+        ...(shouldSendWelcome ? {
+          autoWelcomeSent: true,
+          autoWelcomeAt: new Date()
+        } : {})
+      },
+      thread.updateTime
+    )
+  ];
+  if (shouldSendWelcome) {
+    writes.push(createWrite(
+      env,
+      `support_threads/${encodeURIComponent(threadId)}/messages/${crypto.randomUUID().replace(/-/g, "")}`,
+      {
+        senderId: "barakah_support_bot",
+        senderRole: "system",
+        senderName: "مساعد بركة",
+        text: welcomeMessage,
+        createdAt: new Date(Date.now() + 1)
+      }
+    ));
+  }
+  const commit = await firestoreCommit(env, token, writes);
+  if (!commit) {
+    fail(409, "support-thread-changed", "وصلت رسالة أخرى؛ حاول الإرسال مجددًا.");
+  }
+  await sendPushToTokens(env, token, recipientTokens, {
+    title: notificationTitle,
+    body: `${senderName}: ${message.slice(0, 180)}`,
+    data: {
+      type: "support_message",
+      threadId,
+      senderRole
+    }
+  });
+  if (shouldSendWelcome) {
+    await sendPushToTokens(
+      env,
+      token,
+      await userPushTokens(env, token, thread.customerId),
+      {
+        title: "أهلًا بك في خدمة عملاء بركة 🌟",
+        body: "تم استلام رسالتك وسيقوم فريقنا بالرد عليك بأقرب وقت.",
+        data: {
+          type: "support_message",
+          threadId,
+          senderRole: "system"
+        }
+      }
+    );
+  }
+  return { ok: true, threadId, messageId };
+}
+__name(sendSupportMessage, "sendSupportMessage");
 function documentName(env, path) {
   return `projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/databases/(default)/documents/${path}`;
 }
@@ -2239,6 +2555,91 @@ async function listAvailableDriverOrders(env, user) {
   };
 }
 __name(listAvailableDriverOrders, "listAvailableDriverOrders");
+async function waitingDriverOrders(env, token) {
+  const orders = await firestoreQuery(env, token, "orders", [
+    fieldEquals("status", "awaiting_driver")
+  ]);
+  return orders.filter(
+    (order) => order.deliveryMethod !== "pickup" && !order.driverId
+  );
+}
+__name(waitingDriverOrders, "waitingDriverOrders");
+async function notifyDriverAboutWaitingOrders(env, token, driver, orders) {
+  const waitingOrders = orders ?? await waitingDriverOrders(env, token);
+  const driverTokens = Array.isArray(driver?.fcmTokens) ? driver.fcmTokens : [];
+  if (!waitingOrders.length || !driverTokens.length) return waitingOrders.length;
+  const firstOrder = waitingOrders[0];
+  const orderLabel = String(
+    firstOrder.orderNumber || firstOrder.id?.substring(0, 6).toUpperCase() || "جديد"
+  );
+  await sendPushToTokens(env, token, driverTokens, {
+    title: "طلب بحاجة لسائق 🚗",
+    body: waitingOrders.length === 1
+      ? `الطلب #${orderLabel} جاهز. افتح لوحة السائق للموافقة عليه.`
+      : `يوجد ${waitingOrders.length} طلبات جاهزة بانتظار سائق. افتح لوحة السائق للموافقة.`,
+    data: {
+      type: "driver_order_available",
+      orderId: String(firstOrder.id || ""),
+      waitingOrderCount: String(waitingOrders.length)
+    }
+  });
+  return waitingOrders.length;
+}
+__name(notifyDriverAboutWaitingOrders, "notifyDriverAboutWaitingOrders");
+async function setDriverAvailability(request, env, user) {
+  const body = await readJson(request);
+  const available = body?.available === true;
+  const token = await serviceToken(env);
+  const driver = await firestoreGet(
+    env,
+    token,
+    `users/${encodeURIComponent(user.uid)}`
+  );
+  if (!driver || driver.role !== "driver") {
+    fail(403, "permission-denied", "هذه الخدمة متاحة للسائقين فقط.");
+  }
+  if (available && driver.activeOrderId) {
+    fail(409, "driver-has-active-order", "أكمل الطلب الحالي قبل استقبال طلب جديد.");
+  }
+  const latitude = Number(body?.latitude);
+  const longitude = Number(body?.longitude);
+  if (
+    available &&
+    (!Number.isFinite(latitude) || !Number.isFinite(longitude))
+  ) {
+    fail(400, "driver-location-required", "يجب تحديد موقع السائق أولًا.");
+  }
+  const result = await firestoreCommit(env, token, [
+    updateWrite(
+      env,
+      `users/${encodeURIComponent(user.uid)}`,
+      {
+        driverAvailable: available,
+        driverBusy: false,
+        ...(available ? {
+          driverLatitude: latitude,
+          driverLongitude: longitude
+        } : {}),
+        driverLocationUpdatedAt: /* @__PURE__ */ new Date(),
+        updatedAt: /* @__PURE__ */ new Date()
+      },
+      driver.updateTime
+    )
+  ]);
+  if (!result) {
+    fail(409, "driver-changed", "تغيّرت حالة السائق. حاول مجددًا.");
+  }
+  let waitingOrderCount = 0;
+  if (available) {
+    waitingOrderCount = await notifyDriverAboutWaitingOrders(
+      env,
+      token,
+      driver
+    );
+  }
+  return { available, waitingOrderCount };
+}
+__name(setDriverAvailability, "setDriverAvailability");
 async function claimDriverOrder(env, user, orderId) {
   const token = await serviceToken(env);
   const [driver, order] = await Promise.all([
@@ -2422,6 +2823,16 @@ async function completeDelivery(env, token, initialOrder, orderId, actorId, isAd
           "customer_status_notification_failed",
           error.message
         );
+      }
+      if (driver && assignedDriverId) {
+        try {
+          await notifyDriverAboutWaitingOrders(env, token, driver);
+        } catch (error) {
+          console.error(
+            "waiting_driver_notification_failed",
+            error.message
+          );
+        }
       }
       return {
         orderId,

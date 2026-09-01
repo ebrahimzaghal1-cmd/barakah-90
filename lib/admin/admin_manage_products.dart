@@ -50,6 +50,7 @@ class _AdminManageProductsState extends State<AdminManageProducts> {
       text: '${product['stock'] ?? (doc == null ? 1 : '')}',
     );
     var imageUrl = product['image']?.toString() ?? '';
+    var imageShape = product['imageShape']?.toString() ?? 'rounded';
     String? businessId =
         product['businessId']?.toString() ?? widget.initialBusinessId;
     XFile? selectedImage;
@@ -67,6 +68,9 @@ class _AdminManageProductsState extends State<AdminManageProducts> {
                 final pickedImage = await _imagePicker.pickImage(
                   source: ImageSource.gallery,
                   imageQuality: 85,
+                  // توحيد الحجم يقلل الصور الضخمة ويحافظ على شكل البطاقات.
+                  maxWidth: 1600,
+                  maxHeight: 1600,
                 );
                 if (pickedImage == null) return;
 
@@ -137,6 +141,7 @@ class _AdminManageProductsState extends State<AdminManageProducts> {
                   'title': title,
                   'description': descriptionController.text.trim(),
                   'image': imageUrl,
+                  'imageShape': imageShape,
                   'kind': 'product',
                   'businessId': businessId,
                   'businessTitle': businessData['title']?.toString() ?? '',
@@ -170,6 +175,7 @@ class _AdminManageProductsState extends State<AdminManageProducts> {
                       'title': title,
                       'description': descriptionController.text.trim(),
                       'image': imageUrl,
+                      'imageShape': imageShape,
                       'price': num.tryParse(priceController.text.trim()) ?? 0,
                       'stock': stock,
                     }),
@@ -211,6 +217,7 @@ class _AdminManageProductsState extends State<AdminManageProducts> {
                       'title': title,
                       'description': descriptionController.text.trim(),
                       'image': imageUrl,
+                      'imageShape': imageShape,
                       'price': num.tryParse(priceController.text.trim()) ?? 0,
                       'stock': stock,
                     }),
@@ -283,8 +290,9 @@ class _AdminManageProductsState extends State<AdminManageProducts> {
                       )
                     : const Icon(
                         Icons.add_photo_alternate_outlined,
-                        size: 42,
-                      );
+                      size: 42,
+                    );
+            final previewRadius = imageShape == 'circle' ? 999.0 : 12.0;
 
             return AlertDialog(
               title: Text(doc == null ? 'إضافة منتج' : 'تعديل المنتج'),
@@ -307,7 +315,12 @@ class _AdminManageProductsState extends State<AdminManageProducts> {
                         child: Stack(
                           alignment: Alignment.center,
                           children: [
-                            preview,
+                            Positioned.fill(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(previewRadius),
+                                child: preview,
+                              ),
+                            ),
                             Positioned(
                               bottom: 8,
                               child: Container(
@@ -329,6 +342,20 @@ class _AdminManageProductsState extends State<AdminManageProducts> {
                       ),
                     ),
                     const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: imageShape,
+                      decoration: const InputDecoration(labelText: 'شكل الصورة'),
+                      items: const [
+                        DropdownMenuItem(value: 'rounded', child: Text('مستطيل بحواف مستديرة')),
+                        DropdownMenuItem(value: 'square', child: Text('مربع')),
+                        DropdownMenuItem(value: 'circle', child: Text('دائري')),
+                        DropdownMenuItem(value: 'blur', child: Text('بلوري')),
+                      ],
+                      onChanged: isSaving ? null : (value) {
+                        if (value != null) setDialogState(() => imageShape = value);
+                      },
+                    ),
+                    const SizedBox(height: 12),
                     TextField(
                       controller: titleController,
                       decoration:

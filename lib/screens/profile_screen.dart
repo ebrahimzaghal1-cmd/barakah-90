@@ -9,6 +9,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../services/auth_service.dart';
 import '../services/admin_notification_service.dart';
+import '../services/admin_submission_notification_service.dart';
 import '../services/app_language_service.dart';
 import '../services/firebase_state.dart';
 import '../services/loyalty_service.dart';
@@ -188,6 +189,37 @@ class _ProfileBody extends StatelessWidget {
       );
     }
 
+    Future<void> shareBarakah() async {
+      try {
+        final snapshot = await FirebaseFirestore.instance
+            .collection('app_settings')
+            .doc('app_share')
+            .get();
+        final settings = snapshot.data() ?? const <String, dynamic>{};
+        if (settings['enabled'] == false) {
+          showMessage('مشاركة التطبيق متوقفة مؤقتًا.');
+          return;
+        }
+        final customMessage = settings['message']?.toString().trim() ?? '';
+        final links = <String>[
+          settings['webUrl']?.toString().trim() ?? '',
+          settings['androidUrl']?.toString().trim() ?? '',
+          settings['iosUrl']?.toString().trim() ?? '',
+        ].where((value) => value.isNotEmpty).toSet().toList();
+        final message =
+            customMessage.isEmpty ? copy.shareMessage : customMessage;
+        await Share.share(
+          links.isEmpty ? message : '$message\n${links.join('\n')}',
+          subject: 'Barakah | بركة',
+        );
+      } catch (_) {
+        await Share.share(
+          copy.shareMessage,
+          subject: 'Barakah | بركة',
+        );
+      }
+    }
+
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 34),
       child: Column(children: [
@@ -286,7 +318,8 @@ class _ProfileBody extends StatelessWidget {
                       content: Text(
                         enabled
                             ? 'تم تفعيل إشعارات بركة على هذا الجهاز ✅'
-                            : 'لم يتم التفعيل. اسمح بالإشعارات من إعدادات الهاتف.',
+                            : AdminNotificationService
+                                .instance.permissionFailureMessage,
                       ),
                       backgroundColor: enabled ? Colors.green : Colors.orange,
                     ),
@@ -330,10 +363,7 @@ class _ProfileBody extends StatelessWidget {
               _ProfileAction(
                 icon: Icons.ios_share_rounded,
                 title: 'مشاركة بركة',
-                onTap: () => Share.share(
-                  copy.shareMessage,
-                  subject: 'Barakah | بركة',
-                ),
+                onTap: shareBarakah,
               ),
             ],
           ),
@@ -605,6 +635,10 @@ class _ProfileBody extends StatelessWidget {
         'source': 'app',
         'requestedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+      await AdminSubmissionNotificationService.notify(
+        type: 'account_deletion_request',
+        documentId: user.uid,
+      );
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

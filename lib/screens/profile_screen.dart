@@ -30,6 +30,7 @@ import 'driver_registration_screen.dart';
 import 'customer_service_join_screen.dart';
 import 'customer_service_portal.dart';
 import 'customer_support_chat_screen.dart';
+import 'favorites_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -273,8 +274,13 @@ class _ProfileBody extends StatelessWidget {
               _ProfileAction(
                 icon: Icons.favorite_border_rounded,
                 title: 'المفضلة',
-                onTap: () => showMessage(
-                  'تظهر اختياراتك المفضلة داخل المطاعم والمنتجات.',
+                onTap: () => requireLogin(
+                  () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => FavoritesScreen(user: user!),
+                    ),
+                  ),
                 ),
               ),
               _ProfileAction(

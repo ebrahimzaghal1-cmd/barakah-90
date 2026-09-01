@@ -189,12 +189,32 @@ class _ProfileBody extends StatelessWidget {
       );
     }
 
+    Future<void> openShareSheet(String text) async {
+      if (!context.mounted) return;
+      final renderObject = context.findRenderObject();
+      final origin = renderObject is RenderBox && renderObject.hasSize
+          ? renderObject.localToGlobal(Offset.zero) & renderObject.size
+          : null;
+      final result = await SharePlus.instance.share(
+        ShareParams(
+          text: text,
+          subject: 'Barakah | بركة',
+          sharePositionOrigin: origin,
+        ),
+      );
+      if (result.status == ShareResultStatus.unavailable && context.mounted) {
+        showMessage('المشاركة غير متاحة على هذا الجهاز حاليًا.');
+      }
+    }
+
     Future<void> shareBarakah() async {
+      var shareText = copy.shareMessage;
       try {
         final snapshot = await FirebaseFirestore.instance
             .collection('app_settings')
             .doc('app_share')
-            .get();
+            .get()
+            .timeout(const Duration(seconds: 3));
         final settings = snapshot.data() ?? const <String, dynamic>{};
         if (settings['enabled'] == false) {
           showMessage('مشاركة التطبيق متوقفة مؤقتًا.');
@@ -208,15 +228,16 @@ class _ProfileBody extends StatelessWidget {
         ].where((value) => value.isNotEmpty).toSet().toList();
         final message =
             customMessage.isEmpty ? copy.shareMessage : customMessage;
-        await Share.share(
-          links.isEmpty ? message : '$message\n${links.join('\n')}',
-          subject: 'Barakah | بركة',
-        );
+        shareText = links.isEmpty ? message : '$message\n${links.join('\n')}';
       } catch (_) {
-        await Share.share(
-          copy.shareMessage,
-          subject: 'Barakah | بركة',
-        );
+        // نستخدم النص الافتراضي إذا تعذر تحميل إعدادات الأدمن بسرعة.
+      }
+      try {
+        await openShareSheet(shareText);
+      } catch (_) {
+        if (context.mounted) {
+          showMessage('تعذر فتح المشاركة. حاول مرة أخرى.');
+        }
       }
     }
 

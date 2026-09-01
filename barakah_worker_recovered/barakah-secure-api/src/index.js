@@ -899,8 +899,7 @@ async function sendSupportMessage(request, env, user) {
   }
   const messageId = crypto.randomUUID().replace(/-/g, "");
   const shouldSendWelcome = senderRole === "customer" &&
-    thread.autoWelcomeSent !== true &&
-    !String(thread.lastMessage || "").trim();
+    thread.autoWelcomeSent !== true;
   const welcomeMessage = "أهلًا وسهلًا بك في خدمة عملاء بركة 🌟\nتم استلام رسالتك بنجاح، وسيقوم أحد أعضاء فريقنا بالرد عليك بأقرب وقت. شكرًا لاختيارك بركة.";
   const writes = [
     createWrite(

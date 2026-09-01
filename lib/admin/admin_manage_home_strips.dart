@@ -30,6 +30,18 @@ class _AdminManageHomeStripsState extends State<AdminManageHomeStrips> {
 
   bool get _isMarket => widget.surface == 'market';
 
+  String _shapeLabel(Object? value) => switch (value?.toString()) {
+        'square' => 'مربع',
+        'rectangle' => 'مستطيل',
+        _ => 'دائري',
+      };
+
+  String _sizeLabel(Object? value) => switch (value?.toString()) {
+        'small' => 'صغير',
+        'large' => 'كبير',
+        _ => 'وسط',
+      };
+
   @override
   void initState() {
     super.initState();
@@ -112,6 +124,8 @@ class _AdminManageHomeStripsState extends State<AdminManageHomeStrips> {
       'enabled': true,
       'useQuickActions': !_isMarket,
       'stripType': 'categories',
+      'cardShape': _isMarket ? 'circle' : 'rectangle',
+      'cardSize': 'medium',
       'showAllCategories': _isMarket,
       'categoryIds': <String>[],
       'updatedAt': FieldValue.serverTimestamp(),
@@ -336,6 +350,9 @@ class _AdminManageHomeStripsState extends State<AdminManageHomeStrips> {
     if (surface == 'restaurants' && useQuickActions) {
       stripType = 'custom';
     }
+    var cardShape = current['cardShape']?.toString() ??
+        ((surface == 'market' || useQuickActions) ? 'circle' : 'rectangle');
+    var cardSize = current['cardSize']?.toString() ?? 'medium';
     var showAllCategories = current['showAllCategories'] == true ||
         current['title']?.toString().trim() == 'سوق بركة';
     var saving = false;
@@ -437,6 +454,8 @@ class _AdminManageHomeStripsState extends State<AdminManageHomeStrips> {
               'enabled': enabled,
               'useQuickActions': usesRestaurantCards,
               'stripType': stripType,
+              'cardShape': cardShape,
+              'cardSize': cardSize,
               'showAllCategories': showAllCategories,
               'categoryIds': selectedIds.toList(),
               'customItems': customItems,
@@ -557,6 +576,60 @@ class _AdminManageHomeStripsState extends State<AdminManageHomeStrips> {
                                 }),
                       ),
                     ],
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      value: cardShape,
+                      decoration: const InputDecoration(
+                        labelText: 'شكل بطاقات العرض',
+                        helperText:
+                            'يُطبّق على صور التصنيفات والبطاقات داخل هذا الشريط.',
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'circle',
+                          child: Text('دائري'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'square',
+                          child: Text('مربع'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'rectangle',
+                          child: Text('مستطيل'),
+                        ),
+                      ],
+                      onChanged: saving
+                          ? null
+                          : (value) => setDialogState(
+                                () => cardShape = value ?? 'circle',
+                              ),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      value: cardSize,
+                      decoration: const InputDecoration(
+                        labelText: 'حجم بطاقات العرض',
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'small',
+                          child: Text('صغير'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'medium',
+                          child: Text('وسط'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'large',
+                          child: Text('كبير'),
+                        ),
+                      ],
+                      onChanged: saving
+                          ? null
+                          : (value) => setDialogState(
+                                () => cardSize = value ?? 'medium',
+                              ),
+                    ),
                     if (surface == 'restaurants' && stripType == 'custom') ...[
                       const Align(
                         alignment: AlignmentDirectional.centerStart,
@@ -892,6 +965,8 @@ class _AdminManageHomeStripsState extends State<AdminManageHomeStrips> {
                     ),
                     subtitle: Text(
                       '${market ? 'الماركت' : 'المطاعم'} • ترتيب ${data['order'] ?? 0}'
+                      ' • ${_shapeLabel(data['cardShape'])}'
+                      ' • ${_sizeLabel(data['cardSize'])}'
                       '${data['stripType'] == 'bestSelling' ? ' • الأكثر مبيعاً' : ''}'
                       '${data['enabled'] == false ? ' • مخفي' : ''}',
                     ),

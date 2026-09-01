@@ -10,6 +10,7 @@ import '../theme/app_theme.dart';
 import '../services/cart_service.dart';
 import '../widgets/barakah_brand.dart';
 import '../widgets/business_rating.dart';
+import '../widgets/favorite_button.dart';
 
 class RestaurantDetailsScreen extends StatelessWidget {
   const RestaurantDetailsScreen({super.key, required this.restaurant});
@@ -340,6 +341,12 @@ class _BusinessProducts extends StatelessWidget {
                       ),
                     ),
                   ),
+                  FavoriteButton(
+                    itemId: product.id,
+                    item: data,
+                    backgroundColor: AppTheme.navy,
+                  ),
+                  const SizedBox(width: 4),
                   IconButton.filled(
                     style: IconButton.styleFrom(
                         backgroundColor: AppTheme.deepYellow,

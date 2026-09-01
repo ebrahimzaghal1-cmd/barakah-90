@@ -133,6 +133,23 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    match /users/{userId}/favorites/{itemId} {
+      allow read, delete: if signedIn() && request.auth.uid == userId;
+      allow create, update: if signedIn() && request.auth.uid == userId &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.itemId == itemId &&
+        request.resource.data.kind in ['business', 'product'] &&
+        request.resource.data.title is string &&
+        request.resource.data.image is string &&
+        request.resource.data.category is string &&
+        request.resource.data.businessId is string &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.keys().hasOnly([
+          'userId', 'itemId', 'kind', 'title', 'image', 'category',
+          'price', 'businessId', 'createdAt'
+        ]);
+    }
+
     match /account_deletion_requests/{userId} {
       allow read: if signedIn() &&
         (request.auth.uid == userId || isAdmin());

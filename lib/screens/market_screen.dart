@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../models/home_strip_card_style.dart';
 import '../services/firebase_state.dart';
 import '../services/analytics_service.dart';
 import '../services/cart_service.dart';
@@ -13,6 +14,8 @@ import '../widgets/advertisement_banner.dart';
 import '../widgets/barakah_online_status_button.dart';
 import '../widgets/barakah_brand.dart';
 import '../widgets/barakah_media_image.dart';
+import '../widgets/home_strip_card.dart';
+import '../widgets/favorite_button.dart';
 import 'categories_screen.dart';
 import 'products_screen.dart';
 import 'restaurant_details_screen.dart';
@@ -467,7 +470,7 @@ class _MarketHeader extends StatelessWidget {
           borderRadius: BorderRadius.circular(26),
           image: const DecorationImage(
             image: AssetImage(
-              'assets/images/barakah_gold_header_bunny_16.png',
+              'assets/images/barakah_gold_header_bunny_champagne.png',
             ),
             fit: BoxFit.cover,
             alignment: Alignment.centerRight,
@@ -622,6 +625,7 @@ class _MarketHomeStrips extends StatelessWidget {
               Builder(builder: (context) {
                 final data = strips[index].data();
                 final title = data['title']?.toString() ?? 'سوق بركة';
+                final cardStyle = HomeStripCardStyle.fromData(data);
                 final isBestSelling = data['stripType'] == 'bestSelling' ||
                     title.contains('مبيع');
                 if (isBestSelling) {
@@ -639,6 +643,7 @@ class _MarketHomeStrips extends StatelessWidget {
                   return _CustomMarketStrip(
                     title: title,
                     items: customItems,
+                    cardStyle: cardStyle,
                   );
                 }
                 final selected = ((data['categoryIds'] as List?) ?? const [])
@@ -654,6 +659,7 @@ class _MarketHomeStrips extends StatelessWidget {
                 return _MarketCategoriesStrip(
                   title: title,
                   categories: visible,
+                  cardStyle: cardStyle,
                 );
               }),
             ],
@@ -668,10 +674,12 @@ class _CustomMarketStrip extends StatelessWidget {
   const _CustomMarketStrip({
     required this.title,
     required this.items,
+    required this.cardStyle,
   });
 
   final String title;
   final List<Map<String, dynamic>> items;
+  final HomeStripCardStyle cardStyle;
 
   @override
   Widget build(BuildContext context) {
@@ -696,7 +704,7 @@ class _CustomMarketStrip extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         SizedBox(
-          height: 158,
+          height: cardStyle.stripHeight,
           child: ListView.separated(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             scrollDirection: Axis.horizontal,
@@ -706,65 +714,27 @@ class _CustomMarketStrip extends StatelessWidget {
               final item = items[index];
               final image = item['image']?.toString() ?? '';
               final heroTag = 'custom-market-${image.hashCode}-$index';
-              return GestureDetector(
+              return HomeStripCard(
+                style: cardStyle,
+                title: item['title']?.toString() ?? 'بطاقة',
+                heroTag: heroTag,
+                image: BarakahMediaImage(
+                  path: image,
+                  fit: BoxFit.cover,
+                  fallback: const ColoredBox(
+                    color: Color(0xFFFFF8E2),
+                    child: Icon(
+                      Icons.auto_awesome_rounded,
+                      color: AppTheme.deepYellow,
+                    ),
+                  ),
+                ),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => _CustomMarketItemScreen(
                       item: item,
                       heroTag: heroTag,
                     ),
-                  ),
-                ),
-                child: SizedBox(
-                  width: 112,
-                  child: Column(
-                    children: [
-                      Hero(
-                        tag: heroTag,
-                        child: Container(
-                          width: 98,
-                          height: 98,
-                          padding: const EdgeInsets.all(2),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: AppTheme.deepYellow,
-                              width: 1.2,
-                            ),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Color(0x26071B3C),
-                                blurRadius: 15,
-                                offset: Offset(0, 7),
-                              ),
-                            ],
-                          ),
-                          child: ClipOval(
-                            child: BarakahMediaImage(
-                              path: image,
-                              fit: BoxFit.cover,
-                              fallback: const Icon(
-                                Icons.auto_awesome_rounded,
-                                color: AppTheme.deepYellow,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        item['title']?.toString() ?? 'بطاقة',
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.black,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ],
                   ),
                 ),
               );
@@ -1042,6 +1012,15 @@ class _BestSellingProductsStrip extends StatelessWidget {
                                   ),
                                 ),
                               ),
+                              PositionedDirectional(
+                                top: 5,
+                                end: 5,
+                                child: FavoriteButton(
+                                  itemId: product.id,
+                                  item: data,
+                                  iconSize: 17,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -1098,10 +1077,12 @@ class _MarketCategoriesStrip extends StatelessWidget {
   const _MarketCategoriesStrip({
     required this.title,
     required this.categories,
+    this.cardStyle = const HomeStripCardStyle(),
   });
 
   final String title;
   final List<Map<String, String>> categories;
+  final HomeStripCardStyle cardStyle;
 
   @override
   Widget build(BuildContext context) {
@@ -1117,7 +1098,7 @@ class _MarketCategoriesStrip extends StatelessWidget {
             child: Text(
               title,
               textAlign: TextAlign.right,
-              style: TextStyle(
+              style: const TextStyle(
                 color: Colors.black,
                 fontSize: 20,
                 fontWeight: FontWeight.w900,
@@ -1127,7 +1108,7 @@ class _MarketCategoriesStrip extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         SizedBox(
-          height: 150,
+          height: cardStyle.stripHeight,
           child: ListView.separated(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             scrollDirection: Axis.horizontal,
@@ -1165,203 +1146,23 @@ class _MarketCategoriesStrip extends StatelessWidget {
                 );
               }
 
-              return SizedBox(
-                width: 108,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(70),
-                  onTap: () {
-                    AnalyticsService.instance.recordCategoryView(title);
-
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => CategoriesScreen(
-                          title: title,
-                          image: image,
-                          description: description,
-                        ),
+              return HomeStripCard(
+                style: cardStyle,
+                title: title,
+                image: categoryImage,
+                onTap: () {
+                  AnalyticsService.instance.recordCategoryView(title);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => CategoriesScreen(
+                        title: title,
+                        image: image,
+                        description: description,
                       ),
-                    );
-                  },
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 94,
-                        height: 94,
-                        padding: const EdgeInsets.all(1.5),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: AppTheme.deepYellow,
-                            width: 1,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.white.withOpacity(.50),
-                              blurRadius: 11,
-                              spreadRadius: 1,
-                            ),
-                            BoxShadow(
-                              color: const Color(0xFF9DD6FF).withOpacity(.18),
-                              blurRadius: 18,
-                              spreadRadius: 0,
-                            ),
-                            BoxShadow(
-                              color: const Color(0xFF061326).withOpacity(.42),
-                              blurRadius: 20,
-                              offset: const Offset(0, 9),
-                            ),
-                          ],
-                        ),
-                        child: Container(
-                          padding: EdgeInsets.zero,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                Colors.white.withOpacity(.48),
-                                const Color(0xFFD9EFFF).withOpacity(.18),
-                                Colors.white.withOpacity(.08),
-                              ],
-                            ),
-                            border: Border.all(color: Colors.transparent),
-                          ),
-                          child: Container(
-                            padding: EdgeInsets.zero,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  Colors.white.withOpacity(.32),
-                                  const Color(0xFF79BFFF).withOpacity(.10),
-                                  Colors.transparent,
-                                ],
-                              ),
-                              border: Border.all(color: Colors.transparent),
-                            ),
-                            child: Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                ClipOval(
-                                  child: categoryImage,
-                                ),
-
-                                // طبقة Liquid Glass فوق الصورة
-                                IgnorePointer(
-                                  child: ClipOval(
-                                    child: DecoratedBox(
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                          stops: const [
-                                            0.00,
-                                            0.18,
-                                            0.40,
-                                            0.72,
-                                            1.00,
-                                          ],
-                                          colors: [
-                                            Colors.white.withOpacity(.38),
-                                            Colors.white.withOpacity(.12),
-                                            Colors.transparent,
-                                            Colors.transparent,
-                                            Colors.white.withOpacity(.05),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-
-                                // لمعة علوية قوية
-                                Positioned(
-                                  top: 7,
-                                  left: 23,
-                                  right: 23,
-                                  child: Container(
-                                    height: 9,
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(30),
-                                      gradient: LinearGradient(
-                                        begin: Alignment.centerLeft,
-                                        end: Alignment.centerRight,
-                                        colors: [
-                                          Colors.white.withOpacity(.04),
-                                          Colors.white.withOpacity(.58),
-                                          Colors.white.withOpacity(.06),
-                                        ],
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.white.withOpacity(.42),
-                                          blurRadius: 8,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-
-                                // لمعة جانبية
-                                Positioned(
-                                  top: 27,
-                                  left: 6,
-                                  child: Container(
-                                    width: 5,
-                                    height: 42,
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(20),
-                                      gradient: LinearGradient(
-                                        begin: Alignment.topCenter,
-                                        end: Alignment.bottomCenter,
-                                        colors: [
-                                          Colors.white.withOpacity(.48),
-                                          Colors.white.withOpacity(.02),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-
-                                // لمعة سفلية
-                                Positioned(
-                                  bottom: 7,
-                                  left: 30,
-                                  right: 30,
-                                  child: Container(
-                                    height: 5,
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(20),
-                                      color: Colors.white.withOpacity(.25),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 7),
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.black,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                    ),
+                  );
+                },
               );
             },
           ),

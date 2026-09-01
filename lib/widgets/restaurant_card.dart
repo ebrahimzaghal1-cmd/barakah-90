@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/business_hours_service.dart';
 import '../theme/app_theme.dart';
 import 'business_rating.dart';
+import 'favorite_button.dart';
 
 class RestaurantCard extends StatelessWidget {
   const RestaurantCard({super.key, required this.restaurant});
@@ -58,16 +59,17 @@ class RestaurantCard extends StatelessWidget {
                         fit: BoxFit.cover,
                         errorBuilder: (_, __, ___) => const ColoredBox(
                             color: Color(0xFFFFF1B8),
-                            child: Icon(Icons.broken_image_outlined, size: 46))),
+                            child:
+                                Icon(Icons.broken_image_outlined, size: 46))),
                   ),
-            const Positioned(
+            Positioned(
                 top: 8,
                 right: 8,
-                child: CircleAvatar(
-                    radius: 16,
-                    backgroundColor: Color(0xD90B1B31),
-                    child: Icon(Icons.favorite_border,
-                        size: 18, color: Color(0xFFE8C64A)))),
+                child: FavoriteButton(
+                  itemId: businessId ?? '',
+                  item: data,
+                  iconSize: 18,
+                )),
             if (!isProduct && discount > 0)
               Positioned(
                 top: 8,

@@ -53,13 +53,20 @@ class _SplashScreenState extends State<SplashScreen>
   Future<void> _prepareStartup() async {
     if (!mounted) return;
 
-    final prefs = await SharedPreferences.getInstance();
-    final giftSeen = prefs.getBool(_giftIntroSeenKey) ?? false;
+    SharedPreferences? prefs;
+    try {
+      prefs = await SharedPreferences.getInstance()
+          .timeout(const Duration(seconds: 4));
+    } catch (error) {
+      debugPrint('تعذر قراءة حالة شاشة البداية: $error');
+    }
+    // عند تعذر التخزين لا نحبس المستخدم ولا نعيد شاشة الهدية.
+    final giftSeen = prefs?.getBool(_giftIntroSeenKey) ?? true;
 
     if (!mounted) return;
 
     if (!giftSeen) {
-      await prefs.setBool(_giftIntroSeenKey, true);
+      await prefs?.setBool(_giftIntroSeenKey, true);
 
       if (!mounted) return;
 
@@ -148,7 +155,8 @@ class _SplashScreenState extends State<SplashScreen>
   Widget build(BuildContext context) {
     if (_loading) {
       return const Scaffold(
-        backgroundColor: AppTheme.navy,
+        // يطابق لون LaunchScreen في iOS حتى تظهر شاشة بدء واحدة بلا وميض أزرق.
+        backgroundColor: Color(0xFFFFC928),
       );
     }
 

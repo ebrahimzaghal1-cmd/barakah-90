@@ -2,7 +2,7 @@ name: barakah90
 description: A new Flutter project
 publish_to: 'none'
 
-version: 1.0.0+2
+version: 1.0.0+3
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -40,7 +40,6 @@ dependencies:
   video_player: ^2.9.2
   qr_flutter: ^4.1.0
 
-  cloud_functions: ^6.3.6
   firebase_messaging: ^16.5.0
 
 

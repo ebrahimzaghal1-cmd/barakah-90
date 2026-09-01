@@ -17,6 +17,8 @@ import 'admin_manage_trends.dart';
 import 'admin_manage_users.dart';
 import 'admin_manage_home_strips.dart';
 import 'admin_customer_service.dart';
+import 'admin_support_inbox.dart';
+import 'admin_app_share_settings.dart';
 
 import '../theme/app_theme.dart';
 import '../services/user_profile_service.dart';
@@ -192,6 +194,16 @@ class AdminDashboard extends StatelessWidget {
         title: 'سائقو التوصيل',
         icon: Icons.delivery_dining_rounded,
         page: const AdminManageDrivers(),
+      ),
+      _AdminItem(
+        title: 'مشاركة التطبيق',
+        icon: Icons.ios_share_rounded,
+        page: const AdminAppShareSettings(),
+      ),
+      _AdminItem(
+        title: 'رسائل خدمة العملاء',
+        icon: Icons.mark_chat_unread_rounded,
+        page: const AdminSupportInbox(),
       ),
       _AdminItem(
         title: 'طلبات التوظيف وخدمة العملاء',

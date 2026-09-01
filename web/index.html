@@ -37,11 +37,11 @@
 <body>
 
   <script>
-    // Remove Flutter's retired offline cache once so previously opened phones
-    // receive the newest UI. Keep Firebase Messaging's worker registered.
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(async (registrations) => {
-        let removedFlutterWorker = false;
+    (async () => {
+      // Wait until Flutter's retired offline cache is gone before loading the
+      // application. Firebase Messaging keeps its own isolated worker.
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
         for (const registration of registrations) {
           const workers = [
             registration.active,
@@ -52,26 +52,19 @@
             worker.scriptURL.includes('flutter_service_worker.js')
           );
           if (isFlutterWorker) {
-            removedFlutterWorker = (await registration.unregister()) || removedFlutterWorker;
+            await registration.unregister();
           }
         }
-        if (removedFlutterWorker && !sessionStorage.getItem('barakah-cache-cleared')) {
-          sessionStorage.setItem('barakah-cache-cleared', '1');
-          window.location.reload();
-        }
-      });
-    }
-  </script>
 
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+        await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
           scope: '/firebase-cloud-messaging-push-scope',
         });
-      });
-    }
+      }
+
+      const bootstrap = document.createElement('script');
+      bootstrap.src = '/flutter_bootstrap.js?v=20260901-1055';
+      document.body.appendChild(bootstrap);
+    })();
   </script>
-  <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

@@ -5,6 +5,14 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 
+import 'foreground_notification_presenter.dart';
+
+const _webVapidKey = String.fromEnvironment(
+  'BARAKAH_WEB_VAPID_KEY',
+  defaultValue:
+      'BJdTGI3DUEio70JOpJNDqSESGrhz-qJklhzIMXf90WabSSKa3fc1D9mAWOPnb7H6F-sX_HYnyXU9Lr-lqY8mz40',
+);
+
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   // Notification messages are displayed by iOS/Android while the app is in
@@ -18,8 +26,14 @@ class AdminNotificationService {
 
   StreamSubscription<User?>? _authSubscription;
   StreamSubscription<String>? _tokenSubscription;
+  StreamSubscription<RemoteMessage>? _foregroundSubscription;
   String? _userUid;
+  String? _permissionFailureMessage;
   bool _initialized = false;
+
+  String get permissionFailureMessage =>
+      _permissionFailureMessage ??
+      'لم يتم تفعيل الإشعارات. تأكد من السماح بها من إعدادات المتصفح أو الجهاز.';
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -47,6 +61,22 @@ class AdminNotificationService {
       final uid = _userUid;
       if (uid != null) _saveToken(uid, token);
     });
+    _foregroundSubscription = FirebaseMessaging.onMessage.listen((message) {
+      if (!kIsWeb) return;
+
+      final notification = message.notification;
+      final title = notification?.title ?? message.data['title']?.toString();
+      final body = notification?.body ?? message.data['body']?.toString();
+      if (title == null || title.isEmpty || body == null || body.isEmpty) {
+        return;
+      }
+
+      showForegroundNotification(
+        title: title,
+        body: body,
+        tag: message.data['orderId']?.toString() ?? message.messageId ?? title,
+      );
+    });
   }
 
   Future<void> _handleUserChanged(User? user) async {
@@ -67,12 +97,7 @@ class AdminNotificationService {
       // provides the FCM token on a physical iPhone.
       for (var attempt = 0; attempt < 4; attempt++) {
         try {
-          const webVapidKey = String.fromEnvironment('BARAKAH_WEB_VAPID_KEY');
-          final token = kIsWeb && webVapidKey.isNotEmpty
-              ? await FirebaseMessaging.instance.getToken(
-                  vapidKey: webVapidKey,
-                )
-              : await FirebaseMessaging.instance.getToken();
+          final token = await _getToken();
           if (token != null && token.isNotEmpty) {
             await _saveToken(user.uid, token);
             return;
@@ -94,11 +119,21 @@ class AdminNotificationService {
       }, SetOptions(merge: true));
 
   Future<bool> requestPermissionForCurrentUser() async {
+    _permissionFailureMessage = null;
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return false;
+    if (user == null) {
+      _permissionFailureMessage = 'سجّل الدخول أولًا لتفعيل الإشعارات.';
+      return false;
+    }
 
     try {
       _userUid = user.uid;
+
+      if (kIsWeb && !await FirebaseMessaging.instance.isSupported()) {
+        _permissionFailureMessage =
+            'هذا المتصفح لا يدعم إشعارات بركة. استخدم Google Chrome.';
+        return false;
+      }
 
       final permission = await FirebaseMessaging.instance.requestPermission(
         alert: true,
@@ -108,18 +143,28 @@ class AdminNotificationService {
       );
 
       if (permission.authorizationStatus == AuthorizationStatus.denied) {
+        _permissionFailureMessage =
+            'الإشعارات محظورة للموقع. اجعلها «سماح» من إعدادات Chrome ثم أعد تحميل الصفحة.';
         return false;
       }
 
-      const webVapidKey = String.fromEnvironment('BARAKAH_WEB_VAPID_KEY');
-
-      final token = kIsWeb && webVapidKey.isNotEmpty
-          ? await FirebaseMessaging.instance.getToken(
-              vapidKey: webVapidKey,
-            )
-          : await FirebaseMessaging.instance.getToken();
+      String? token;
+      Object? lastError;
+      for (var attempt = 0; attempt < 3; attempt++) {
+        try {
+          token = await _getToken();
+          if (token != null && token.isNotEmpty) break;
+        } catch (error) {
+          lastError = error;
+        }
+        await Future<void>.delayed(const Duration(seconds: 2));
+      }
 
       if (token == null || token.isEmpty) {
+        final errorText = lastError?.toString().toLowerCase() ?? '';
+        _permissionFailureMessage = errorText.contains('service worker')
+            ? 'تعذر تشغيل خدمة الإشعارات في الخلفية. أعد تحميل الصفحة ثم حاول مرة أخرى.'
+            : 'تعذر تسجيل هذا المتصفح لدى Firebase. أعد تحميل الصفحة وحاول مرة أخرى.';
         return false;
       }
 
@@ -127,6 +172,12 @@ class AdminNotificationService {
 
       return true;
     } catch (error) {
+      final errorText = error.toString().toLowerCase();
+      _permissionFailureMessage = errorText.contains('permission') ||
+              errorText.contains('denied') ||
+              errorText.contains('blocked')
+          ? 'الإشعارات محظورة للموقع. اجعلها «سماح» من إعدادات Chrome ثم أعد تحميل الصفحة.'
+          : 'تعذر تسجيل إشعارات Chrome. أعد تحميل الصفحة ثم حاول مرة أخرى.';
       debugPrint(
         'تعذر تفعيل إشعارات بركة يدويًا: $error',
       );
@@ -134,8 +185,16 @@ class AdminNotificationService {
     }
   }
 
+  Future<String?> _getToken() => kIsWeb
+      ? FirebaseMessaging.instance.getToken(
+          vapidKey: _webVapidKey,
+          serviceWorkerScriptPath: '/firebase-messaging-sw.js',
+        )
+      : FirebaseMessaging.instance.getToken();
+
   Future<void> dispose() async {
     await _authSubscription?.cancel();
     await _tokenSubscription?.cancel();
+    await _foregroundSubscription?.cancel();
   }
 }

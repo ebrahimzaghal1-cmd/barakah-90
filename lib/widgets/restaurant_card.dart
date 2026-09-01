@@ -18,6 +18,7 @@ class RestaurantCard extends StatelessWidget {
         : restaurant.data() as Map<String, dynamic>? ?? <String, dynamic>{};
     final name = data['title']?.toString() ?? 'بدون اسم';
     final image = data['image']?.toString() ?? '';
+    final imageShape = data['imageShape']?.toString() ?? 'rounded';
     final price = data['price'];
     final rating = data['rating'];
     final businessId =
@@ -49,11 +50,16 @@ class RestaurantCard extends StatelessWidget {
                 ? const ColoredBox(
                     color: Color(0xFFFFF1B8),
                     child: Icon(Icons.image_outlined, size: 46))
-                : Image.network(image,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const ColoredBox(
-                        color: Color(0xFFFFF1B8),
-                        child: Icon(Icons.broken_image_outlined, size: 46))),
+                : ClipRRect(
+                    borderRadius: BorderRadius.circular(
+                      imageShape == 'square' ? 0 : 20,
+                    ),
+                    child: Image.network(image,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const ColoredBox(
+                            color: Color(0xFFFFF1B8),
+                            child: Icon(Icons.broken_image_outlined, size: 46))),
+                  ),
             const Positioned(
                 top: 8,
                 right: 8,

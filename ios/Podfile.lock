@@ -1198,10 +1198,6 @@ PODS:
     - Firebase/Firestore (= 12.17.0)
     - firebase_core
     - Flutter
-  - cloud_functions (6.3.6):
-    - Firebase/Functions (= 12.17.0)
-    - firebase_core
-    - Flutter
   - Firebase/Auth (12.17.0):
     - Firebase/CoreOnly
     - FirebaseAuth (~> 12.17.0)
@@ -1210,9 +1206,6 @@ PODS:
   - Firebase/Firestore (12.17.0):
     - Firebase/CoreOnly
     - FirebaseFirestore (~> 12.17.0)
-  - Firebase/Functions (12.17.0):
-    - Firebase/CoreOnly
-    - FirebaseFunctions (~> 12.17.0)
   - Firebase/Messaging (12.17.0):
     - Firebase/CoreOnly
     - FirebaseMessaging (~> 12.17.0)
@@ -1266,14 +1259,6 @@ PODS:
     - gRPC-Core (~> 1.69.0)
     - leveldb-library (~> 1.22)
     - nanopb (~> 3.30910.0)
-  - FirebaseFunctions (12.17.0):
-    - FirebaseAppCheckInterop (~> 12.17.0)
-    - FirebaseAuthInterop (~> 12.17.0)
-    - FirebaseCore (~> 12.17.0)
-    - FirebaseCoreExtension (~> 12.17.0)
-    - FirebaseMessagingInterop (~> 12.17.0)
-    - FirebaseSharedSwift (~> 12.17.0)
-    - GTMSessionFetcher/Core (< 6.0, >= 3.4)
   - FirebaseInstallations (12.17.0):
     - FirebaseCore (~> 12.17.0)
     - GoogleUtilities/Environment (~> 8.1)
@@ -1288,7 +1273,6 @@ PODS:
     - GoogleUtilities/Reachability (~> 8.1)
     - GoogleUtilities/UserDefaults (~> 8.1)
     - nanopb (~> 3.30910.0)
-  - FirebaseMessagingInterop (12.17.0)
   - FirebaseSharedSwift (12.17.0)
   - Flutter (1.0.0)
   - geolocator_apple (1.2.0):
@@ -1442,7 +1426,6 @@ PODS:
 
 DEPENDENCIES:
   - cloud_firestore (from `.symlinks/plugins/cloud_firestore/ios`)
-  - cloud_functions (from `.symlinks/plugins/cloud_functions/ios`)
   - firebase_auth (from `.symlinks/plugins/firebase_auth/ios`)
   - firebase_core (from `.symlinks/plugins/firebase_core/ios`)
   - firebase_messaging (from `.symlinks/plugins/firebase_messaging/ios`)
@@ -1469,10 +1452,8 @@ SPEC REPOS:
     - FirebaseCoreInternal
     - FirebaseFirestore
     - FirebaseFirestoreInternal
-    - FirebaseFunctions
     - FirebaseInstallations
     - FirebaseMessaging
-    - FirebaseMessagingInterop
     - FirebaseSharedSwift
     - GoogleDataTransport
     - GoogleUtilities
@@ -1487,8 +1468,6 @@ SPEC REPOS:
 EXTERNAL SOURCES:
   cloud_firestore:
     :path: ".symlinks/plugins/cloud_firestore/ios"
-  cloud_functions:
-    :path: ".symlinks/plugins/cloud_functions/ios"
   firebase_auth:
     :path: ".symlinks/plugins/firebase_auth/ios"
   firebase_core:
@@ -1518,7 +1497,6 @@ SPEC CHECKSUMS:
   abseil: a05cc83bf02079535e17169a73c5be5ba47f714b
   BoringSSL-GRPC: dded2a44897e45f28f08ae87a55ee4bcd19bc508
   cloud_firestore: 793e2b414d5ab8ab27ff5568899f7173b62552cc
-  cloud_functions: 2830ef3170b23784800335888af15c6c856ced91
   Firebase: e8400c058702940d53f31fc0653e4e7a06332326
   firebase_auth: 032bb7ccfaf2775681c7a97c45e301b7a78c2df1
   firebase_core: c94f9efeed0ded590b7eecaf6110a374eb865d7a
@@ -1531,10 +1509,8 @@ SPEC CHECKSUMS:
   FirebaseCoreInternal: 3b310521b34a51ce3a6c605e4618b9aef8f6c112
   FirebaseFirestore: dfebd53ce603c93a8514102c9a0b688d2be2bfc2
   FirebaseFirestoreInternal: 99cccc955349efee1652cbe132cf206915e6923d
-  FirebaseFunctions: e2eb75689fe581f80f4a834cb9658b94e97d24a0
   FirebaseInstallations: bd8e80f51d4c8bdc6c872011dede0b800c5b49ea
   FirebaseMessaging: 313d69fe6529c8846813d1660b65d7d38bc16954
-  FirebaseMessagingInterop: d4e6a61aae51b00e5964bd1361cc1848c7bdad05
   FirebaseSharedSwift: 983820e9aa55d2acd6af77f9a1f252ba0afb3150
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   geolocator_apple: ab36aa0e8b7d7a2d7639b3b4e48308394e8cef5e

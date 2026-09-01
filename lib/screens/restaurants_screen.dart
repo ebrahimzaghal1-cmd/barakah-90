@@ -14,6 +14,7 @@ import '../widgets/barakah_media_image.dart';
 import '../widgets/barakah_online_status_button.dart';
 import '../widgets/advertisement_banner.dart';
 import '../services/admin_notification_service.dart';
+import '../services/admin_submission_notification_service.dart';
 import '../services/firebase_state.dart';
 import '../services/analytics_service.dart';
 import '../services/location_service.dart';
@@ -235,7 +236,8 @@ class _RestaurantsScreenState extends State<RestaurantsScreen> {
                                     content: Text(
                                       enabled
                                           ? 'تم تفعيل إشعارات بركة على هذا الجهاز ✅'
-                                          : 'لم يتم تفعيل الإشعارات. تأكد من السماح بها من إعدادات المتصفح أو الجهاز.',
+                                          : AdminNotificationService.instance
+                                              .permissionFailureMessage,
                                     ),
                                     backgroundColor:
                                         enabled ? Colors.green : Colors.orange,
@@ -3042,7 +3044,8 @@ class _BarakahAuctionScreenState extends State<BarakahAuctionScreen> {
                                   );
                                 }
 
-                                await FirebaseFirestore.instance
+                                final auctionRequest = await FirebaseFirestore
+                                    .instance
                                     .collection('auction_requests')
                                     .add({
                                   'userId': user.uid,
@@ -3062,6 +3065,10 @@ class _BarakahAuctionScreenState extends State<BarakahAuctionScreen> {
                                   'createdAt': FieldValue.serverTimestamp(),
                                   'updatedAt': FieldValue.serverTimestamp(),
                                 });
+                                await AdminSubmissionNotificationService.notify(
+                                  type: 'auction_request',
+                                  documentId: auctionRequest.id,
+                                );
 
                                 if (sheetContext.mounted) {
                                   Navigator.pop(

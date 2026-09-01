@@ -32,7 +32,7 @@ dependencies:
   latlong2: ^0.10.1
 
   url_launcher: ^6.3.2
-  share_plus: ^10.1.4
+  share_plus: ^13.3.0
   pdf: ^3.11.3
   printing: ^5.14.2
   web: ^1.1.1

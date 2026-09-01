@@ -11,6 +11,7 @@ class AppTheme {
   static ThemeData get lightTheme => ThemeData(
         useMaterial3: true,
         brightness: Brightness.light,
+        fontFamily: 'Cairo',
         scaffoldBackgroundColor: Colors.transparent,
         colorScheme: ColorScheme.fromSeed(
           seedColor: coolYellow,
@@ -34,25 +35,36 @@ class AppTheme {
           ),
         ),
         textTheme: const TextTheme(
-          displayLarge: TextStyle(color: Colors.black),
-          displayMedium: TextStyle(color: Colors.black),
-          displaySmall: TextStyle(color: Colors.black),
-          headlineLarge: TextStyle(color: Colors.black),
-          headlineMedium: TextStyle(color: Colors.black),
-          headlineSmall: TextStyle(color: Colors.black),
-          titleLarge:
-              TextStyle(color: Colors.black, fontWeight: FontWeight.w800),
-          titleMedium:
-              TextStyle(color: Colors.black, fontWeight: FontWeight.w700),
-          titleSmall: TextStyle(color: Colors.black),
-          bodyLarge:
-              TextStyle(color: Colors.black, fontWeight: FontWeight.w600),
-          bodyMedium:
-              TextStyle(color: Colors.black, fontWeight: FontWeight.w600),
-          bodySmall: TextStyle(color: Colors.black),
-          labelLarge: TextStyle(color: Colors.black),
-          labelMedium: TextStyle(color: Colors.black),
-          labelSmall: TextStyle(color: Colors.black),
+          displayLarge: TextStyle(
+              color: Colors.black, fontSize: 61, fontWeight: FontWeight.w800),
+          displayMedium: TextStyle(
+              color: Colors.black, fontSize: 48, fontWeight: FontWeight.w800),
+          displaySmall: TextStyle(
+              color: Colors.black, fontSize: 39, fontWeight: FontWeight.w800),
+          headlineLarge: TextStyle(
+              color: Colors.black, fontSize: 34, fontWeight: FontWeight.w800),
+          headlineMedium: TextStyle(
+              color: Colors.black, fontSize: 30, fontWeight: FontWeight.w800),
+          headlineSmall: TextStyle(
+              color: Colors.black, fontSize: 26, fontWeight: FontWeight.w800),
+          titleLarge: TextStyle(
+              color: Colors.black, fontSize: 24, fontWeight: FontWeight.w900),
+          titleMedium: TextStyle(
+              color: Colors.black, fontSize: 18, fontWeight: FontWeight.w800),
+          titleSmall: TextStyle(
+              color: Colors.black, fontSize: 15, fontWeight: FontWeight.w700),
+          bodyLarge: TextStyle(
+              color: Colors.black, fontSize: 17, fontWeight: FontWeight.w700),
+          bodyMedium: TextStyle(
+              color: Colors.black, fontSize: 15, fontWeight: FontWeight.w700),
+          bodySmall: TextStyle(
+              color: Colors.black, fontSize: 13, fontWeight: FontWeight.w600),
+          labelLarge: TextStyle(
+              color: Colors.black, fontSize: 15, fontWeight: FontWeight.w800),
+          labelMedium: TextStyle(
+              color: Colors.black, fontSize: 13, fontWeight: FontWeight.w700),
+          labelSmall: TextStyle(
+              color: Colors.black, fontSize: 12, fontWeight: FontWeight.w700),
         ),
         cardTheme: CardThemeData(
           color: Colors.white.withOpacity(.72),

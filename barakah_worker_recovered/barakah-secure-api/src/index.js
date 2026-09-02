@@ -2201,6 +2201,43 @@ async function createOrder(request, env, user) {
   };
 }
 __name(createOrder, "createOrder");
+async function restoreOrderInventory(env, token, order) {
+  if (order?.stockRestored === true) return [];
+  const quantities = new Map();
+  for (const rawItem of Array.isArray(order?.items) ? order.items : []) {
+    const item = rawItem && typeof rawItem === "object" ? rawItem : {};
+    const productId = String(item.productId || "").trim();
+    const quantity = Number(item.quantity);
+    if (!productId || !Number.isInteger(quantity) || quantity < 1) continue;
+    quantities.set(productId, (quantities.get(productId) || 0) + quantity);
+  }
+  const productIds = [...quantities.keys()];
+  const products = await Promise.all(
+    productIds.map((productId) => firestoreGet(
+      env,
+      token,
+      `items/${encodeURIComponent(productId)}`
+    ))
+  );
+  return products.flatMap((product, index) => {
+    if (!product || product.kind !== "product") return [];
+    const stock = Number(product.stock);
+    if (!Number.isInteger(stock)) return [];
+    const productId = productIds[index];
+    const nextStock = Math.max(0, Math.floor(stock) + quantities.get(productId));
+    return [updateWrite(
+      env,
+      `items/${encodeURIComponent(productId)}`,
+      {
+        stock: nextStock,
+        soldOut: nextStock <= 0,
+        updatedAt: /* @__PURE__ */ new Date()
+      },
+      product.updateTime
+    )];
+  });
+}
+__name(restoreOrderInventory, "restoreOrderInventory");
 async function cancelCustomerOrder(env, user, orderId) {
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(orderId)) {
     fail(400, "invalid-order", "\u0631\u0642\u0645 \u0627\u0644\u0637\u0644\u0628 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D.");
@@ -2227,55 +2264,81 @@ async function cancelCustomerOrder(env, user, orderId) {
         0,
         Math.floor(Number(order.barakahPointsUsed || 0))
       );
-      if (pointsUsed2 <= 0 || order.barakahPointsRefunded === true || !order.customerId) {
+      const needsPointRefund = pointsUsed2 > 0 &&
+        order.barakahPointsRefunded !== true &&
+        Boolean(order.customerId);
+      const needsInventoryRestore = order.stockRestored !== true;
+      if (!needsPointRefund && !needsInventoryRestore) {
         return {
           orderId,
           status: "cancelled",
           pointsRefunded: order.barakahPointsRefundedAmount || 0
         };
       }
-      const customer = await firestoreGet(
-        env,
-        token,
-        `users/${encodeURIComponent(order.customerId)}`
-      );
-      if (!customer) {
-        fail(
-          409,
-          "refund-data-missing",
-          "\u062A\u0639\u0630\u0631 \u0642\u0631\u0627\u0621\u0629 \u0631\u0635\u064A\u062F \u0646\u0642\u0627\u0637 \u0628\u0631\u0643\u0629."
+      const writes = [];
+      const orderPatch = { updatedAt: /* @__PURE__ */ new Date() };
+      if (needsPointRefund) {
+        const customer = await firestoreGet(
+          env,
+          token,
+          `users/${encodeURIComponent(order.customerId)}`
         );
+        if (!customer) {
+          fail(
+            409,
+            "refund-data-missing",
+            "\u062A\u0639\u0630\u0631 \u0642\u0631\u0627\u0621\u0629 \u0631\u0635\u064A\u062F \u0646\u0642\u0627\u0637 \u0628\u0631\u0643\u0629."
+          );
+        }
+        const currentPoints = Math.max(
+          0,
+          Math.floor(Number(customer.loyaltyPoints || 0))
+        );
+        writes.push(updateWrite(
+          env,
+          `users/${encodeURIComponent(order.customerId)}`,
+          {
+            loyaltyPoints: currentPoints + pointsUsed2,
+            updatedAt: /* @__PURE__ */ new Date()
+          },
+          customer.updateTime
+        ));
+        writes.push(loyaltyTransactionWrite(
+          env,
+          `order_REFUND_${orderId}`,
+          {
+            customerId: order.customerId,
+            type: "refund",
+            pointsDelta: pointsUsed2,
+            balanceBefore: currentPoints,
+            balanceAfter: currentPoints + pointsUsed2,
+            orderId,
+            orderNumber: order.orderNumber || null,
+            source: "cancelled_order",
+            description: `\u0625\u0631\u062c\u0627\u0639 ${pointsUsed2} \u0646\u0642\u0637\u0629 \u0628\u0639\u062f \u0625\u0644\u063a\u0627\u0621 \u0627\u0644\u0637\u0644\u0628`,
+            metadata: { reason: "cancelled_order" }
+          }
+        ));
+        Object.assign(orderPatch, {
+          barakahPointsRefunded: true,
+          barakahPointsRefundedAmount: pointsUsed2,
+          barakahPointsRefundedAt: /* @__PURE__ */ new Date()
+        });
       }
-      const currentPoints = Math.max(
-        0,
-        Math.floor(Number(customer.loyaltyPoints || 0))
-      );
-      const repairResult = await firestoreCommit(
+      if (needsInventoryRestore) {
+        writes.push(...await restoreOrderInventory(env, token, order));
+        Object.assign(orderPatch, {
+          stockRestored: true,
+          stockRestoredAt: /* @__PURE__ */ new Date()
+        });
+      }
+      writes.push(updateWrite(
         env,
-        token,
-        [
-          updateWrite(
-            env,
-            `users/${encodeURIComponent(order.customerId)}`,
-            {
-              loyaltyPoints: currentPoints + pointsUsed2,
-              updatedAt: /* @__PURE__ */ new Date()
-            },
-            customer.updateTime
-          ),
-          updateWrite(
-            env,
-            `orders/${encodeURIComponent(orderId)}`,
-            {
-              barakahPointsRefunded: true,
-              barakahPointsRefundedAmount: pointsUsed2,
-              barakahPointsRefundedAt: /* @__PURE__ */ new Date(),
-              updatedAt: /* @__PURE__ */ new Date()
-            },
-            order.updateTime
-          )
-        ]
-      );
+        `orders/${encodeURIComponent(orderId)}`,
+        orderPatch,
+        order.updateTime
+      ));
+      const repairResult = await firestoreCommit(env, token, writes);
       if (!repairResult) {
         continue;
       }
@@ -2298,6 +2361,15 @@ async function cancelCustomerOrder(env, user, orderId) {
       Math.floor(Number(order.barakahPointsUsed || 0))
     );
     const writes = [];
+    const orderPatch = {
+      status: "cancelled",
+      cancelledBy: "customer",
+      cancelledAt: /* @__PURE__ */ new Date(),
+      barakahPointsRefunded: pointsUsed > 0 ? true : order.barakahPointsRefunded === true,
+      barakahPointsRefundedAmount: pointsUsed > 0 ? pointsUsed : Number(order.barakahPointsRefundedAmount || 0),
+      ...pointsUsed > 0 ? { barakahPointsRefundedAt: /* @__PURE__ */ new Date() } : {},
+      updatedAt: /* @__PURE__ */ new Date()
+    };
     if (pointsUsed > 0 && order.barakahPointsRefunded !== true && order.customerId) {
       const customer = await firestoreGet(
         env,
@@ -2326,23 +2398,36 @@ async function cancelCustomerOrder(env, user, orderId) {
           customer.updateTime
         )
       );
-    }
-    writes.push(
-      updateWrite(
+      writes.push(loyaltyTransactionWrite(
         env,
-        `orders/${encodeURIComponent(orderId)}`,
+        `order_REFUND_${orderId}`,
         {
-          status: "cancelled",
-          cancelledBy: "customer",
-          cancelledAt: /* @__PURE__ */ new Date(),
-          barakahPointsRefunded: pointsUsed > 0 ? true : order.barakahPointsRefunded === true,
-          barakahPointsRefundedAmount: pointsUsed > 0 ? pointsUsed : Number(order.barakahPointsRefundedAmount || 0),
-          ...pointsUsed > 0 ? { barakahPointsRefundedAt: /* @__PURE__ */ new Date() } : {},
-          updatedAt: /* @__PURE__ */ new Date()
-        },
-        order.updateTime
-      )
-    );
+          customerId: order.customerId,
+          type: "refund",
+          pointsDelta: pointsUsed,
+          balanceBefore: currentPoints,
+          balanceAfter: currentPoints + pointsUsed,
+          orderId,
+          orderNumber: order.orderNumber || null,
+          source: "cancelled_order",
+          description: `\u0625\u0631\u062c\u0627\u0639 ${pointsUsed} \u0646\u0642\u0637\u0629 \u0628\u0639\u062f \u0625\u0644\u063a\u0627\u0621 \u0627\u0644\u0637\u0644\u0628`,
+          metadata: { reason: "cancelled_order" }
+        }
+      ));
+    }
+    if (order.stockRestored !== true) {
+      writes.push(...await restoreOrderInventory(env, token, order));
+      Object.assign(orderPatch, {
+        stockRestored: true,
+        stockRestoredAt: /* @__PURE__ */ new Date()
+      });
+    }
+    writes.push(updateWrite(
+      env,
+      `orders/${encodeURIComponent(orderId)}`,
+      orderPatch,
+      order.updateTime
+    ));
     const result = await firestoreCommit(
       env,
       token,
@@ -2363,6 +2448,26 @@ async function cancelCustomerOrder(env, user, orderId) {
   );
 }
 __name(cancelCustomerOrder, "cancelCustomerOrder");
+function canTransitionOrderStatus(currentStatus, nextStatus, {
+  isAdmin = false,
+  isPickupMerchant = false,
+  isPickupOrder = false
+} = {}) {
+  if (isAdmin && isPickupOrder && currentStatus === "ready" && nextStatus === "delivered") {
+    return true;
+  }
+  const transitions = {
+    new: ["accepted", "rejected"],
+    scheduled: ["accepted", "rejected"],
+    accepted: ["preparing", "rejected"],
+    preparing: ["ready", "rejected"],
+    ready: isPickupMerchant && isPickupOrder ? ["delivered"] : [],
+    driver_assigned: ["picked_up"],
+    picked_up: ["delivered"]
+  };
+  return transitions[currentStatus]?.includes(nextStatus) === true;
+}
+__name(canTransitionOrderStatus, "canTransitionOrderStatus");
 async function updateOrderStatus(request, env, user, orderId) {
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(orderId)) fail(400, "invalid-order", "\u0631\u0642\u0645 \u0627\u0644\u0637\u0644\u0628 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D.");
   const data = await readJson(request);
@@ -2377,58 +2482,75 @@ async function updateOrderStatus(request, env, user, orderId) {
   const isAdmin = actor?.role === "admin";
   const isMerchant = actor?.role === "merchant" && order.businessId && (await firestoreGet(env, token, `items/${encodeURIComponent(order.businessId)}`))?.ownerId === user.uid;
   const isDriver = actor?.role === "driver" && order.driverId === user.uid;
+  const isPickupMerchant = Boolean(isMerchant && order.deliveryMethod === "pickup");
   const merchantStates = /* @__PURE__ */ new Set(["accepted", "preparing", "ready", "rejected"]);
   const driverStates = /* @__PURE__ */ new Set(["picked_up", "delivered"]);
-  if (!isAdmin && !(isMerchant && merchantStates.has(data.status)) && !(isDriver && driverStates.has(data.status))) {
+  if (!isAdmin && !(isMerchant && merchantStates.has(data.status)) && !(isPickupMerchant && data.status === "delivered") && !(isDriver && driverStates.has(data.status))) {
     fail(403, "permission-denied", "\u0644\u0627 \u062A\u0645\u0644\u0643 \u0635\u0644\u0627\u062D\u064A\u0629 \u062A\u063A\u064A\u064A\u0631 \u0647\u0630\u0627 \u0627\u0644\u0637\u0644\u0628.");
   }
-  const transitions = {
-    new: /* @__PURE__ */ new Set(["accepted", "rejected"]),
-    scheduled: /* @__PURE__ */ new Set(["accepted", "rejected"]),
-    accepted: /* @__PURE__ */ new Set(["preparing", "rejected"]),
-    preparing: /* @__PURE__ */ new Set(["ready", "rejected"]),
-    ready: /* @__PURE__ */ new Set([]),
-    driver_assigned: /* @__PURE__ */ new Set(["picked_up"]),
-    picked_up: /* @__PURE__ */ new Set(["delivered"])
-  };
-  const adminTransitions = {
-    new: /* @__PURE__ */ new Set(["accepted", "rejected"]),
-    scheduled: /* @__PURE__ */ new Set(["accepted", "rejected"]),
-    accepted: /* @__PURE__ */ new Set(["preparing", "rejected"]),
-    preparing: /* @__PURE__ */ new Set(["ready", "rejected"]),
-    ready: /* @__PURE__ */ new Set([]),
-    driver_assigned: /* @__PURE__ */ new Set(["picked_up"]),
-    picked_up: /* @__PURE__ */ new Set(["delivered"])
-  };
-  if (isAdmin) {
-    final:
-      if (order.status === "ready" && data.status === "delivered" && order.deliveryMethod === "pickup") {
-      } else if (!adminTransitions[order.status]?.has(data.status)) {
-        fail(
-          409,
-          "invalid-transition",
-          "\u0637\u0644\u0628 \u0627\u0644\u062A\u0648\u0635\u064A\u0644 \u064A\u062C\u0628 \u0623\u0646 \u064A\u0645\u0631 \u0628\u0627\u0644\u0633\u0627\u0626\u0642 \u0642\u0628\u0644 \u062A\u0623\u0643\u064A\u062F \u0627\u0644\u062A\u0633\u0644\u064A\u0645."
-        );
-      }
-  } else if (!transitions[order.status]?.has(data.status)) {
+  if (!canTransitionOrderStatus(order.status, data.status, {
+    isAdmin,
+    isPickupMerchant,
+    isPickupOrder: order.deliveryMethod === "pickup"
+  })) {
+    if (isAdmin && data.status === "delivered") {
+      fail(
+        409,
+        "invalid-transition",
+        "\u0637\u0644\u0628 \u0627\u0644\u062A\u0648\u0635\u064A\u0644 \u064A\u062C\u0628 \u0623\u0646 \u064A\u0645\u0631 \u0628\u0627\u0644\u0633\u0627\u0626\u0642 \u0642\u0628\u0644 \u062A\u0623\u0643\u064A\u062F \u0627\u0644\u062A\u0633\u0644\u064A\u0645."
+      );
+    }
     fail(409, "invalid-transition", "\u0644\u0627 \u064A\u0645\u0643\u0646 \u0646\u0642\u0644 \u0627\u0644\u0637\u0644\u0628 \u0625\u0644\u0649 \u0647\u0630\u0647 \u0627\u0644\u062D\u0627\u0644\u0629 \u0627\u0644\u0622\u0646.");
   }
   if (order.status === "scheduled" && order.scheduledFor && Date.parse(order.scheduledFor) > Date.now() && !isAdmin) {
     fail(409, "scheduled-order", "\u0644\u0645 \u064A\u062D\u0646 \u0645\u0648\u0639\u062F \u0627\u0644\u0637\u0644\u0628 \u0627\u0644\u0645\u062C\u062F\u0648\u0644 \u0628\u0639\u062F.");
   }
   if (data.status === "ready") {
-    return publishOrderToDrivers(env, token, order, orderId);
+    const result = await publishOrderToDrivers(env, token, order, orderId);
+    try {
+      await notifyCustomerOrderStatus(
+        env,
+        token,
+        { ...order, status: "ready" },
+        orderId,
+        "ready"
+      );
+    } catch (error) {
+      console.error(
+        "customer_status_notification_failed",
+        error.message
+      );
+    }
+    return result;
   }
   if (data.status === "delivered") {
-    return completeDelivery(env, token, order, orderId, user.uid, isAdmin);
+    return completeDelivery(
+      env,
+      token,
+      order,
+      orderId,
+      user.uid,
+      isAdmin,
+      isPickupMerchant
+    );
   }
   const timestampField = data.status === "accepted" ? { acceptedAt: /* @__PURE__ */ new Date() } : {};
-  const result = await firestoreCommit(env, token, [updateWrite(
+  const orderPatch = { status: data.status, updatedAt: /* @__PURE__ */ new Date(), ...timestampField };
+  const writes = [];
+  if (data.status === "rejected" && order.stockRestored !== true) {
+    writes.push(...await restoreOrderInventory(env, token, order));
+    Object.assign(orderPatch, {
+      stockRestored: true,
+      stockRestoredAt: /* @__PURE__ */ new Date()
+    });
+  }
+  writes.push(updateWrite(
     env,
     `orders/${encodeURIComponent(orderId)}`,
-    { status: data.status, updatedAt: /* @__PURE__ */ new Date(), ...timestampField },
+    orderPatch,
     order.updateTime
-  )]);
+  ));
+  const result = await firestoreCommit(env, token, writes);
   if (!result) {
     fail(
       409,
@@ -2708,6 +2830,20 @@ async function claimDriverOrder(env, user, orderId) {
   if (!result) {
     fail(409, "order-taken", "\u0633\u0628\u0642 \u0623\u0646 \u0627\u0633\u062A\u0644\u0645 \u0633\u0627\u0626\u0642 \u0622\u062E\u0631 \u0647\u0630\u0627 \u0627\u0644\u0637\u0644\u0628.");
   }
+  try {
+    await notifyCustomerOrderStatus(
+      env,
+      token,
+      { ...order, status: "driver_assigned", driverId: user.uid },
+      orderId,
+      "driver_assigned"
+    );
+  } catch (error) {
+    console.error(
+      "customer_status_notification_failed",
+      error.message
+    );
+  }
   console.log("DRIVER_CLAIM_RESULT", {
     orderId,
     driverId: user.uid
@@ -2719,15 +2855,18 @@ async function claimDriverOrder(env, user, orderId) {
   };
 }
 __name(claimDriverOrder, "claimDriverOrder");
-async function completeDelivery(env, token, initialOrder, orderId, actorId, isAdmin = false) {
+async function completeDelivery(env, token, initialOrder, orderId, actorId, isAdmin = false, isPickupMerchant = false) {
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const order = attempt === 0 ? initialOrder : await firestoreGet(env, token, `orders/${encodeURIComponent(orderId)}`);
     if (!order) fail(404, "order-not-found", "\u0627\u0644\u0637\u0644\u0628 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F.");
     if (order.rewardGranted === true && order.status === "delivered") {
       return { orderId, status: "delivered", repeated: true };
     }
-    if (!isAdmin && (order.driverId !== actorId || order.status !== "picked_up")) {
+    if (!isAdmin && !isPickupMerchant && (order.driverId !== actorId || order.status !== "picked_up")) {
       fail(409, "invalid-transition", "\u0644\u0627 \u064A\u0645\u0643\u0646 \u0625\u062A\u0645\u0627\u0645 \u0647\u0630\u0627 \u0627\u0644\u0637\u0644\u0628 \u0627\u0644\u0622\u0646.");
+    }
+    if (isPickupMerchant && (order.deliveryMethod !== "pickup" || order.status !== "ready")) {
+      fail(409, "invalid-transition", "لا يمكن إنهاء طلب الاستلام قبل تجهيزه.");
     }
     const assignedDriverId = String(order.driverId || "").trim();
     const [customer, settings, driver] = await Promise.all([
@@ -3081,6 +3220,7 @@ function finiteOrNull(value) {
 __name(finiteOrNull, "finiteOrNull");
 export {
   canUploadMedia,
+  canTransitionOrderStatus,
   createImageKitSignature,
   index_default as default
 };

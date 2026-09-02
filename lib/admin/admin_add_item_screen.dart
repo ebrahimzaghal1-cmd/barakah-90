@@ -40,6 +40,11 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
   final TextEditingController websiteController = TextEditingController();
   final TextEditingController preparationController =
       TextEditingController(text: '30');
+  final TextEditingController doctorSpecialtyController =
+      TextEditingController();
+  final TextEditingController doctorLicenseController = TextEditingController();
+  final TextEditingController doctorFeeController =
+      TextEditingController(text: '0');
   final ImagePicker _imagePicker = ImagePicker();
 
   String selectedType = 'restaurant';
@@ -56,6 +61,8 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
         (selectedCategory ?? '').replaceAll(RegExp(r'\s+'), '').toLowerCase();
     return category.contains('وسيط') || category.contains('وسطاء');
   }
+
+  bool get _isDoctor => selectedType == 'doctor';
 
   @override
   void initState() {
@@ -79,6 +86,9 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
     whatsappController.dispose();
     websiteController.dispose();
     preparationController.dispose();
+    doctorSpecialtyController.dispose();
+    doctorLicenseController.dispose();
+    doctorFeeController.dispose();
     super.dispose();
   }
 
@@ -147,8 +157,10 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
         'title': titleController.text.trim(),
         'description': descriptionController.text.trim(),
         'image': imageUrl,
-        'category': selectedCategory ?? '',
+        'category': _isDoctor ? 'صحة' : (selectedCategory ?? ''),
         'type': selectedType,
+        if (_isDoctor) 'merchantType': 'doctor',
+        if (_isDoctor) 'activityType': 'طبيب',
         // هذا سجل محل/مطعم. الأسعار تخص منتجاته فقط ولا تحفظ هنا.
         'kind': _isAgentCategory ? 'agent' : 'business',
         'rating': num.tryParse(ratingController.text.trim()) ?? 0,
@@ -158,6 +170,17 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
         'businessStatus': 'open',
         'preparationMinutes':
             int.tryParse(preparationController.text.trim()) ?? 30,
+        if (_isDoctor) ...{
+          'doctorSpecialty': doctorSpecialtyController.text.trim(),
+          'doctorLicense': doctorLicenseController.text.trim(),
+          'consultationFee': num.tryParse(doctorFeeController.text.trim()) ?? 0,
+          'doctorConsultationFee':
+              num.tryParse(doctorFeeController.text.trim()) ?? 0,
+          'appointmentSlotMinutes':
+              int.tryParse(preparationController.text.trim()) ?? 30,
+          'openingTime': '09:00',
+          'closingTime': '17:00',
+        },
         if (hasDeliveryOffer)
           'deliveryFee': num.tryParse(deliveryFeeController.text.trim()) ?? 0,
         'createdAt': Timestamp.now(),
@@ -207,6 +230,9 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
       instagramController.clear();
       whatsappController.clear();
       websiteController.clear();
+      doctorSpecialtyController.clear();
+      doctorLicenseController.clear();
+      doctorFeeController.text = '0';
 
       setState(() {
         selectedType = 'restaurant';
@@ -276,7 +302,7 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
         elevation: 0,
         centerTitle: true,
         title: const Text(
-          'إضافة مطعم / متجر',
+          'إضافة مطعم / متجر / طبيب',
           style: TextStyle(
             color: Colors.black,
             fontWeight: FontWeight.bold,
@@ -320,6 +346,10 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
                       value: 'market',
                       child: Text('ماركت'),
                     ),
+                    DropdownMenuItem(
+                      value: 'doctor',
+                      child: Text('طبيب / عيادة'),
+                    ),
                   ],
                   onChanged: (value) {
                     if (value != null) {
@@ -334,7 +364,7 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
                 TextFormField(
                   controller: titleController,
                   decoration: InputDecoration(
-                    labelText: 'الاسم',
+                    labelText: _isDoctor ? 'اسم العيادة' : 'اسم المطعم / المحل',
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
@@ -350,7 +380,7 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
                 TextFormField(
                   controller: descriptionController,
                   decoration: InputDecoration(
-                    labelText: 'الوصف',
+                    labelText: _isDoctor ? 'نبذة عن الطبيب والعيادة' : 'الوصف',
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
@@ -363,14 +393,75 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
                   },
                 ),
                 const SizedBox(height: 16),
-                _CategoryPicker(
-                  collectionName: selectedType == 'market'
-                      ? 'market_categories'
-                      : 'restaurant_categories',
-                  value: selectedCategory,
-                  onChanged: (value) =>
-                      setState(() => selectedCategory = value),
-                ),
+                if (_isDoctor) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEAF3FF),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFB9D6FA)),
+                    ),
+                    child: const Text(
+                      'سيظهر هذا الطبيب داخل تبويب الصحة وعلى الخريطة. حددي موقع العيادة أسفل النموذج ليتمكن المرضى من العثور عليه وحجز موعد.',
+                      textAlign: TextAlign.right,
+                      style:
+                          TextStyle(fontWeight: FontWeight.w700, height: 1.5),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: doctorSpecialtyController,
+                    decoration: InputDecoration(
+                      labelText: 'التخصص الطبي',
+                      prefixIcon: const Icon(Icons.medical_services_outlined),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    validator: (value) =>
+                        _isDoctor && (value == null || value.trim().isEmpty)
+                            ? 'أدخلي التخصص الطبي'
+                            : null,
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: doctorLicenseController,
+                    decoration: InputDecoration(
+                      labelText: 'رقم ترخيص مزاولة المهنة',
+                      prefixIcon: const Icon(Icons.verified_user_outlined),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    validator: (value) =>
+                        _isDoctor && (value == null || value.trim().isEmpty)
+                            ? 'أدخلي رقم الترخيص'
+                            : null,
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: doctorFeeController,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: 'سعر الاستشارة (₪)',
+                      prefixIcon: const Icon(Icons.payments_outlined),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+                ] else
+                  _CategoryPicker(
+                    collectionName: selectedType == 'market'
+                        ? 'market_categories'
+                        : 'restaurant_categories',
+                    value: selectedCategory,
+                    onChanged: (value) =>
+                        setState(() => selectedCategory = value),
+                  ),
                 if (_isAgentCategory) ...[
                   const SizedBox(height: 16),
                   TextFormField(
@@ -452,15 +543,17 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Text(
-                        'تفويض صاحب المحل',
-                        style: TextStyle(
+                      Text(
+                        _isDoctor ? 'تفويض الطبيب' : 'تفويض صاحب المحل',
+                        style: const TextStyle(
                             fontSize: 17, fontWeight: FontWeight.w900),
                       ),
                       const SizedBox(height: 6),
-                      const Text(
-                        'يسجل صاحب المحل حسابًا عاديًا أولاً، ثم تربطينه هنا. بعدها يشاهد محله ومنتجاته وطلباته فقط.',
-                        style: TextStyle(fontWeight: FontWeight.w600),
+                      Text(
+                        _isDoctor
+                            ? 'يسجل الطبيب حسابًا عاديًا أولاً، ثم تربطينه هنا ليشاهد عيادته والحجوزات والاستشارات فقط.'
+                            : 'يسجل صاحب المحل حسابًا عاديًا أولاً، ثم تربطينه هنا. بعدها يشاهد محله ومنتجاته وطلباته فقط.',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 12),
                       TextFormField(
@@ -468,7 +561,9 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
                         keyboardType: TextInputType.emailAddress,
                         autocorrect: false,
                         decoration: InputDecoration(
-                          labelText: 'بريد حساب صاحب المحل',
+                          labelText: _isDoctor
+                              ? 'بريد حساب الطبيب'
+                              : 'بريد حساب صاحب المحل',
                           hintText: 'example@gmail.com',
                           prefixIcon:
                               const Icon(Icons.manage_accounts_outlined),

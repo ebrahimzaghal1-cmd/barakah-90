@@ -432,7 +432,8 @@ class _RestaurantsScreenState extends State<RestaurantsScreen> {
                           final isRestaurant = type == null ||
                               type.isEmpty ||
                               type == 'restaurant' ||
-                              type == 'restaurants';
+                              type == 'restaurants' ||
+                              type == 'barber';
 
                           if (!isRestaurant) {
                             return false;
@@ -1098,7 +1099,8 @@ class _RestaurantsQuickRow extends StatelessWidget {
             return type == null ||
                 type.isEmpty ||
                 type == 'restaurant' ||
-                type == 'restaurants';
+                type == 'restaurants' ||
+                type == 'barber';
           }).toList();
 
           if (restaurants.isEmpty) {
@@ -2016,8 +2018,9 @@ class _NearbyPlacesScreenState extends State<_NearbyPlacesScreen> {
                           final type = data['type']?.toString().toLowerCase();
                           final isBusiness =
                               data['kind']?.toString() != 'product';
-                          final isRestaurant =
-                              type == null || type == 'restaurant';
+                          final isRestaurant = type == null ||
+                              type == 'restaurant' ||
+                              type == 'barber';
                           return isBusiness &&
                               isRestaurant &&
                               _distanceFor(data) != null;

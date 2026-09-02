@@ -30,6 +30,13 @@ class _PartnerRegistrationScreenState extends State<PartnerRegistrationScreen> {
   final _area = TextEditingController();
   final _description = TextEditingController();
   final _locationUrl = TextEditingController();
+  final _barberServices = TextEditingController();
+  final _barberOpeningTime = TextEditingController(text: '09:00');
+  final _barberClosingTime = TextEditingController(text: '21:00');
+  final _barberSlotMinutes = TextEditingController(text: '30');
+  final _doctorSpecialty = TextEditingController();
+  final _doctorLicense = TextEditingController();
+  final _doctorConsultationFee = TextEditingController(text: '0');
 
   final _payoutOwnerName = TextEditingController();
   final _payoutMethod = TextEditingController();
@@ -60,6 +67,8 @@ class _PartnerRegistrationScreenState extends State<PartnerRegistrationScreen> {
     'أسماك',
     'صيدلية',
     'متجر',
+    'حلاق',
+    'طبيب',
     'أخرى',
   ];
 
@@ -73,6 +82,13 @@ class _PartnerRegistrationScreenState extends State<PartnerRegistrationScreen> {
     _area.dispose();
     _description.dispose();
     _locationUrl.dispose();
+    _barberServices.dispose();
+    _barberOpeningTime.dispose();
+    _barberClosingTime.dispose();
+    _barberSlotMinutes.dispose();
+    _doctorSpecialty.dispose();
+    _doctorLicense.dispose();
+    _doctorConsultationFee.dispose();
     _payoutOwnerName.dispose();
     _payoutMethod.dispose();
     _payoutAccount.dispose();
@@ -154,6 +170,19 @@ class _PartnerRegistrationScreenState extends State<PartnerRegistrationScreen> {
               'area': _area.text.trim(),
               'description': _description.text.trim(),
               'locationUrl': _locationUrl.text.trim(),
+              if (_activityType == 'حلاق') ...{
+                'barberServices': _parseBarberServices(),
+                'barberOpeningTime': _barberOpeningTime.text.trim(),
+                'barberClosingTime': _barberClosingTime.text.trim(),
+                'barberSlotMinutes':
+                    int.tryParse(_barberSlotMinutes.text.trim()) ?? 30,
+              },
+              if (_activityType == 'طبيب') ...{
+                'doctorSpecialty': _doctorSpecialty.text.trim(),
+                'doctorLicense': _doctorLicense.text.trim(),
+                'doctorConsultationFee':
+                    num.tryParse(_doctorConsultationFee.text.trim()) ?? 0,
+              },
               'latitude': _latitude,
               'longitude': _longitude,
               'payoutOwnerName': _payoutOwnerName.text.trim(),
@@ -163,7 +192,7 @@ class _PartnerRegistrationScreenState extends State<PartnerRegistrationScreen> {
               'businessDocumentRef': _businessDocumentRef.text.trim(),
               'payoutDocumentRef': _payoutDocumentRef.text.trim(),
               'commissionRate': _defaultCommissionRate,
-              'commissionAppliesTo': 'products_only',
+              'commissionAppliesTo': 'products_and_bookings',
               'subscriptionFee': 0,
               'acceptedPartnerAgreement': true,
               'acceptedPrivacyPolicy': true,
@@ -284,7 +313,7 @@ class _PartnerRegistrationScreenState extends State<PartnerRegistrationScreen> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'بدون رسوم اشتراك • عمولة بركة الافتراضية 10% من قيمة المنتجات في الطلب المكتمل فقط',
+                'بدون رسوم اشتراك • عمولة بركة 10% على الطلبات والحجوزات المكتملة',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: AppTheme.coolYellow,
@@ -315,21 +344,153 @@ class _PartnerRegistrationScreenState extends State<PartnerRegistrationScreen> {
             key: _formKey,
             child: Column(
               children: [
-                _sectionTitle('بيانات المتجر'),
+                _sectionTitle(
+                  _activityType == 'طبيب' ? 'بيانات العيادة' : 'بيانات المتجر',
+                ),
+                if (_activityType == 'طبيب') ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEAF3FF),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFB9D6FA)),
+                    ),
+                    child: const Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.local_hospital_rounded,
+                            color: AppTheme.navy),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'سيظهر الطبيب في تبويب الصحة وعلى الخريطة، ويستطيع المرضى فتح صفحة العيادة وحجز موعد أو إرسال استشارة.',
+                            textAlign: TextAlign.right,
+                            style: TextStyle(
+                                height: 1.5, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 TextFormField(
                   controller: _businessName,
                   validator: _required,
-                  decoration: const InputDecoration(
-                    labelText: 'اسم المطعم / المحل',
+                  decoration: InputDecoration(
+                    labelText: _activityType == 'طبيب'
+                        ? 'اسم العيادة'
+                        : 'اسم المطعم / المحل',
                     prefixIcon: Icon(Icons.storefront_rounded),
                   ),
                 ),
                 const SizedBox(height: 12),
+                if (_activityType == 'حلاق') ...[
+                  _sectionTitle('إعدادات مواعيد الحلاق'),
+                  const Text(
+                    'اكتبي كل خدمة في سطر بهذا الشكل: اسم الخدمة : السعر : المدة بالدقائق',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(color: Colors.black54, height: 1.5),
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: _barberServices,
+                    maxLines: 4,
+                    validator: (value) =>
+                        _activityType == 'حلاق' ? _required(value) : null,
+                    decoration: const InputDecoration(
+                      labelText: 'الخدمات والأسعار *',
+                      hintText: 'حلاقة شعر : 30 : 30\nلحية : 15 : 15',
+                      prefixIcon: Icon(Icons.content_cut_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: _barberOpeningTime,
+                          validator: _activityType == 'حلاق' ? _required : null,
+                          decoration: const InputDecoration(
+                            labelText: 'بداية الدوام',
+                            hintText: '09:00',
+                            prefixIcon: Icon(Icons.login_rounded),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _barberClosingTime,
+                          validator: _activityType == 'حلاق' ? _required : null,
+                          decoration: const InputDecoration(
+                            labelText: 'نهاية الدوام',
+                            hintText: '21:00',
+                            prefixIcon: Icon(Icons.logout_rounded),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _barberSlotMinutes,
+                    keyboardType: TextInputType.number,
+                    validator: (value) {
+                      if (_activityType != 'حلاق') return null;
+                      final minutes = int.tryParse(value?.trim() ?? '');
+                      return minutes == null || minutes < 10 || minutes > 240
+                          ? 'المدة بين 10 و240 دقيقة'
+                          : null;
+                    },
+                    decoration: const InputDecoration(
+                      labelText: 'مدة الموعد الافتراضية بالدقائق',
+                      prefixIcon: Icon(Icons.timer_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                ],
+                if (_activityType == 'طبيب') ...[
+                  _sectionTitle('بيانات العيادة والطبيب'),
+                  TextFormField(
+                    controller: _doctorSpecialty,
+                    validator: _required,
+                    decoration: const InputDecoration(
+                      labelText: 'التخصص الطبي *',
+                      hintText: 'طب أسنان، أطفال، جلدية...',
+                      prefixIcon: Icon(Icons.medical_services_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _doctorLicense,
+                    validator: _required,
+                    decoration: const InputDecoration(
+                      labelText: 'رقم ترخيص مزاولة المهنة *',
+                      prefixIcon: Icon(Icons.verified_user_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _doctorConsultationFee,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                      labelText: 'سعر الاستشارة (اختياري)',
+                      suffixText: '₪',
+                      prefixIcon: Icon(Icons.payments_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                ],
                 TextFormField(
                   controller: _ownerName,
                   validator: _required,
-                  decoration: const InputDecoration(
-                    labelText: 'اسم صاحب المحل / المسؤول',
+                  decoration: InputDecoration(
+                    labelText: _activityType == 'طبيب'
+                        ? 'اسم الطبيب المسؤول'
+                        : 'اسم صاحب المحل / المسؤول',
                     prefixIcon: Icon(Icons.person_outline_rounded),
                   ),
                 ),
@@ -338,7 +499,7 @@ class _PartnerRegistrationScreenState extends State<PartnerRegistrationScreen> {
                   controller: _email,
                   validator: _emailValidator,
                   keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'البريد الإلكتروني',
                     prefixIcon: Icon(Icons.email_outlined),
                   ),
@@ -382,7 +543,7 @@ class _PartnerRegistrationScreenState extends State<PartnerRegistrationScreen> {
                     if (value != null) {
                       setState(() {
                         _activityType = value;
-                        _businessCategory = null;
+                        _businessCategory = value == 'طبيب' ? 'صحة' : null;
                       });
                     }
                   },
@@ -405,6 +566,14 @@ class _PartnerRegistrationScreenState extends State<PartnerRegistrationScreen> {
                         .toSet()
                         .toList()
                       ..sort();
+                    if (_activityType == 'حلاق' &&
+                        !categories.contains('حلاق')) {
+                      categories.insert(0, 'حلاق');
+                    }
+                    if (_activityType == 'طبيب' &&
+                        !categories.contains('صحة')) {
+                      categories.insert(0, 'صحة');
+                    }
 
                     return DropdownButtonFormField<String>(
                       value: categories.contains(_businessCategory)
@@ -496,8 +665,10 @@ class _PartnerRegistrationScreenState extends State<PartnerRegistrationScreen> {
                 TextFormField(
                   controller: _description,
                   maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: 'وصف مختصر عن المحل',
+                  decoration: InputDecoration(
+                    labelText: _activityType == 'طبيب'
+                        ? 'نبذة عن الطبيب والعيادة'
+                        : 'وصف مختصر عن المحل',
                     prefixIcon: Icon(Icons.notes_rounded),
                   ),
                 ),
@@ -583,7 +754,7 @@ class _PartnerRegistrationScreenState extends State<PartnerRegistrationScreen> {
                   ),
                   child: const Text(
                     'العمولة الافتراضية: 10%\n'
-                    'تُحسب على قيمة المنتجات في الطلب المكتمل فقط.\n'
+                    'تُحسب على قيمة المنتجات أو الحجز المكتمل فقط.\n'
                     'لا رسوم اشتراك ولا عمولة على رسوم التوصيل أو الطلب الملغي.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
@@ -710,5 +881,29 @@ class _PartnerRegistrationScreenState extends State<PartnerRegistrationScreen> {
         ],
       ),
     );
+  }
+
+  List<Map<String, dynamic>> _parseBarberServices() {
+    return _barberServices.text
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .map((line) {
+          final parts = line.split(':').map((part) => part.trim()).toList();
+          final title = parts.first;
+          final price = parts.length > 1
+              ? num.tryParse(parts[1].replaceAll(',', '.')) ?? 0
+              : 0;
+          final duration = parts.length > 2
+              ? int.tryParse(parts[2]) ?? 30
+              : int.tryParse(_barberSlotMinutes.text.trim()) ?? 30;
+          return <String, dynamic>{
+            'title': title,
+            'price': price,
+            'durationMinutes': duration,
+          };
+        })
+        .where((service) => (service['title'] as String).length >= 2)
+        .toList();
   }
 }

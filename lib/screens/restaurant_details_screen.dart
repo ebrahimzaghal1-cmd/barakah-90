@@ -11,6 +11,7 @@ import '../services/cart_service.dart';
 import '../widgets/barakah_brand.dart';
 import '../widgets/business_rating.dart';
 import '../widgets/favorite_button.dart';
+import '../widgets/barber_booking_section.dart';
 
 class RestaurantDetailsScreen extends StatelessWidget {
   const RestaurantDetailsScreen({super.key, required this.restaurant});
@@ -36,6 +37,19 @@ class RestaurantDetailsScreen extends StatelessWidget {
     final latitude = (data['latitude'] as num?)?.toDouble();
     final longitude = (data['longitude'] as num?)?.toDouble();
     final isAgent = data['kind']?.toString() == 'agent';
+    final typeValue = data['type']?.toString().toLowerCase().trim() ?? '';
+    final merchantType =
+        data['merchantType']?.toString().toLowerCase().trim() ?? '';
+    final categoryValue =
+        data['category']?.toString().toLowerCase().trim() ?? '';
+    final activityValue =
+        data['activityType']?.toString().toLowerCase().trim() ?? '';
+    final isBarber = typeValue == 'barber' ||
+        merchantType == 'barber' ||
+        categoryValue.contains('حلاق') ||
+        categoryValue.contains('barber') ||
+        activityValue.contains('حلاق') ||
+        activityValue.contains('barber');
     final agentPhone = data['agentPhone']?.toString().trim() ?? '';
     final agentLocation = data['agentLocation']?.toString().trim() ?? '';
 
@@ -177,16 +191,35 @@ class RestaurantDetailsScreen extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 30),
-                      const Text(
-                        'المنتجات والأسعار',
-                        style: TextStyle(
-                          color: AppTheme.ink,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
+                      if (isBarber) ...[
+                        const Text(
+                          'منتجات المحل',
+                          style: TextStyle(
+                            color: AppTheme.ink,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      _BusinessProducts(businessId: _businessId!),
+                        const SizedBox(height: 12),
+                        _BusinessProducts(
+                            businessId: _businessId!, horizontal: true),
+                        const SizedBox(height: 28),
+                        BarberBookingSection(
+                          businessId: _businessId!,
+                          business: data,
+                        ),
+                      ] else ...[
+                        const Text(
+                          'المنتجات والأسعار',
+                          style: TextStyle(
+                            color: AppTheme.ink,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        _BusinessProducts(businessId: _businessId!),
+                      ],
                     ],
                   ],
                 ),
@@ -236,8 +269,9 @@ class RestaurantDetailsScreen extends StatelessWidget {
 }
 
 class _BusinessProducts extends StatelessWidget {
-  const _BusinessProducts({required this.businessId});
+  const _BusinessProducts({required this.businessId, this.horizontal = false});
   final String businessId;
+  final bool horizontal;
 
   @override
   Widget build(BuildContext context) =>
@@ -266,113 +300,124 @@ class _BusinessProducts extends StatelessWidget {
               ),
             );
           }
-          return Column(
-            children: products.map((product) {
-              final data = product.data();
-              final image = data['image']?.toString() ?? '';
-              final title = data['title']?.toString() ?? 'منتج';
-              final description = data['description']?.toString() ?? '';
-              final price = data['price'] ?? 0;
-              return Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(.82),
-                    borderRadius: BorderRadius.circular(18),
-                    border:
-                        Border.all(color: AppTheme.coolYellow.withOpacity(.6))),
-                child: Row(children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: SizedBox(
-                      width: 72,
-                      height: 72,
-                      child: image.isEmpty
-                          ? const ColoredBox(
-                              color: AppTheme.coolYellow,
-                              child: Icon(Icons.fastfood_rounded))
-                          : Image.network(image,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => const ColoredBox(
-                                  color: AppTheme.coolYellow,
-                                  child: Icon(Icons.broken_image_outlined))),
-                    ),
+          final cards = products.map((product) {
+            final data = product.data();
+            final image = data['image']?.toString() ?? '';
+            final title = data['title']?.toString() ?? 'منتج';
+            final description = data['description']?.toString() ?? '';
+            final price = data['price'] ?? 0;
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(.82),
+                  borderRadius: BorderRadius.circular(18),
+                  border:
+                      Border.all(color: AppTheme.coolYellow.withOpacity(.6))),
+              child: Row(children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: SizedBox(
+                    width: 72,
+                    height: 72,
+                    child: image.isEmpty
+                        ? const ColoredBox(
+                            color: AppTheme.coolYellow,
+                            child: Icon(Icons.fastfood_rounded))
+                        : Image.network(image,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const ColoredBox(
+                                color: AppTheme.coolYellow,
+                                child: Icon(Icons.broken_image_outlined))),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(title,
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w900)),
-                          if (description.isNotEmpty)
-                            Text(description,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(color: Colors.black54)),
-                          const SizedBox(height: 5),
-                          Text('$price ₪',
-                              style: const TextStyle(
-                                  color: AppTheme.deepYellow,
-                                  fontWeight: FontWeight.w900)),
-                          const SizedBox(height: 4),
-                          BusinessRating(
-                            businessId: product.id,
-                            fallbackRating: data['rating'],
-                            compact: true,
-                          ),
-                        ]),
-                  ),
-                  IconButton(
-                    tooltip: 'قيّم الصنف',
-                    color: const Color(0xFFFFB800),
-                    icon: const Icon(Icons.star_rate_rounded),
-                    onPressed: () => showModalBottomSheet<void>(
-                      context: context,
-                      builder: (_) => SafeArea(
-                        child: Padding(
-                          padding: const EdgeInsets.all(18),
-                          child: RateBusinessButton(
-                            businessId: product.id,
-                            businessName: title,
-                          ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(title,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w900)),
+                        if (description.isNotEmpty)
+                          Text(description,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: Colors.black54)),
+                        const SizedBox(height: 5),
+                        Text('$price ₪',
+                            style: const TextStyle(
+                                color: AppTheme.deepYellow,
+                                fontWeight: FontWeight.w900)),
+                        const SizedBox(height: 4),
+                        BusinessRating(
+                          businessId: product.id,
+                          fallbackRating: data['rating'],
+                          compact: true,
+                        ),
+                      ]),
+                ),
+                IconButton(
+                  tooltip: 'قيّم الصنف',
+                  color: const Color(0xFFFFB800),
+                  icon: const Icon(Icons.star_rate_rounded),
+                  onPressed: () => showModalBottomSheet<void>(
+                    context: context,
+                    builder: (_) => SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.all(18),
+                        child: RateBusinessButton(
+                          businessId: product.id,
+                          businessName: title,
                         ),
                       ),
                     ),
                   ),
-                  FavoriteButton(
-                    itemId: product.id,
-                    item: data,
-                    backgroundColor: AppTheme.navy,
-                  ),
-                  const SizedBox(width: 4),
-                  IconButton.filled(
-                    style: IconButton.styleFrom(
-                        backgroundColor: AppTheme.deepYellow,
-                        foregroundColor: Colors.white),
-                    tooltip: 'أضف للسلة',
-                    icon: const Icon(Icons.add_shopping_cart_rounded),
-                    onPressed: () {
-                      try {
-                        CartService.instance.addProduct(product.id, data);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('تمت إضافة $title إلى السلة')),
-                        );
-                      } on StateError catch (error) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(error.message.toString()),
-                            backgroundColor: Colors.orange,
-                          ),
-                        );
-                      }
-                    },
-                  ),
-                ]),
-              );
-            }).toList(),
-          );
+                ),
+                FavoriteButton(
+                  itemId: product.id,
+                  item: data,
+                  backgroundColor: AppTheme.navy,
+                ),
+                const SizedBox(width: 4),
+                IconButton.filled(
+                  style: IconButton.styleFrom(
+                      backgroundColor: AppTheme.deepYellow,
+                      foregroundColor: Colors.white),
+                  tooltip: 'أضف للسلة',
+                  icon: const Icon(Icons.add_shopping_cart_rounded),
+                  onPressed: () {
+                    try {
+                      CartService.instance.addProduct(product.id, data);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('تمت إضافة $title إلى السلة')),
+                      );
+                    } on StateError catch (error) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(error.message.toString()),
+                          backgroundColor: Colors.orange,
+                        ),
+                      );
+                    }
+                  },
+                ),
+              ]),
+            );
+          }).toList();
+          if (horizontal) {
+            return SizedBox(
+              height: 190,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: cards.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                itemBuilder: (_, index) =>
+                    SizedBox(width: 330, child: cards[index]),
+              ),
+            );
+          }
+          return Column(children: cards);
         },
       );
 }

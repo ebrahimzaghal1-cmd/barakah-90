@@ -37,46 +37,62 @@ class AdminNotificationService {
 
   Future<void> initialize() async {
     if (_initialized) return;
-    _initialized = true;
 
-    // iOS push registration is attempted whenever Firebase Messaging is
-    // available. The signed iOS target must include the Push Notifications
-    // capability and an aps-environment entitlement.
-
-    if (!kIsWeb) {
-      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-      await FirebaseMessaging.instance.setAutoInitEnabled(true);
-      await FirebaseMessaging.instance
-          .setForegroundNotificationPresentationOptions(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
-    }
-
-    _authSubscription =
-        FirebaseAuth.instance.authStateChanges().listen(_handleUserChanged);
-    _tokenSubscription =
-        FirebaseMessaging.instance.onTokenRefresh.listen((token) {
-      final uid = _userUid;
-      if (uid != null) _saveToken(uid, token);
-    });
-    _foregroundSubscription = FirebaseMessaging.onMessage.listen((message) {
-      if (!kIsWeb) return;
-
-      final notification = message.notification;
-      final title = notification?.title ?? message.data['title']?.toString();
-      final body = notification?.body ?? message.data['body']?.toString();
-      if (title == null || title.isEmpty || body == null || body.isEmpty) {
+    // Messaging is not available in every browser/webview. Previously an
+    // unsupported runtime could throw here after `_initialized` was set,
+    // leaving the service permanently half-initialized and never listening
+    // for auth/token changes.
+    try {
+      if (kIsWeb && !await FirebaseMessaging.instance.isSupported()) {
+        _initialized = true;
         return;
       }
 
-      showForegroundNotification(
-        title: title,
-        body: body,
-        tag: message.data['orderId']?.toString() ?? message.messageId ?? title,
-      );
-    });
+      // iOS push registration is attempted whenever Firebase Messaging is
+      // available. The signed iOS target must include the Push Notifications
+      // capability and an aps-environment entitlement.
+      if (!kIsWeb) {
+        FirebaseMessaging.onBackgroundMessage(
+            firebaseMessagingBackgroundHandler);
+        await FirebaseMessaging.instance.setAutoInitEnabled(true);
+        await FirebaseMessaging.instance
+            .setForegroundNotificationPresentationOptions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+      }
+
+      _authSubscription =
+          FirebaseAuth.instance.authStateChanges().listen(_handleUserChanged);
+      _tokenSubscription =
+          FirebaseMessaging.instance.onTokenRefresh.listen((token) {
+        final uid = _userUid;
+        if (uid != null) _saveToken(uid, token);
+      });
+      _foregroundSubscription = FirebaseMessaging.onMessage.listen((message) {
+        if (!kIsWeb) return;
+
+        final notification = message.notification;
+        final title = notification?.title ?? message.data['title']?.toString();
+        final body = notification?.body ?? message.data['body']?.toString();
+        if (title == null || title.isEmpty || body == null || body.isEmpty) {
+          return;
+        }
+
+        showForegroundNotification(
+          title: title,
+          body: body,
+          tag:
+              message.data['orderId']?.toString() ?? message.messageId ?? title,
+        );
+      });
+      _initialized = true;
+    } catch (error) {
+      // Keep initialization retryable after a transient browser/APNs error.
+      _initialized = false;
+      debugPrint('تعذر تهيئة خدمة إشعارات بركة: $error');
+    }
   }
 
   Future<void> _handleUserChanged(User? user) async {

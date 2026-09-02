@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import 'admin_appointments_accounting_screen.dart';
 import 'admin_business_accounting_screen.dart';
 import 'admin_manage_orders.dart';
 
@@ -10,7 +11,7 @@ class AdminOperationsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         backgroundColor: const Color(0xFFF3F6FA),
         appBar: AppBar(
@@ -115,6 +116,10 @@ class AdminOperationsScreen extends StatelessWidget {
                     icon: Icon(Icons.account_balance_wallet_rounded),
                     text: 'المحاسبة',
                   ),
+                  Tab(
+                    icon: Icon(Icons.event_available_rounded),
+                    text: 'الحجوزات',
+                  ),
                 ],
               ),
             ),
@@ -123,6 +128,7 @@ class AdminOperationsScreen extends StatelessWidget {
                 children: [
                   AdminManageOrders(embedded: true),
                   AdminBusinessAccountingScreen(embedded: true),
+                  AdminAppointmentsAccountingScreen(embedded: true),
                 ],
               ),
             ),

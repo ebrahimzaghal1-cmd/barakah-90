@@ -326,6 +326,9 @@ class AdminManagePartnerApplications extends StatelessWidget {
           'area': area.text.trim(),
           'description': description.text.trim(),
           'locationUrl': locationUrl.text.trim(),
+          if (merchantType == 'barber') ...{
+            'appointmentBookingEnabled': true,
+          },
           'updatedAt': FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true),
@@ -387,6 +390,13 @@ class AdminManagePartnerApplications extends StatelessWidget {
 
   String _merchantTypeFromActivity(String activity) {
     final value = activity.trim();
+
+    if (value == 'حلاق' || value == 'صالون' || value == 'barber') {
+      return 'barber';
+    }
+    if (value == 'طبيب' || value == 'دكتور' || value == 'doctor') {
+      return 'doctor';
+    }
 
     const restaurantTypes = <String>{
       'مطاعم',
@@ -526,9 +536,39 @@ class AdminManagePartnerApplications extends StatelessWidget {
           'hasDeliveryOffer': false,
           'isTrending': false,
           'businessStatus': 'open',
-          'openingTime': type == 'market' ? '10:00' : '08:00',
-          'closingTime': type == 'market' ? '03:00' : '23:00',
+          'openingTime': type == 'barber'
+              ? (data['barberOpeningTime']?.toString().trim().isNotEmpty == true
+                  ? data['barberOpeningTime'].toString().trim()
+                  : '09:00')
+              : type == 'doctor'
+                  ? '09:00'
+                  : type == 'market'
+                      ? '10:00'
+                      : '08:00',
+          'closingTime': type == 'barber'
+              ? (data['barberClosingTime']?.toString().trim().isNotEmpty == true
+                  ? data['barberClosingTime'].toString().trim()
+                  : '21:00')
+              : type == 'doctor'
+                  ? '17:00'
+                  : type == 'market'
+                      ? '03:00'
+                      : '23:00',
           'preparationMinutes': 30,
+          if (type == 'barber') ...{
+            'barberServices': data['barberServices'] is List
+                ? data['barberServices']
+                : const <Map<String, dynamic>>[],
+            'appointmentSlotMinutes':
+                int.tryParse(data['barberSlotMinutes']?.toString() ?? '') ?? 30,
+            'appointmentBookingEnabled': true,
+          },
+          if (type == 'doctor') ...{
+            'doctorSpecialty': data['doctorSpecialty']?.toString().trim() ?? '',
+            'doctorLicense': data['doctorLicense']?.toString().trim() ?? '',
+            'consultationFee': data['doctorConsultationFee'] ?? 0,
+            'appointmentBookingEnabled': true,
+          },
           'ownerId': ownerId,
           'ownerEmail': data['email']?.toString().trim() ?? '',
           'partnerApplicationId': applicationId,

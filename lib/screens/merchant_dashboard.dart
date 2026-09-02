@@ -1370,12 +1370,15 @@ class _MerchantOrders extends StatelessWidget {
                   children: orders.take(10).map((order) {
                 final data = order.data();
                 final status = data['status']?.toString() ?? 'new';
+                final deliveryMethod =
+                    data['deliveryMethod']?.toString() ?? 'delivery';
                 final scheduled = data['scheduledFor'] as Timestamp?;
                 final scheduledDue = scheduled == null ||
                     !scheduled.toDate().isAfter(DateTime.now());
                 final actionable =
                     ['new', 'accepted', 'preparing'].contains(status) ||
-                        (status == 'scheduled' && scheduledDue);
+                        (status == 'scheduled' && scheduledDue) ||
+                        (status == 'ready' && deliveryMethod == 'pickup');
                 return Card(
                   color: Colors.white,
                   child: Padding(
@@ -1387,7 +1390,7 @@ class _MerchantOrders extends StatelessWidget {
                               style:
                                   const TextStyle(fontWeight: FontWeight.w900)),
                           Text(
-                            '${labels[status] ?? status} • ${data['total'] ?? 0} ₪',
+                            '${status == 'ready' && deliveryMethod == 'pickup' ? 'جاهز للاستلام' : labels[status] ?? status} • ${data['total'] ?? 0} ₪',
                           ),
                           const SizedBox(height: 6),
                           Container(
@@ -1530,6 +1533,12 @@ class _MerchantOrders extends StatelessWidget {
                                     onPressed: () => _changeStatus(
                                         context, order.id, 'ready'),
                                     child: const Text('الطلب جاهز')),
+                              if (status == 'ready' &&
+                                  deliveryMethod == 'pickup')
+                                FilledButton(
+                                    onPressed: () => _changeStatus(
+                                        context, order.id, 'delivered'),
+                                    child: const Text('تأكيد التسليم')),
                             ]),
                           ],
                         ]),

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import worker, {
 	canUploadMedia,
+	canTransitionOrderStatus,
 	createImageKitSignature,
 } from "../src/index.js";
 
@@ -49,5 +50,35 @@ describe("Barakah secure API", () => {
 		);
 
 		expect(signature).toBe("261aae1a788cf629dacfc179cbfd35d2200daaf2");
+	});
+
+	it("allows a merchant to complete a prepared pickup order only", () => {
+		expect(
+			canTransitionOrderStatus("ready", "delivered", {
+				isPickupMerchant: true,
+				isPickupOrder: true,
+			}),
+		).toBe(true);
+		expect(
+			canTransitionOrderStatus("ready", "delivered", {
+				isPickupMerchant: true,
+				isPickupOrder: false,
+			}),
+		).toBe(false);
+		expect(
+			canTransitionOrderStatus("preparing", "delivered", {
+				isPickupMerchant: true,
+				isPickupOrder: true,
+			}),
+		).toBe(false);
+	});
+
+	it("keeps delivery orders on the driver path", () => {
+		expect(
+			canTransitionOrderStatus("driver_assigned", "picked_up"),
+		).toBe(true);
+		expect(
+			canTransitionOrderStatus("ready", "delivered", { isAdmin: true }),
+		).toBe(false);
 	});
 });

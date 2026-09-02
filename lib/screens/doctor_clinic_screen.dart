@@ -118,7 +118,7 @@ class _DoctorClinicScreenState extends State<DoctorClinicScreen> {
                     prefixIcon: Icon(Icons.chat_bubble_outline_rounded))),
             const SizedBox(height: 10),
             FilledButton.icon(
-                onPressed: _sending ? null : () => _sendConsultation(context),
+                onPressed: _sending ? null : _sendConsultation,
                 icon: const Icon(Icons.send_rounded),
                 label:
                     Text(_sending ? 'جارٍ الإرسال...' : 'إرسال طلب استشارة')),
@@ -126,7 +126,7 @@ class _DoctorClinicScreenState extends State<DoctorClinicScreen> {
         ),
       );
 
-  Future<void> _sendConsultation(BuildContext context) async {
+  Future<void> _sendConsultation() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -148,16 +148,16 @@ class _DoctorClinicScreenState extends State<DoctorClinicScreen> {
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
-      if (mounted) {
-        _consultation.clear();
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('تم إرسال طلب الاستشارة للطبيب ✅')));
-      }
+      if (!mounted) return;
+      _consultation.clear();
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('تم إرسال طلب الاستشارة للطبيب ✅')));
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('تعذر إرسال الاستشارة.'),
             backgroundColor: Colors.red));
+      }
     } finally {
       if (mounted) setState(() => _sending = false);
     }

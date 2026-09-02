@@ -202,7 +202,7 @@ class _AdminActivatePartnerScreenState
         content: Text(
           'سيتم تفعيل ${_text('businessName')} كتاجر في بركة.\n\n'
           'عمولة بركة: ${commission.toStringAsFixed(commission % 1 == 0 ? 0 : 1)}%\n'
-          'العمولة على قيمة المنتجات في الطلب المكتمل فقط.\n'
+          'العمولة 10% على قيمة المنتجات أو الحجز المكتمل.\n'
           'لا توجد رسوم اشتراك.',
           textAlign: TextAlign.center,
         ),
@@ -270,9 +270,36 @@ class _AdminActivatePartnerScreenState
             'hasDeliveryOffer': false,
             'isTrending': false,
             'businessStatus': 'open',
-            'openingTime': '10:00',
-            'closingTime': '03:00',
+            'openingTime': _text('activityType') == 'حلاق'
+                ? (_text('barberOpeningTime').isEmpty
+                    ? '09:00'
+                    : _text('barberOpeningTime'))
+                : _text('activityType') == 'طبيب'
+                    ? '09:00'
+                    : '10:00',
+            'closingTime': _text('activityType') == 'حلاق'
+                ? (_text('barberClosingTime').isEmpty
+                    ? '21:00'
+                    : _text('barberClosingTime'))
+                : _text('activityType') == 'طبيب'
+                    ? '17:00'
+                    : '03:00',
             'preparationMinutes': 30,
+            if (_text('activityType') == 'حلاق') ...{
+              'barberServices': widget.application['barberServices'] is List
+                  ? widget.application['barberServices']
+                  : const <Map<String, dynamic>>[],
+              'appointmentSlotMinutes':
+                  int.tryParse(_text('barberSlotMinutes')) ?? 30,
+              'appointmentBookingEnabled': true,
+            },
+            if (_text('activityType') == 'طبيب') ...{
+              'doctorSpecialty': _text('doctorSpecialty'),
+              'doctorLicense': _text('doctorLicense'),
+              'consultationFee':
+                  num.tryParse(_text('doctorConsultationFee')) ?? 0,
+              'appointmentBookingEnabled': true,
+            },
             'ownerId': uid,
             'ownerEmail': _text('email'),
             'partnerApplicationId': widget.applicationId,
@@ -295,6 +322,27 @@ class _AdminActivatePartnerScreenState
             'category': businessCategory,
             'type': _merchantTypeFromActivity(_text('activityType')),
             'partnerApplicationId': widget.applicationId,
+            if (_text('activityType') == 'حلاق') ...{
+              'barberServices': widget.application['barberServices'] is List
+                  ? widget.application['barberServices']
+                  : const <Map<String, dynamic>>[],
+              'openingTime': _text('barberOpeningTime').isEmpty
+                  ? '09:00'
+                  : _text('barberOpeningTime'),
+              'closingTime': _text('barberClosingTime').isEmpty
+                  ? '21:00'
+                  : _text('barberClosingTime'),
+              'appointmentSlotMinutes':
+                  int.tryParse(_text('barberSlotMinutes')) ?? 30,
+              'appointmentBookingEnabled': true,
+            },
+            if (_text('activityType') == 'طبيب') ...{
+              'doctorSpecialty': _text('doctorSpecialty'),
+              'doctorLicense': _text('doctorLicense'),
+              'consultationFee':
+                  num.tryParse(_text('doctorConsultationFee')) ?? 0,
+              'appointmentBookingEnabled': true,
+            },
             'updatedAt': FieldValue.serverTimestamp(),
           },
           SetOptions(merge: true),
@@ -313,7 +361,7 @@ class _AdminActivatePartnerScreenState
           'merchantPhone': _text('phone'),
           'merchantEmail': _text('email'),
           'commissionRate': commission,
-          'commissionAppliesTo': 'products_only',
+          'commissionAppliesTo': 'products_and_bookings',
           'subscriptionFee': 0,
           'identityVerified': true,
           'businessVerified': true,
@@ -336,7 +384,7 @@ class _AdminActivatePartnerScreenState
           'linkedUserId': uid,
           'merchantEnabled': true,
           'commissionRate': commission,
-          'commissionAppliesTo': 'products_only',
+          'commissionAppliesTo': 'products_and_bookings',
           'subscriptionFee': 0,
           'identityVerified': true,
           'businessVerified': true,
@@ -383,6 +431,13 @@ class _AdminActivatePartnerScreenState
 
   String _merchantTypeFromActivity(String activity) {
     final value = activity.trim();
+
+    if (value == 'حلاق' || value == 'صالون' || value == 'barber') {
+      return 'barber';
+    }
+    if (value == 'طبيب' || value == 'دكتور' || value == 'doctor') {
+      return 'doctor';
+    }
 
     const restaurantTypes = <String>{
       'مطاعم',

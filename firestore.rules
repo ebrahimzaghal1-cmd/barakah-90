@@ -193,6 +193,92 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // حجز مواعيد الحلاق: معلومات القفل المعلنة لا تحتوي بيانات شخصية،
+    // أما تفاصيل الحجز فلا يراها إلا صاحب الحجز أو الحلاق المرتبط بالمتجر.
+    match /barber_slot_locks/{lockId} {
+      allow read: if true;
+      allow create: if signedIn() &&
+        request.resource.data.keys().hasOnly([
+          'businessId', 'dateKey', 'startMinutes', 'endMinutes', 'status',
+          'createdAt'
+        ]) &&
+        ownsBusiness(request.resource.data.businessId) == false &&
+        request.resource.data.businessId is string &&
+        request.resource.data.dateKey is string &&
+        request.resource.data.startMinutes is number &&
+        request.resource.data.endMinutes is number &&
+        request.resource.data.status == 'reserved';
+      allow update: if isAdmin() ||
+        (signedIn() && request.resource.data.status == 'cancelled' &&
+          resource.data.businessId is string);
+      allow delete: if isAdmin();
+    }
+
+    match /barber_bookings/{bookingId} {
+      allow create: if signedIn() &&
+        request.resource.data.customerId == request.auth.uid &&
+        request.resource.data.orderType == 'barber_booking' &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.businessId is string &&
+        request.resource.data.serviceId is string &&
+        request.resource.data.serviceTitle is string &&
+        request.resource.data.customerName is string &&
+        request.resource.data.customerPhone is string &&
+        request.resource.data.dateKey is string &&
+        request.resource.data.startMinutes is number &&
+        request.resource.data.endMinutes is number &&
+        request.resource.data.price is number &&
+        request.resource.data.price >= 0 &&
+        request.resource.data.commissionRate == 10 &&
+        request.resource.data.commissionAmount is number &&
+        request.resource.data.businessNetAmount is number &&
+        request.resource.data.keys().hasOnly([
+          'businessId', 'serviceId', 'serviceTitle', 'customerId',
+          'customerName', 'customerPhone', 'dateKey', 'startMinutes',
+          'endMinutes', 'scheduledAt', 'price', 'commissionRate',
+          'commissionAmount', 'businessNetAmount', 'status', 'orderType',
+          'createdAt', 'updatedAt'
+        ]);
+      allow read: if signedIn() &&
+        (isAdmin() || resource.data.customerId == request.auth.uid ||
+          ownsBusiness(resource.data.businessId));
+      allow update: if isAdmin() ||
+        (signedIn() && resource.data.customerId == request.auth.uid &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'updatedAt'
+          ]) && request.resource.data.status == 'cancelled') ||
+        (ownsBusiness(resource.data.businessId) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'updatedAt'
+          ]) && request.resource.data.status in [
+            'pending', 'confirmed', 'completed', 'cancelled', 'no_show'
+          ]);
+      allow delete: if isAdmin();
+    }
+
+    match /doctor_consultations/{consultationId} {
+      allow create: if signedIn() &&
+        request.resource.data.patientId == request.auth.uid &&
+        request.resource.data.doctorId is string &&
+        request.resource.data.message is string &&
+        request.resource.data.message.size() >= 5 &&
+        request.resource.data.message.size() <= 4000 &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.keys().hasOnly([
+          'doctorId', 'patientId', 'message', 'status', 'createdAt', 'updatedAt'
+        ]);
+      allow read: if signedIn() &&
+        (isAdmin() || resource.data.patientId == request.auth.uid ||
+          get(/databases/$(database)/documents/items/$(resource.data.doctorId)).data.ownerId == request.auth.uid);
+      allow update: if isAdmin() ||
+        (signedIn() &&
+          get(/databases/$(database)/documents/items/$(resource.data.doctorId)).data.ownerId == request.auth.uid &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'reply', 'updatedAt'
+          ]));
+      allow delete: if isAdmin();
+    }
+
     match /driver_applications/{userId} {
       allow create: if signedIn() &&
         request.auth.uid == userId &&
@@ -437,6 +523,14 @@ service cloud.firestore {
           'phone',
           'nationalId',
           'activityType',
+          'businessCategory',
+          'barberServices',
+          'barberOpeningTime',
+          'barberClosingTime',
+          'barberSlotMinutes',
+          'doctorSpecialty',
+          'doctorLicense',
+          'doctorConsultationFee',
           'area',
           'description',
           'locationUrl',
@@ -535,7 +629,7 @@ service cloud.firestore {
         request.resource.data.payoutDocumentRef.size() <= 1000 &&
 
         request.resource.data.commissionRate == 10 &&
-        request.resource.data.commissionAppliesTo == 'products_only' &&
+        request.resource.data.commissionAppliesTo in ['products_only', 'products_and_bookings'] &&
         request.resource.data.subscriptionFee == 0 &&
 
         request.resource.data.acceptedPartnerAgreement == true &&

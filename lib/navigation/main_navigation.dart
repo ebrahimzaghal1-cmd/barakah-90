@@ -4,6 +4,7 @@ import '../screens/market_screen.dart';
 import '../screens/cart_screen.dart';
 import '../screens/orders_screen.dart';
 import '../screens/account_screen.dart';
+import '../screens/health_services_screen.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -17,6 +18,7 @@ class _MainNavigationState extends State<MainNavigation> {
 
   final screens = const [
     HomeScreen(),
+    HealthServicesScreen(),
     MarketScreen(),
     CartScreen(),
     OrdersScreen(),
@@ -36,6 +38,8 @@ class _MainNavigationState extends State<MainNavigation> {
         unselectedItemColor: Colors.white70,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.restaurant), label: 'مطاعم'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.medical_services_outlined), label: 'صحة'),
           BottomNavigationBarItem(icon: Icon(Icons.store), label: 'ماركت'),
           BottomNavigationBarItem(
               icon: Icon(Icons.shopping_cart), label: 'السلة'),

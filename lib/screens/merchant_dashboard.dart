@@ -9,6 +9,7 @@ import '../admin/admin_manage_products.dart';
 import 'location_picker_screen.dart';
 import 'restaurant_details_screen.dart';
 import '../services/order_service.dart';
+import '../services/barber_booking_service.dart';
 import '../services/media_upload_service.dart';
 import '../theme/app_theme.dart';
 
@@ -824,6 +825,18 @@ class MerchantDashboard extends StatelessWidget {
                         _MerchantCoupons(businessId: business.id),
                         const SizedBox(height: 8),
                         _MerchantOrders(businessId: business.id),
+                        if (data['type']?.toString().toLowerCase() ==
+                            'barber') ...[
+                          const SizedBox(height: 8),
+                          _MerchantBarberBookings(businessId: business.id),
+                        ],
+                        if (data['type']?.toString().toLowerCase() ==
+                            'doctor') ...[
+                          const SizedBox(height: 8),
+                          _MerchantDoctorConsultations(doctorId: business.id),
+                          const SizedBox(height: 8),
+                          _MerchantBarberBookings(businessId: business.id),
+                        ],
                       ]),
                     ),
                   );
@@ -1125,6 +1138,160 @@ class _MerchantCouponsState extends State<_MerchantCoupons> {
       ],
     );
   }
+}
+
+class _MerchantBarberBookings extends StatelessWidget {
+  const _MerchantBarberBookings({required this.businessId});
+  final String businessId;
+
+  static const _labels = {
+    'pending': 'بانتظار التأكيد',
+    'confirmed': 'مؤكد',
+    'completed': 'مكتمل',
+    'cancelled': 'ملغي',
+    'no_show': 'لم يحضر',
+  };
+
+  Future<void> _setStatus(
+      BuildContext context, String id, String status) async {
+    try {
+      await BarberBookingService.instance.updateBookingStatus(
+        bookingId: id,
+        status: status,
+        businessId: businessId,
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('تم تحديث حالة الموعد ✅')));
+      }
+    } catch (_) {
+      if (context.mounted)
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('تعذر تحديث الموعد.'), backgroundColor: Colors.red));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        leading: const Icon(Icons.calendar_month_rounded),
+        title: const Text('مواعيد الحلاق',
+            style: TextStyle(fontWeight: FontWeight.w900)),
+        subtitle:
+            const Text('تظهر هنا حجوزات الزبائن من الموقع وعمولة بركة 10%'),
+        children: [
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream:
+                BarberBookingService.instance.watchMerchantBookings(businessId),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData)
+                return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: CircularProgressIndicator());
+              final bookings = snapshot.data!.docs.toList()
+                ..sort((a, b) => ((a.data()['scheduledAt'] as Timestamp?)
+                            ?.millisecondsSinceEpoch ??
+                        0)
+                    .compareTo((b.data()['scheduledAt'] as Timestamp?)
+                            ?.millisecondsSinceEpoch ??
+                        0));
+              if (bookings.isEmpty)
+                return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text('لا توجد حجوزات مواعيد حتى الآن.'));
+              return Column(
+                  children: bookings.take(30).map((booking) {
+                final data = booking.data();
+                final status = data['status']?.toString() ?? 'pending';
+                final scheduled = (data['scheduledAt'] as Timestamp?)?.toDate();
+                final date = scheduled == null
+                    ? data['dateKey']?.toString() ?? ''
+                    : '${scheduled.day}/${scheduled.month}/${scheduled.year} ${scheduled.hour.toString().padLeft(2, '0')}:${scheduled.minute.toString().padLeft(2, '0')}';
+                return Card(
+                  color: Colors.white,
+                  child: ListTile(
+                    title: Text(
+                        '${data['customerName'] ?? 'زبون'} — ${data['serviceTitle'] ?? 'خدمة'}',
+                        style: const TextStyle(fontWeight: FontWeight.w900)),
+                    subtitle: Text(
+                        '$date\n${data['customerPhone'] ?? ''} • ${_labels[status] ?? status}\nقيمة: ${data['price'] ?? 0} ₪ — عمولة بركة: ${data['commissionAmount'] ?? 0} ₪'),
+                    isThreeLine: true,
+                    trailing: PopupMenuButton<String>(
+                      onSelected: (value) =>
+                          _setStatus(context, booking.id, value),
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                            value: 'confirmed', child: Text('تأكيد الموعد')),
+                        PopupMenuItem(
+                            value: 'completed', child: Text('تمت الخدمة')),
+                        PopupMenuItem(value: 'no_show', child: Text('لم يحضر')),
+                        PopupMenuItem(value: 'cancelled', child: Text('إلغاء')),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList());
+            },
+          ),
+        ],
+      );
+}
+
+class _MerchantDoctorConsultations extends StatelessWidget {
+  const _MerchantDoctorConsultations({required this.doctorId});
+  final String doctorId;
+
+  @override
+  Widget build(BuildContext context) => ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        leading: const Icon(Icons.chat_bubble_outline_rounded),
+        title: const Text('طلبات الاستشارة الطبية',
+            style: TextStyle(fontWeight: FontWeight.w900)),
+        children: [
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance
+                .collection('doctor_consultations')
+                .where('doctorId', isEqualTo: doctorId)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: CircularProgressIndicator());
+              }
+              if (snapshot.data!.docs.isEmpty) {
+                return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text('لا توجد طلبات استشارة حتى الآن.'));
+              }
+              return Column(
+                  children: snapshot.data!.docs.take(30).map((doc) {
+                final data = doc.data();
+                return Card(
+                  child: ListTile(
+                    title: Text(data['message']?.toString() ?? '',
+                        maxLines: 3, overflow: TextOverflow.ellipsis),
+                    subtitle: Text('الحالة: ${data['status'] ?? 'pending'}'),
+                    trailing: PopupMenuButton<String>(
+                      onSelected: (status) => doc.reference.update({
+                        'status': status,
+                        'updatedAt': FieldValue.serverTimestamp(),
+                      }),
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                            value: 'in_progress', child: Text('قيد المتابعة')),
+                        PopupMenuItem(
+                            value: 'answered', child: Text('تم الرد')),
+                        PopupMenuItem(value: 'closed', child: Text('إغلاق')),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList());
+            },
+          ),
+        ],
+      );
 }
 
 class _MerchantOrders extends StatelessWidget {

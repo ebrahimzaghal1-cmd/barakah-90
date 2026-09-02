@@ -719,6 +719,19 @@ async function createPartnerApplication(request, env) {
     nationalId: text(data.nationalId, 80),
     activityType: text(data.activityType, 80),
     businessCategory: text(data.businessCategory, 120),
+    barberServices: Array.isArray(data.barberServices)
+      ? data.barberServices.slice(0, 30).map((service) => ({
+        title: text(service?.title, 120),
+        price: Math.max(0, Math.min(Number(service?.price) || 0, 1e6)),
+        durationMinutes: Math.max(10, Math.min(Number(service?.durationMinutes) || 30, 240))
+      })).filter((service) => service.title.length >= 2)
+      : [],
+    barberOpeningTime: text(data.barberOpeningTime, 10),
+    barberClosingTime: text(data.barberClosingTime, 10),
+    barberSlotMinutes: Math.max(10, Math.min(Number(data.barberSlotMinutes) || 30, 240)),
+    doctorSpecialty: text(data.doctorSpecialty, 120),
+    doctorLicense: text(data.doctorLicense, 120),
+    doctorConsultationFee: Math.max(0, Math.min(Number(data.doctorConsultationFee) || 0, 1e6)),
     area: text(data.area, 160),
     description: text(data.description, 1500),
     locationUrl: text(data.locationUrl, 500),
@@ -731,7 +744,7 @@ async function createPartnerApplication(request, env) {
     businessDocumentRef: text(data.businessDocumentRef, 500),
     payoutDocumentRef: text(data.payoutDocumentRef, 500),
     commissionRate: 10,
-    commissionAppliesTo: "products_only",
+    commissionAppliesTo: "products_and_bookings",
     subscriptionFee: 0,
     acceptedPartnerAgreement: true,
     acceptedPrivacyPolicy: true,

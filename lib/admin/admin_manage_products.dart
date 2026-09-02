@@ -290,8 +290,8 @@ class _AdminManageProductsState extends State<AdminManageProducts> {
                       )
                     : const Icon(
                         Icons.add_photo_alternate_outlined,
-                      size: 42,
-                    );
+                        size: 42,
+                      );
             final previewRadius = imageShape == 'circle' ? 999.0 : 12.0;
 
             return AlertDialog(
@@ -317,7 +317,8 @@ class _AdminManageProductsState extends State<AdminManageProducts> {
                           children: [
                             Positioned.fill(
                               child: ClipRRect(
-                                borderRadius: BorderRadius.circular(previewRadius),
+                                borderRadius:
+                                    BorderRadius.circular(previewRadius),
                                 child: preview,
                               ),
                             ),
@@ -344,16 +345,22 @@ class _AdminManageProductsState extends State<AdminManageProducts> {
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
                       value: imageShape,
-                      decoration: const InputDecoration(labelText: 'شكل الصورة'),
+                      decoration:
+                          const InputDecoration(labelText: 'شكل الصورة'),
                       items: const [
-                        DropdownMenuItem(value: 'rounded', child: Text('مستطيل بحواف مستديرة')),
+                        DropdownMenuItem(
+                            value: 'rounded',
+                            child: Text('مستطيل بحواف مستديرة')),
                         DropdownMenuItem(value: 'square', child: Text('مربع')),
                         DropdownMenuItem(value: 'circle', child: Text('دائري')),
                         DropdownMenuItem(value: 'blur', child: Text('بلوري')),
                       ],
-                      onChanged: isSaving ? null : (value) {
-                        if (value != null) setDialogState(() => imageShape = value);
-                      },
+                      onChanged: isSaving
+                          ? null
+                          : (value) {
+                              if (value != null)
+                                setDialogState(() => imageShape = value);
+                            },
                     ),
                     const SizedBox(height: 12),
                     TextField(

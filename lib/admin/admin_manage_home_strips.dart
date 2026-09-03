@@ -336,6 +336,19 @@ class _AdminManageHomeStripsState extends State<AdminManageHomeStrips> {
     if (surface == 'restaurants' && useQuickActions) {
       stripType = 'custom';
     }
+    var cardShape = current['cardShape']?.toString() ??
+        (surface == 'restaurants' && stripType == 'categories'
+            ? 'rectangle'
+            : 'circle');
+    if (!const {'circle', 'square', 'rectangle'}.contains(cardShape)) {
+      cardShape = 'circle';
+    }
+
+    var cardSize = current['cardSize']?.toString() ?? 'medium';
+    if (!const {'small', 'medium', 'large'}.contains(cardSize)) {
+      cardSize = 'medium';
+    }
+
     var showAllCategories = current['showAllCategories'] == true ||
         current['title']?.toString().trim() == 'سوق بركة';
     var saving = false;
@@ -437,6 +450,8 @@ class _AdminManageHomeStripsState extends State<AdminManageHomeStrips> {
               'enabled': enabled,
               'useQuickActions': usesRestaurantCards,
               'stripType': stripType,
+              'cardShape': cardShape,
+              'cardSize': cardSize,
               'showAllCategories': showAllCategories,
               'categoryIds': selectedIds.toList(),
               'customItems': customItems,
@@ -557,6 +572,59 @@ class _AdminManageHomeStripsState extends State<AdminManageHomeStrips> {
                                 }),
                       ),
                     ],
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      value: cardShape,
+                      decoration: const InputDecoration(
+                        labelText: 'شكل بطاقات الشريط',
+                        helperText: 'يمكن اختيار شكل مختلف لكل شريط.',
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'circle',
+                          child: Text('دائري'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'square',
+                          child: Text('مربع'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'rectangle',
+                          child: Text('مستطيل'),
+                        ),
+                      ],
+                      onChanged: saving
+                          ? null
+                          : (value) => setDialogState(
+                                () => cardShape = value ?? 'circle',
+                              ),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      value: cardSize,
+                      decoration: const InputDecoration(
+                        labelText: 'حجم بطاقات الشريط',
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'small',
+                          child: Text('صغير'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'medium',
+                          child: Text('وسط'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'large',
+                          child: Text('كبير'),
+                        ),
+                      ],
+                      onChanged: saving
+                          ? null
+                          : (value) => setDialogState(
+                                () => cardSize = value ?? 'medium',
+                              ),
+                    ),
                     if (surface == 'restaurants' && stripType == 'custom') ...[
                       const Align(
                         alignment: AlignmentDirectional.centerStart,

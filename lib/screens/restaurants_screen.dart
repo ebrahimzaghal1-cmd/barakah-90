@@ -11,6 +11,8 @@ import '../widgets/responsive_page.dart';
 import '../widgets/restaurant_card.dart';
 import '../widgets/barakah_brand.dart';
 import '../widgets/barakah_media_image.dart';
+import '../models/home_strip_card_style.dart';
+import '../widgets/home_strip_card.dart';
 import '../widgets/barakah_online_status_button.dart';
 import '../widgets/advertisement_banner.dart';
 import '../services/admin_notification_service.dart';
@@ -1202,6 +1204,9 @@ class _RestaurantHomeStrips extends StatelessWidget {
                     SizedBox(
                       height: 145,
                       child: _CategoriesRow(
+                        style: HomeStripCardStyle.fromMap(
+                          strips[index].data(),
+                        ),
                         items: ((strips[index].data()['quickItems'] as List?) ??
                                 const [])
                             .whereType<Map>()
@@ -1242,6 +1247,10 @@ class _RestaurantHomeStrips extends StatelessWidget {
                               return _HomeCategoryTile(
                                 title: data['title']?.toString() ?? 'تصنيف',
                                 image: data['image']?.toString() ?? '',
+                                style: HomeStripCardStyle.fromMap(
+                                  strips[index].data(),
+                                  legacyShape: 'rectangle',
+                                ),
                                 description:
                                     (data['description'] ?? data['desc'])
                                             ?.toString() ??
@@ -1263,9 +1272,16 @@ class _RestaurantHomeStrips extends StatelessWidget {
 }
 
 class _CategoriesRow extends StatelessWidget {
-  const _CategoriesRow({this.items = const []});
+  const _CategoriesRow({
+    this.items = const [],
+    this.style = const HomeStripCardStyle(
+      shape: 'circle',
+      size: 'medium',
+    ),
+  });
 
   final List<Map<String, dynamic>> items;
+  final HomeStripCardStyle style;
 
   Future<void> _openItem(
       BuildContext context, Map<String, dynamic> item) async {
@@ -1348,6 +1364,7 @@ class _CategoriesRow extends StatelessWidget {
           return _YellowHomeTile(
             title: item['title']?.toString() ?? 'اختصار',
             image: item['image']?.toString() ?? '',
+            style: style,
             onTap: () => _openItem(context, item),
           );
         },
@@ -1479,178 +1496,31 @@ class _YellowHomeTile extends StatelessWidget {
     required this.title,
     required this.image,
     required this.onTap,
+    this.style = const HomeStripCardStyle(
+      shape: 'circle',
+      size: 'medium',
+    ),
   });
 
   final String title;
   final String image;
   final VoidCallback onTap;
+  final HomeStripCardStyle style;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 104,
+      width: style.itemWidth,
       child: InkWell(
         borderRadius: BorderRadius.circular(52),
         onTap: onTap,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 88,
-              height: 88,
-              padding: const EdgeInsets.all(2),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: _barakahGold,
-                  width: 1.2,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.white.withOpacity(.50),
-                    blurRadius: 11,
-                    spreadRadius: 1,
-                  ),
-                  BoxShadow(
-                    color: _barakahGold.withOpacity(.18),
-                    blurRadius: 14,
-                    spreadRadius: 0,
-                  ),
-                  BoxShadow(
-                    color: const Color(0xFF061326).withOpacity(.18),
-                    blurRadius: 12,
-                    offset: const Offset(0, 5),
-                  ),
-                ],
-              ),
-              child: Container(
-                padding: EdgeInsets.zero,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Colors.white.withOpacity(.48),
-                      const Color(0xFFD9EFFF).withOpacity(.18),
-                      Colors.white.withOpacity(.08),
-                    ],
-                  ),
-                  border: Border.all(color: Colors.transparent),
-                ),
-                child: Container(
-                  padding: EdgeInsets.zero,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Colors.white.withOpacity(.32),
-                        const Color(0xFF79BFFF).withOpacity(.10),
-                        Colors.transparent,
-                      ],
-                    ),
-                    border: Border.all(color: Colors.transparent),
-                  ),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      ClipOval(child: _QuickActionImage(path: image)),
-
-                      // Liquid Glass overlay
-                      IgnorePointer(
-                        child: ClipOval(
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                stops: const [
-                                  0.00,
-                                  0.18,
-                                  0.40,
-                                  0.72,
-                                  1.00,
-                                ],
-                                colors: [
-                                  Colors.white.withOpacity(.38),
-                                  Colors.white.withOpacity(.12),
-                                  Colors.transparent,
-                                  Colors.transparent,
-                                  Colors.white.withOpacity(.05),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      // انعكاس زجاجي علوي
-                      Positioned(
-                        top: 7,
-                        left: 23,
-                        right: 23,
-                        child: Container(
-                          height: 9,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(30),
-                            gradient: LinearGradient(
-                              begin: Alignment.centerLeft,
-                              end: Alignment.centerRight,
-                              colors: [
-                                Colors.white.withOpacity(.04),
-                                Colors.white.withOpacity(.58),
-                                Colors.white.withOpacity(.06),
-                              ],
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.white.withOpacity(.42),
-                                blurRadius: 8,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-
-                      // نفس اللمعة الجانبية والسفلية المستخدمة في الماركت.
-                      Positioned(
-                        top: 27,
-                        left: 6,
-                        child: Container(
-                          width: 5,
-                          height: 42,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(20),
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.white.withOpacity(.48),
-                                Colors.white.withOpacity(.02),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        bottom: 7,
-                        left: 30,
-                        right: 30,
-                        child: Container(
-                          height: 5,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(20),
-                            color: Colors.white.withOpacity(.25),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+            HomeStripCardFrame(
+              style: style,
+              borderColor: _barakahGold,
+              child: _QuickActionImage(path: image),
             ),
             const SizedBox(height: 8),
             Text(
@@ -2437,11 +2307,16 @@ class _HomeCategoryTile extends StatelessWidget {
     required this.title,
     required this.image,
     required this.description,
+    this.style = const HomeStripCardStyle(
+      shape: 'rectangle',
+      size: 'medium',
+    ),
   });
 
   final String title;
   final String image;
   final String description;
+  final HomeStripCardStyle style;
 
   @override
   Widget build(BuildContext context) => SizedBox(

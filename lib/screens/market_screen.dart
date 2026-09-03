@@ -13,6 +13,8 @@ import '../widgets/advertisement_banner.dart';
 import '../widgets/barakah_online_status_button.dart';
 import '../widgets/barakah_brand.dart';
 import '../widgets/barakah_media_image.dart';
+import '../models/home_strip_card_style.dart';
+import '../widgets/home_strip_card.dart';
 import 'categories_screen.dart';
 import 'products_screen.dart';
 import 'restaurant_details_screen.dart';
@@ -639,6 +641,7 @@ class _MarketHomeStrips extends StatelessWidget {
                   return _CustomMarketStrip(
                     title: title,
                     items: customItems,
+                    style: HomeStripCardStyle.fromMap(data),
                   );
                 }
                 final selected = ((data['categoryIds'] as List?) ?? const [])
@@ -654,6 +657,7 @@ class _MarketHomeStrips extends StatelessWidget {
                 return _MarketCategoriesStrip(
                   title: title,
                   categories: visible,
+                  style: HomeStripCardStyle.fromMap(data),
                 );
               }),
             ],
@@ -668,10 +672,12 @@ class _CustomMarketStrip extends StatelessWidget {
   const _CustomMarketStrip({
     required this.title,
     required this.items,
+    required this.style,
   });
 
   final String title;
   final List<Map<String, dynamic>> items;
+  final HomeStripCardStyle style;
 
   @override
   Widget build(BuildContext context) {
@@ -1098,10 +1104,15 @@ class _MarketCategoriesStrip extends StatelessWidget {
   const _MarketCategoriesStrip({
     required this.title,
     required this.categories,
+    this.style = const HomeStripCardStyle(
+      shape: 'circle',
+      size: 'medium',
+    ),
   });
 
   final String title;
   final List<Map<String, String>> categories;
+  final HomeStripCardStyle style;
 
   @override
   Widget build(BuildContext context) {
@@ -1127,7 +1138,7 @@ class _MarketCategoriesStrip extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         SizedBox(
-          height: 150,
+          height: style.stripHeight,
           child: ListView.separated(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             scrollDirection: Axis.horizontal,
@@ -1166,7 +1177,7 @@ class _MarketCategoriesStrip extends StatelessWidget {
               }
 
               return SizedBox(
-                width: 108,
+                width: style.itemWidth,
                 child: InkWell(
                   borderRadius: BorderRadius.circular(70),
                   onTap: () {
@@ -1186,166 +1197,10 @@ class _MarketCategoriesStrip extends StatelessWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Container(
-                        width: 94,
-                        height: 94,
-                        padding: const EdgeInsets.all(1.5),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: AppTheme.deepYellow,
-                            width: 1,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.white.withOpacity(.50),
-                              blurRadius: 11,
-                              spreadRadius: 1,
-                            ),
-                            BoxShadow(
-                              color: const Color(0xFF9DD6FF).withOpacity(.18),
-                              blurRadius: 18,
-                              spreadRadius: 0,
-                            ),
-                            BoxShadow(
-                              color: const Color(0xFF061326).withOpacity(.42),
-                              blurRadius: 20,
-                              offset: const Offset(0, 9),
-                            ),
-                          ],
-                        ),
-                        child: Container(
-                          padding: EdgeInsets.zero,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                Colors.white.withOpacity(.48),
-                                const Color(0xFFD9EFFF).withOpacity(.18),
-                                Colors.white.withOpacity(.08),
-                              ],
-                            ),
-                            border: Border.all(color: Colors.transparent),
-                          ),
-                          child: Container(
-                            padding: EdgeInsets.zero,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  Colors.white.withOpacity(.32),
-                                  const Color(0xFF79BFFF).withOpacity(.10),
-                                  Colors.transparent,
-                                ],
-                              ),
-                              border: Border.all(color: Colors.transparent),
-                            ),
-                            child: Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                ClipOval(
-                                  child: categoryImage,
-                                ),
-
-                                // طبقة Liquid Glass فوق الصورة
-                                IgnorePointer(
-                                  child: ClipOval(
-                                    child: DecoratedBox(
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                          stops: const [
-                                            0.00,
-                                            0.18,
-                                            0.40,
-                                            0.72,
-                                            1.00,
-                                          ],
-                                          colors: [
-                                            Colors.white.withOpacity(.38),
-                                            Colors.white.withOpacity(.12),
-                                            Colors.transparent,
-                                            Colors.transparent,
-                                            Colors.white.withOpacity(.05),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-
-                                // لمعة علوية قوية
-                                Positioned(
-                                  top: 7,
-                                  left: 23,
-                                  right: 23,
-                                  child: Container(
-                                    height: 9,
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(30),
-                                      gradient: LinearGradient(
-                                        begin: Alignment.centerLeft,
-                                        end: Alignment.centerRight,
-                                        colors: [
-                                          Colors.white.withOpacity(.04),
-                                          Colors.white.withOpacity(.58),
-                                          Colors.white.withOpacity(.06),
-                                        ],
-                                      ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.white.withOpacity(.42),
-                                          blurRadius: 8,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-
-                                // لمعة جانبية
-                                Positioned(
-                                  top: 27,
-                                  left: 6,
-                                  child: Container(
-                                    width: 5,
-                                    height: 42,
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(20),
-                                      gradient: LinearGradient(
-                                        begin: Alignment.topCenter,
-                                        end: Alignment.bottomCenter,
-                                        colors: [
-                                          Colors.white.withOpacity(.48),
-                                          Colors.white.withOpacity(.02),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
-
-                                // لمعة سفلية
-                                Positioned(
-                                  bottom: 7,
-                                  left: 30,
-                                  right: 30,
-                                  child: Container(
-                                    height: 5,
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(20),
-                                      color: Colors.white.withOpacity(.25),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
+                      HomeStripCardFrame(
+                        style: style,
+                        borderColor: AppTheme.deepYellow,
+                        child: categoryImage,
                       ),
                       const SizedBox(height: 7),
                       Text(

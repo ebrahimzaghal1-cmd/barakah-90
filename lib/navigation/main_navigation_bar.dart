@@ -9,6 +9,7 @@ import '../screens/market_screen.dart';
 import '../screens/cart_screen.dart';
 import '../screens/orders_screen.dart';
 import '../screens/profile_screen.dart';
+import '../screens/health_services_screen.dart';
 import '../screens/customer_support_chat_screen.dart';
 import '../widgets/barakah_waiting_screen.dart';
 import '../services/app_hours_service.dart';
@@ -177,6 +178,11 @@ class _MainNavBarState extends State<MainNavBar> {
                       icon: Icon(Icons.restaurant_rounded, size: 24),
                       activeIcon: Icon(Icons.restaurant_rounded, size: 30),
                       label: 'مطاعم'),
+                  const BottomNavigationBarItem(
+                      icon: Icon(Icons.medical_services_outlined, size: 24),
+                      activeIcon:
+                          Icon(Icons.medical_services_rounded, size: 30),
+                      label: 'صحتي'),
                   const BottomNavigationBarItem(
                       icon: Icon(Icons.storefront_outlined, size: 24),
                       activeIcon: Icon(Icons.storefront_rounded, size: 30),

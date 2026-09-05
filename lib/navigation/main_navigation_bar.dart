@@ -31,7 +31,13 @@ class _MainNavBarState extends State<MainNavBar> {
 
   late final List<Widget> screens;
 
+  int get _safeCurrentIndex {
+    if (screens.isEmpty) return 0;
+    return currentIndex.clamp(0, screens.length - 1);
+  }
+
   Future<void> _changeTab(int index) async {
+    if (index < 0 || index >= screens.length) return;
     if (index == currentIndex || _switchingTab) return;
 
     setState(() => _switchingTab = true);
@@ -124,7 +130,7 @@ class _MainNavBarState extends State<MainNavBar> {
       body: Stack(
         children: [
           Positioned.fill(
-            child: screens[currentIndex],
+            child: screens[_safeCurrentIndex],
           ),
           const Positioned(
             right: -7,
@@ -163,7 +169,7 @@ class _MainNavBarState extends State<MainNavBar> {
               // ترتيب ثابت من اليسار إلى اليمين: المطاعم ثم الماركت وصولاً للملف الشخصي.
               textDirection: TextDirection.ltr,
               child: BottomNavigationBar(
-                currentIndex: currentIndex,
+                currentIndex: _safeCurrentIndex,
                 onTap: _changeTab,
                 type: BottomNavigationBarType.fixed,
                 selectedItemColor: const Color(0xFFD7A928),

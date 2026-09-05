@@ -20,16 +20,20 @@ class _MainScreenState extends State<MainScreen> {
     const CartScreen(),
   ];
 
+  int get _safeCurrentIndex =>
+      _currentIndex.clamp(0, pages.length - 1);
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: AppBackground(
-        child: pages[_currentIndex],
+        child: pages[_safeCurrentIndex],
       ),
       bottomNavigationBar: GlassBottomNav(
         currentIndex: _currentIndex,
         onTap: (index) {
+          if (index < 0 || index >= pages.length) return;
           setState(() => _currentIndex = index);
         },
       ),

@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../theme/app_theme.dart';
 import '../widgets/favorite_button.dart';
+import '../widgets/medical_disclaimer.dart';
 import 'doctor_clinic_screen.dart';
 
 class HealthServicesScreen extends StatefulWidget {
@@ -27,16 +28,21 @@ class _HealthServicesScreenState extends State<HealthServicesScreen> {
 
   Future<void> _locate() async {
     try {
-      if (!await Geolocator.isLocationServiceEnabled()) return;
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        return;
+      }
       var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
       if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) return;
+          permission == LocationPermission.deniedForever) {
+        return;
+      }
       final position = await Geolocator.getCurrentPosition();
-      if (mounted)
+      if (mounted) {
         setState(() => _center = LatLng(position.latitude, position.longitude));
+      }
     } catch (_) {}
   }
 
@@ -85,6 +91,8 @@ class _HealthServicesScreenState extends State<HealthServicesScreen> {
             padding: const EdgeInsets.fromLTRB(14, 10, 14, 30),
             children: [
               _HealthHeader(doctorCount: doctors.length),
+              const SizedBox(height: 12),
+              const MedicalDisclaimer(),
               const SizedBox(height: 14),
               Row(
                 children: [
@@ -119,7 +127,7 @@ class _HealthServicesScreenState extends State<HealthServicesScreen> {
                     TileLayer(
                         urlTemplate:
                             'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        userAgentPackageName: 'com.barakah90.app'),
+                        userAgentPackageName: 'com.barakah.market'),
                     MarkerLayer(markers: markers),
                   ],
                 ),
@@ -310,10 +318,9 @@ class _DoctorTile extends StatelessWidget {
             context,
             MaterialPageRoute(
                 builder: (_) => DoctorClinicScreen(doctor: doctor))),
-        leading: CircleAvatar(
+        leading: const CircleAvatar(
             backgroundColor: AppTheme.coolYellow,
-            child: const Icon(Icons.medical_services_rounded,
-                color: AppTheme.navy)),
+            child: Icon(Icons.medical_services_rounded, color: AppTheme.navy)),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
         subtitle: Text(data['doctorSpecialty']?.toString() ??
             data['category']?.toString() ??

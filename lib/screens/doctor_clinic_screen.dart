@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../widgets/barber_booking_section.dart';
 import '../widgets/favorite_button.dart';
+import '../widgets/medical_disclaimer.dart';
 
 class DoctorClinicScreen extends StatefulWidget {
   const DoctorClinicScreen({super.key, required this.doctor});
@@ -89,6 +90,8 @@ class _DoctorClinicScreenState extends State<DoctorClinicScreen> {
                 style: const TextStyle(fontSize: 16, height: 1.6))
           ],
           const SizedBox(height: 22),
+          const MedicalDisclaimer(compact: true),
+          const SizedBox(height: 14),
           _consultationBox(context),
           const SizedBox(height: 26),
           BarberBookingSection(
@@ -107,7 +110,8 @@ class _DoctorClinicScreenState extends State<DoctorClinicScreen> {
             const Text('مربع الاستشارة',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
             const SizedBox(height: 6),
-            const Text('اكتب سؤالك للطبيب وسيظهر له داخل لوحة العيادة.',
+            const Text(
+                'اكتب سؤالك للطبيب وسيظهر له داخل لوحة العيادة. لا تستخدم هذا المربع للطوارئ.',
                 style: TextStyle(color: Colors.black54)),
             const SizedBox(height: 10),
             TextField(

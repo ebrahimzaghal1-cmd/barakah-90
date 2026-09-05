@@ -17,7 +17,7 @@ class LegalDocumentScreen extends StatelessWidget {
 
   final LegalDocumentType type;
 
-  static const agreementVersion = '2026-08-17-v1';
+  static const agreementVersion = '2026-09-02-v2';
 
   String get _title => switch (type) {
         LegalDocumentType.privacy => 'سياسة الخصوصية',
@@ -43,6 +43,10 @@ class LegalDocumentScreen extends StatelessWidget {
             (
               'الموقع',
               'قد يستخدم الموقع لتقديم خدمات التوصيل والأماكن القريبة وتتبع حالة السائق وفق الصلاحيات الممنوحة من الجهاز.'
+            ),
+            (
+              'الحجوزات والاستشارات الصحية',
+              'عند استخدام خدمات الصحة قد تجمع بركة تفاصيل الموعد ونص الاستشارة الذي يكتبه المستخدم. تعرض هذه البيانات للطبيب أو العيادة المختارة ولإدارة بركة عند الحاجة للتشغيل والدعم، ولا تستخدم بركة هذه الميزة للتشخيص أو العلاج.'
             ),
             (
               'مشاركة البيانات',

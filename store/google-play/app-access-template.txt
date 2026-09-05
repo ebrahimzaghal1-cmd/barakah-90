@@ -1,0 +1,25 @@
+BARAKAH | بركة — وصول فريق المراجعة
+
+الاختيار في Play Console:
+Some or all functionality is restricted
+
+اسم التعليمات المقترح:
+Customer test account
+
+Username / email:
+[أنشئ بريد اختبار مخصصًا وضعه هنا]
+
+Password:
+[ضع كلمة مرور حساب الاختبار هنا فقط]
+
+English instructions:
+1. Open the app and choose Log in.
+2. Enter the reusable test email and password above.
+3. The account does not require a one-time password or two-factor authentication.
+4. Use the bottom navigation to review shops, restaurants, health services, favorites, cart, orders and profile.
+5. No real payment is required for review. Do not place a real-world order.
+
+مهم:
+- لا تستخدم حساب الأدمن أو حساب مستخدم حقيقي.
+- يجب أن يبقى الحساب فعالًا طوال فترة المراجعة.
+- اختبر البيانات نفسها قبل إرسال التطبيق للمراجعة.

@@ -18,6 +18,7 @@ import '../services/user_profile_service.dart';
 import '../widgets/responsive_page.dart';
 import '../widgets/barakah_brand.dart';
 import '../theme/app_theme.dart';
+import '../config/app_features.dart';
 import '../admin/admin_dashboard.dart';
 import '../games/play_hub_screen.dart';
 import 'admin_login_screen.dart';
@@ -304,18 +305,20 @@ class _ProfileBody extends StatelessWidget {
                   ),
                 ),
               ),
-              _ProfileAction(
-                icon: Icons.account_balance_wallet_outlined,
-                title: 'المحفظة',
-                onTap: () => requireLogin(
-                  () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => _LoyaltyHistoryScreen(userId: user!.uid),
+              if (kLoyaltyRewardsEnabled)
+                _ProfileAction(
+                  icon: Icons.account_balance_wallet_outlined,
+                  title: 'المحفظة',
+                  onTap: () => requireLogin(
+                    () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            _LoyaltyHistoryScreen(userId: user!.uid),
+                      ),
                     ),
                   ),
                 ),
-              ),
             ],
           ),
         ),
@@ -325,14 +328,15 @@ class _ProfileBody extends StatelessWidget {
           icon: Icons.grid_view_rounded,
           child: _ProfileActionsGrid(
             actions: [
-              _ProfileAction(
-                icon: Icons.sports_esports_outlined,
-                title: 'ألعابي',
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const PlayHubScreen()),
+              if (kLoyaltyRewardsEnabled)
+                _ProfileAction(
+                  icon: Icons.sports_esports_outlined,
+                  title: 'ألعابي',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const PlayHubScreen()),
+                  ),
                 ),
-              ),
               _ProfileAction(
                 icon: Icons.notifications_none_rounded,
                 title: 'الإشعارات',
@@ -395,7 +399,7 @@ class _ProfileBody extends StatelessWidget {
             ],
           ),
         ),
-        if (user != null) ...[
+        if (user != null && kLoyaltyRewardsEnabled) ...[
           const SizedBox(height: 12),
           _ProfileGroup(
             title: 'بطاقة ونقاط بركة',

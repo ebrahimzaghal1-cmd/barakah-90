@@ -8,6 +8,7 @@ import '../services/business_hours_service.dart';
 import '../services/cart_service.dart';
 import '../services/order_service.dart';
 import '../theme/app_theme.dart';
+import '../config/app_features.dart';
 import '../widgets/barakah_brand.dart';
 import 'authentication_screen.dart';
 import 'restaurants_screen.dart';
@@ -1119,21 +1120,8 @@ class _CheckoutSheetState extends State<_CheckoutSheet> {
                       },
                       choices: const {
                         'cash': 'الدفع عند الاستلام',
-                        'card': 'بطاقة ائتمان (قريبًا)',
-                        'gateway': 'دفع إلكتروني عبر الصرافة (قريبًا)',
                       },
                     ),
-                    if (_payment == 'card' || _payment == 'gateway')
-                      const Padding(
-                        padding: EdgeInsets.only(top: 4),
-                        child: Text(
-                          'يُنقل الزبون إلى صفحة دفع آمنة؛ لن نعرض رقم الحساب أو مفاتيح الدفع داخل التطبيق.',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.black54,
-                          ),
-                        ),
-                      ),
                     if (_activeCoupons.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       Container(
@@ -1213,238 +1201,241 @@ class _CheckoutSheetState extends State<_CheckoutSheet> {
                       ),
                     ],
                     const SizedBox(height: 12),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: AppTheme.navy,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(
-                          color: AppTheme.coolYellow,
+                    if (kLoyaltyRewardsEnabled)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: AppTheme.navy,
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: AppTheme.coolYellow,
+                          ),
                         ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          const Text(
-                            'الدفع بنقاط بركة',
-                            style: TextStyle(
-                              color: AppTheme.coolYellow,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'رصيدك: $_loyaltyPoints نقطة',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '$_redemptionPoints نقطة = ${_redemptionValue.toStringAsFixed(_redemptionValue % 1 == 0 ? 0 : 2)} ₪',
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                          SwitchListTile.adaptive(
-                            contentPadding: EdgeInsets.zero,
-                            activeColor: AppTheme.coolYellow,
-                            value: _useBarakahPoints,
-                            title: const Text(
-                              'استخدام نقاط بركة لهذا الطلب',
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Text(
+                              'الدفع بنقاط بركة',
                               style: TextStyle(
-                                color: Colors.white,
+                                color: AppTheme.coolYellow,
+                                fontSize: 18,
                                 fontWeight: FontWeight.w900,
                               ),
                             ),
-                            onChanged: (value) {
-                              setState(() {
-                                _useBarakahPoints = value;
-
-                                if (value) {
-                                  _selectedCouponId = null;
-
-                                  if (_maxRedeemablePoints >=
-                                      _redemptionPoints) {
-                                    _selectedBarakahPoints = _redemptionPoints;
-                                  }
-                                } else {
-                                  _selectedBarakahPoints = 0;
-                                  _barakahPin.clear();
-                                }
-                              });
-                            },
-                          ),
-                          if (_useBarakahPoints &&
-                              _maxRedeemablePoints > 0) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              'رصيدك: $_loyaltyPoints نقطة',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
                             const SizedBox(height: 4),
-                            DropdownButtonFormField<int>(
-                              value: _selectedBarakahPoints > 0
-                                  ? _selectedBarakahPoints
-                                  : null,
-                              decoration: InputDecoration(
-                                labelText: 'عدد النقاط المستخدمة',
-                                floatingLabelBehavior:
-                                    FloatingLabelBehavior.always,
-                                filled: true,
-                                fillColor: Colors.white,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 14,
-                                ),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
+                            Text(
+                              '$_redemptionPoints نقطة = ${_redemptionValue.toStringAsFixed(_redemptionValue % 1 == 0 ? 0 : 2)} ₪',
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            SwitchListTile.adaptive(
+                              contentPadding: EdgeInsets.zero,
+                              activeColor: AppTheme.coolYellow,
+                              value: _useBarakahPoints,
+                              title: const Text(
+                                'استخدام نقاط بركة لهذا الطلب',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
                                 ),
                               ),
-                              items: [
-                                for (int value = _redemptionPoints;
-                                    value <= _maxRedeemablePoints;
-                                    value += _redemptionPoints)
-                                  DropdownMenuItem<int>(
-                                    value: value,
-                                    child: Text(
-                                      '$value نقطة',
-                                      textDirection: TextDirection.rtl,
-                                    ),
-                                  ),
-                              ],
                               onChanged: (value) {
                                 setState(() {
-                                  _selectedBarakahPoints = value ?? 0;
+                                  _useBarakahPoints = value;
+
+                                  if (value) {
+                                    _selectedCouponId = null;
+
+                                    if (_maxRedeemablePoints >=
+                                        _redemptionPoints) {
+                                      _selectedBarakahPoints =
+                                          _redemptionPoints;
+                                    }
+                                  } else {
+                                    _selectedBarakahPoints = 0;
+                                    _barakahPin.clear();
+                                  }
                                 });
                               },
                             ),
-                            const SizedBox(height: 14),
-                            TextField(
-                              controller: _barakahPin,
-                              keyboardType: TextInputType.number,
-                              obscureText: true,
-                              maxLength: 4,
-                              textDirection: TextDirection.ltr,
-                              decoration: InputDecoration(
-                                labelText: 'الرقم السري لبطاقة بركة (PIN)',
-                                floatingLabelBehavior:
-                                    FloatingLabelBehavior.always,
-                                counterText: '',
-                                filled: true,
-                                fillColor: Colors.white,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                  vertical: 16,
-                                ),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                              ),
-                            ),
-                            if (_selectedBarakahPoints > 0) ...[
-                              const SizedBox(height: 14),
-                              Container(
-                                padding: const EdgeInsets.all(14),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(.72),
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                    color: AppTheme.coolYellow.withOpacity(.55),
+                            if (_useBarakahPoints &&
+                                _maxRedeemablePoints > 0) ...[
+                              const SizedBox(height: 4),
+                              DropdownButtonFormField<int>(
+                                value: _selectedBarakahPoints > 0
+                                    ? _selectedBarakahPoints
+                                    : null,
+                                decoration: InputDecoration(
+                                  labelText: 'عدد النقاط المستخدمة',
+                                  floatingLabelBehavior:
+                                      FloatingLabelBehavior.always,
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 14,
+                                  ),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(14),
                                   ),
                                 ),
-                                child: Column(
-                                  children: [
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        const Text(
-                                          'إجمالي الطلب',
-                                          style: TextStyle(
-                                            color: Colors.black54,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                        Text(
-                                          '${_estimatedOrderTotal.toStringAsFixed(2)} ₪',
-                                          style: const TextStyle(
-                                            color: Colors.black,
-                                            fontWeight: FontWeight.w900,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        const Text(
-                                          'خصم نقاط بركة',
-                                          style: TextStyle(
-                                            color: AppTheme.coolYellow,
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                        ),
-                                        Text(
-                                          '-${_selectedPointsDiscount.toStringAsFixed(2)} ₪',
-                                          style: const TextStyle(
-                                            color: AppTheme.coolYellow,
-                                            fontWeight: FontWeight.w900,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const Padding(
-                                      padding:
-                                          EdgeInsets.symmetric(vertical: 8),
-                                      child: Divider(
-                                        color: Colors.black26,
-                                        height: 1,
+                                items: [
+                                  for (int value = _redemptionPoints;
+                                      value <= _maxRedeemablePoints;
+                                      value += _redemptionPoints)
+                                    DropdownMenuItem<int>(
+                                      value: value,
+                                      child: Text(
+                                        '$value نقطة',
+                                        textDirection: TextDirection.rtl,
                                       ),
                                     ),
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        const Text(
-                                          'المتبقي للدفع',
-                                          style: TextStyle(
-                                            color: Colors.black,
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w900,
-                                          ),
-                                        ),
-                                        Text(
-                                          '${_estimatedPayableTotal.toStringAsFixed(2)} ₪',
-                                          style: const TextStyle(
-                                            color: AppTheme.coolYellow,
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.w900,
-                                          ),
-                                        ),
-                                      ],
+                                ],
+                                onChanged: (value) {
+                                  setState(() {
+                                    _selectedBarakahPoints = value ?? 0;
+                                  });
+                                },
+                              ),
+                              const SizedBox(height: 14),
+                              TextField(
+                                controller: _barakahPin,
+                                keyboardType: TextInputType.number,
+                                obscureText: true,
+                                maxLength: 4,
+                                textDirection: TextDirection.ltr,
+                                decoration: InputDecoration(
+                                  labelText: 'الرقم السري لبطاقة بركة (PIN)',
+                                  floatingLabelBehavior:
+                                      FloatingLabelBehavior.always,
+                                  counterText: '',
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 16,
+                                  ),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                ),
+                              ),
+                              if (_selectedBarakahPoints > 0) ...[
+                                const SizedBox(height: 14),
+                                Container(
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(.72),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(
+                                      color:
+                                          AppTheme.coolYellow.withOpacity(.55),
                                     ),
-                                  ],
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          const Text(
+                                            'إجمالي الطلب',
+                                            style: TextStyle(
+                                              color: Colors.black54,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          Text(
+                                            '${_estimatedOrderTotal.toStringAsFixed(2)} ₪',
+                                            style: const TextStyle(
+                                              color: Colors.black,
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          const Text(
+                                            'خصم نقاط بركة',
+                                            style: TextStyle(
+                                              color: AppTheme.coolYellow,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                          Text(
+                                            '-${_selectedPointsDiscount.toStringAsFixed(2)} ₪',
+                                            style: const TextStyle(
+                                              color: AppTheme.coolYellow,
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const Padding(
+                                        padding:
+                                            EdgeInsets.symmetric(vertical: 8),
+                                        child: Divider(
+                                          color: Colors.black26,
+                                          height: 1,
+                                        ),
+                                      ),
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          const Text(
+                                            'المتبقي للدفع',
+                                            style: TextStyle(
+                                              color: Colors.black,
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          ),
+                                          Text(
+                                            '${_estimatedPayableTotal.toStringAsFixed(2)} ₪',
+                                            style: const TextStyle(
+                                              color: AppTheme.coolYellow,
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
+                              ],
                             ],
-                          ],
-                          if (_useBarakahPoints && _maxRedeemablePoints == 0)
-                            const Padding(
-                              padding: EdgeInsets.only(top: 8),
-                              child: Text(
-                                'رصيدك الحالي لا يكفي لفئة الاستبدال أو قيمة الطلب أقل من فئة الخصم.',
-                                style: TextStyle(
-                                  color: Colors.white70,
-                                  fontWeight: FontWeight.w700,
+                            if (_useBarakahPoints && _maxRedeemablePoints == 0)
+                              const Padding(
+                                padding: EdgeInsets.only(top: 8),
+                                child: Text(
+                                  'رصيدك الحالي لا يكفي لفئة الاستبدال أو قيمة الطلب أقل من فئة الخصم.',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
-                            ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
                     const SizedBox(height: 8),
                     SwitchListTile.adaptive(
                       contentPadding: EdgeInsets.zero,

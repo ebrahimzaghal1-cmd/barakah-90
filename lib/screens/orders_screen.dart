@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../games/play_hub_screen.dart';
+import '../config/app_features.dart';
 import '../services/firebase_state.dart';
 import '../services/order_service.dart';
 import '../theme/app_theme.dart';
@@ -2079,14 +2080,16 @@ class _OrdersPreviewScreen extends StatelessWidget {
                 current: true,
               ),
               const SizedBox(height: 16),
-              _OrdersGameBanner(
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const PlayHubScreen(),
+              if (kLoyaltyRewardsEnabled) ...[
+                _OrdersGameBanner(
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const PlayHubScreen(),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 16),
+                const SizedBox(height: 16),
+              ],
               const _PreviewOrderSection(
                 title: 'الطلبات السابقة',
                 icon: Icons.history_rounded,

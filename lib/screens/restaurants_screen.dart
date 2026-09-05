@@ -23,6 +23,7 @@ import '../services/location_service.dart';
 import '../services/media_upload_service.dart';
 import '../theme/app_theme.dart';
 import '../games/play_hub_screen.dart';
+import '../config/app_features.dart';
 import 'categories_screen.dart';
 import 'restaurant_details_screen.dart';
 import 'authentication_screen.dart';
@@ -1288,8 +1289,10 @@ class _CategoriesRow extends StatelessWidget {
       BuildContext context, Map<String, dynamic> item) async {
     switch (item['actionType']?.toString() ?? 'details') {
       case 'play':
-        await Navigator.push(
-            context, MaterialPageRoute(builder: (_) => const PlayHubScreen()));
+        if (kLoyaltyRewardsEnabled) {
+          await Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const PlayHubScreen()));
+        }
         return;
       case 'deliveryOffers':
         await Navigator.push(
@@ -1375,17 +1378,19 @@ class _CategoriesRow extends StatelessWidget {
       scrollDirection: Axis.horizontal,
       reverse: true,
       children: [
-        _YellowHomeTile(
-          title: 'العب واربح',
-          image: 'assets/images/play_with_barakah_selected.png',
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const PlayHubScreen(),
+        if (kLoyaltyRewardsEnabled) ...[
+          _YellowHomeTile(
+            title: 'العب واربح',
+            image: 'assets/images/play_with_barakah_selected.png',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const PlayHubScreen(),
+              ),
             ),
           ),
-        ),
-        const SizedBox(width: 10),
+          const SizedBox(width: 10),
+        ],
         _YellowHomeTile(
           title: 'عروض التوصيل',
           image: 'assets/images/home_icons/delivery.png',

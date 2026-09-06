@@ -382,7 +382,7 @@ class _PartnerRegistrationScreenState extends State<PartnerRegistrationScreen> {
                     labelText: _activityType == 'طبيب'
                         ? 'اسم العيادة'
                         : 'اسم المطعم / المحل',
-                    prefixIcon: Icon(Icons.storefront_rounded),
+                    prefixIcon: const Icon(Icons.storefront_rounded),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -491,7 +491,7 @@ class _PartnerRegistrationScreenState extends State<PartnerRegistrationScreen> {
                     labelText: _activityType == 'طبيب'
                         ? 'اسم الطبيب المسؤول'
                         : 'اسم صاحب المحل / المسؤول',
-                    prefixIcon: Icon(Icons.person_outline_rounded),
+                    prefixIcon: const Icon(Icons.person_outline_rounded),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -499,7 +499,7 @@ class _PartnerRegistrationScreenState extends State<PartnerRegistrationScreen> {
                   controller: _email,
                   validator: _emailValidator,
                   keyboardType: TextInputType.emailAddress,
-                  decoration: InputDecoration(
+                  decoration: const InputDecoration(
                     labelText: 'البريد الإلكتروني',
                     prefixIcon: Icon(Icons.email_outlined),
                   ),
@@ -669,15 +669,17 @@ class _PartnerRegistrationScreenState extends State<PartnerRegistrationScreen> {
                     labelText: _activityType == 'طبيب'
                         ? 'نبذة عن الطبيب والعيادة'
                         : 'وصف مختصر عن المحل',
-                    prefixIcon: Icon(Icons.notes_rounded),
+                    prefixIcon: const Icon(Icons.notes_rounded),
                   ),
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _locationUrl,
+                  validator: _required,
                   keyboardType: TextInputType.url,
                   decoration: const InputDecoration(
-                    labelText: 'رابط Google Maps — اختياري',
+                    labelText: 'رابط Google Maps *',
+                    helperText: 'مطلوب مع تحديد الموقع على الخريطة',
                     prefixIcon: Icon(Icons.map_outlined),
                   ),
                 ),
@@ -722,8 +724,10 @@ class _PartnerRegistrationScreenState extends State<PartnerRegistrationScreen> {
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _identityDocumentRef,
+                  validator: _required,
                   decoration: const InputDecoration(
-                    labelText: 'مرجع مستند الهوية — اختياري حاليًا',
+                    labelText: 'مرجع مستند الهوية *',
+                    helperText: 'حقل إجباري لمراجعة طلب الشريك',
                     prefixIcon: Icon(Icons.badge_rounded),
                   ),
                 ),

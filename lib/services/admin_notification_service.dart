@@ -71,8 +71,6 @@ class AdminNotificationService {
         if (uid != null) _saveToken(uid, token);
       });
       _foregroundSubscription = FirebaseMessaging.onMessage.listen((message) {
-        if (!kIsWeb) return;
-
         final notification = message.notification;
         final title = notification?.title ?? message.data['title']?.toString();
         final body = notification?.body ?? message.data['body']?.toString();
@@ -101,13 +99,18 @@ class AdminNotificationService {
 
     try {
       _userUid = user.uid;
-      final permission = await FirebaseMessaging.instance.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-        provisional: false,
-      );
+      // Chrome only accepts the permission prompt after an explicit user
+      // gesture. On web we therefore register silently only when permission
+      // was already granted; the profile button performs the actual request.
+      // لا نُظهر نافذة إذن iOS تلقائيًا بعد تسجيل الدخول. Apple توصي بطلب
+      // الإذن ضمن سياق واضح؛ زر الجرس في الواجهة هو الذي يطلبه من المستخدم.
+      final permission =
+          await FirebaseMessaging.instance.getNotificationSettings();
       if (permission.authorizationStatus == AuthorizationStatus.denied) return;
+      if (permission.authorizationStatus != AuthorizationStatus.authorized &&
+          permission.authorizationStatus != AuthorizationStatus.provisional) {
+        return;
+      }
 
       // APNs can need a brief moment after permission is accepted before it
       // provides the FCM token on a physical iPhone.
@@ -159,8 +162,9 @@ class AdminNotificationService {
       );
 
       if (permission.authorizationStatus == AuthorizationStatus.denied) {
-        _permissionFailureMessage =
-            'الإشعارات محظورة للموقع. اجعلها «سماح» من إعدادات Chrome ثم أعد تحميل الصفحة.';
+        _permissionFailureMessage = kIsWeb
+            ? 'الإشعارات محظورة للموقع. اجعلها «سماح» من إعدادات Chrome ثم أعد تحميل الصفحة.'
+            : 'الإشعارات مرفوضة. فعّلها لتطبيق بركة من إعدادات الآيفون.';
         return false;
       }
 
@@ -189,11 +193,16 @@ class AdminNotificationService {
       return true;
     } catch (error) {
       final errorText = error.toString().toLowerCase();
-      _permissionFailureMessage = errorText.contains('permission') ||
-              errorText.contains('denied') ||
-              errorText.contains('blocked')
-          ? 'الإشعارات محظورة للموقع. اجعلها «سماح» من إعدادات Chrome ثم أعد تحميل الصفحة.'
-          : 'تعذر تسجيل إشعارات Chrome. أعد تحميل الصفحة ثم حاول مرة أخرى.';
+      final permissionProblem = errorText.contains('permission') ||
+          errorText.contains('denied') ||
+          errorText.contains('blocked');
+      _permissionFailureMessage = kIsWeb
+          ? (permissionProblem
+              ? 'الإشعارات محظورة للموقع. اجعلها «سماح» من إعدادات Chrome ثم أعد تحميل الصفحة.'
+              : 'تعذر تسجيل إشعارات Chrome. أعد تحميل الصفحة ثم حاول مرة أخرى.')
+          : (permissionProblem
+              ? 'الإشعارات مرفوضة. فعّلها لتطبيق بركة من إعدادات الآيفون.'
+              : 'تعذر تسجيل إشعارات الآيفون. حاول مرة أخرى من زر الإشعارات.');
       debugPrint(
         'تعذر تفعيل إشعارات بركة يدويًا: $error',
       );

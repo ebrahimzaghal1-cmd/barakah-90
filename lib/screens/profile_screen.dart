@@ -26,6 +26,7 @@ import 'authentication_screen.dart';
 import 'orders_screen.dart';
 import 'location_picker_screen.dart';
 import 'merchant_dashboard.dart';
+import 'partner_registration_screen.dart';
 import 'driver_dashboard.dart';
 import 'driver_registration_screen.dart';
 import 'customer_service_join_screen.dart';
@@ -495,10 +496,12 @@ class _ProfileBody extends StatelessWidget {
                 icon: Icons.storefront_rounded,
                 title: 'الانضمام كشريك',
                 subtitle: 'سجّل مطعمك أو متجرك في بركة',
-                onTap: () async {
-                  final uri = Uri.parse('https://barakah-new.web.app/partner');
-                  await launchUrl(uri, mode: LaunchMode.externalApplication);
-                },
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const PartnerRegistrationScreen(),
+                  ),
+                ),
               ),
               if (user != null && !isDriver && !isCustomerService)
                 _ProfileMenuTile(

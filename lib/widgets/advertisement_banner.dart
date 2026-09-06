@@ -2,11 +2,75 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
+import '../screens/restaurant_offers_screen.dart';
 import '../services/firebase_state.dart';
 import '../theme/app_theme.dart';
 import 'barakah_brand.dart';
+
+Future<void> _openAdvertisement(
+  BuildContext context,
+  Map<String, dynamic> data,
+) async {
+  final action = data['actionType']?.toString().trim() ?? '';
+  final destinationUrl = data['destinationUrl']?.toString().trim() ?? '';
+  final placement = data['placement']?.toString() ?? '';
+
+  if (destinationUrl.isNotEmpty) {
+    final uri = Uri.tryParse(destinationUrl);
+    if (uri != null &&
+        await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      return;
+    }
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذر فتح رابط العرض.')),
+      );
+    }
+    return;
+  }
+
+  final isRestaurantOffer = action == 'restaurantOffers' ||
+      ((action.isEmpty || action == 'automatic') &&
+          (placement == 'restaurant' || placement.startsWith('restaurants_')));
+  if (isRestaurantOffer && context.mounted) {
+    await Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => const RestaurantOffersScreen(),
+    ));
+    return;
+  }
+
+  if (!context.mounted) return;
+  final title = data['title']?.toString() ?? 'إعلان بركة';
+  final subtitle = data['subtitle']?.toString() ?? '';
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (sheetContext) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 8, 24, 30),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(title,
+                textAlign: TextAlign.right,
+                style:
+                    const TextStyle(fontSize: 23, fontWeight: FontWeight.w900)),
+            if (subtitle.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(subtitle,
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(fontSize: 16, height: 1.5)),
+            ],
+          ],
+        ),
+      ),
+    ),
+  );
+}
 
 class AdvertisementBanner extends StatelessWidget {
   const AdvertisementBanner({super.key, required this.placement});
@@ -43,9 +107,20 @@ class AdvertisementBanner extends StatelessWidget {
 
 /// إعلانات ممولة تظهر بين أقسام التصفح بصورة رئيسية ومعرض صور مصغّرة.
 class SponsoredAdsFeed extends StatelessWidget {
-  const SponsoredAdsFeed({super.key, required this.placement});
+  const SponsoredAdsFeed({
+    super.key,
+    required this.placement,
+    this.title = 'إعلانات ممولة',
+    this.maxItems = 2,
+    this.includeGlobal = true,
+    this.emptyMessage,
+  });
 
   final String placement;
+  final String title;
+  final int maxItems;
+  final bool includeGlobal;
+  final String? emptyMessage;
 
   @override
   Widget build(BuildContext context) {
@@ -60,7 +135,7 @@ class SponsoredAdsFeed extends StatelessWidget {
           final gallery = data['gallery'] as List?;
           return data['isActive'] != false &&
               data['showInFeed'] != false &&
-              (target == 'all' || target == placement) &&
+              (target == placement || (includeGlobal && target == 'all')) &&
               (image.isNotEmpty || gallery?.isNotEmpty == true);
         }).toList()
           ..sort((a, b) {
@@ -72,16 +147,39 @@ class SponsoredAdsFeed extends StatelessWidget {
                     0;
             return right.compareTo(left);
           });
-        if (ads.isEmpty) return const SizedBox.shrink();
+        if (ads.isEmpty) {
+          final message = emptyMessage;
+          if (message == null) return const SizedBox.shrink();
+          return Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              children: [
+                const Icon(Icons.local_offer_outlined,
+                    color: AppTheme.deepYellow, size: 58),
+                const SizedBox(height: 12),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.black54,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 8, 16, 12),
-              child: Text('إعلانات ممولة',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: Text(title,
+                  style: const TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.w900)),
             ),
-            ...ads.take(2).map((ad) => Padding(
+            ...ads.take(maxItems).map((ad) => Padding(
                   padding: const EdgeInsets.only(bottom: 18),
                   child: SizedBox(
                     width: double.infinity,
@@ -146,132 +244,138 @@ class _SponsoredGalleryCardState extends State<_SponsoredGalleryCard> {
         color: Colors.white.withOpacity(.86),
         borderRadius: BorderRadius.zero,
         clipBehavior: Clip.antiAlias,
-        child:
-            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Padding(
-            padding: EdgeInsets.fromLTRB(16, outerPadding, 16, 0),
-            child: Row(children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                decoration: BoxDecoration(
-                  color: AppTheme.coolYellow,
-                  borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: () => _openAdvertisement(context, widget.data),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(16, outerPadding, 16, 0),
+              child: Row(children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppTheme.coolYellow,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Text('ممول',
+                      style:
+                          TextStyle(fontSize: 12, fontWeight: FontWeight.w900)),
                 ),
-                child: const Text('ممول',
-                    style:
-                        TextStyle(fontSize: 12, fontWeight: FontWeight.w900)),
-              ),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: titleSize, fontWeight: FontWeight.w900)),
-                    if (subtitle.isNotEmpty)
-                      Text(subtitle,
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: Colors.black54)),
-                  ],
+                          style: TextStyle(
+                              fontSize: titleSize,
+                              fontWeight: FontWeight.w900)),
+                      if (subtitle.isNotEmpty)
+                        Text(subtitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Colors.black54)),
+                    ],
+                  ),
                 ),
-              ),
-              Container(
-                width: 116,
-                height: 34,
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
-                decoration: BoxDecoration(
-                  color: AppTheme.navy,
-                  borderRadius: BorderRadius.circular(12),
+                Container(
+                  width: 116,
+                  height: 34,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppTheme.navy,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const BarakahBrandName(light: true, compact: true),
                 ),
-                child: const BarakahBrandName(light: true, compact: true),
-              ),
-            ]),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: AspectRatio(
-              aspectRatio: imageAspectRatio,
-              child: Stack(fit: StackFit.expand, children: [
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 320),
-                  transitionBuilder: (child, animation) => FadeTransition(
-                    opacity: animation,
-                    child: ScaleTransition(
-                      scale: Tween<double>(begin: .96, end: 1).animate(
-                        CurvedAnimation(
-                          parent: animation,
-                          curve: Curves.easeOutCubic,
+              ]),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: AspectRatio(
+                aspectRatio: imageAspectRatio,
+                child: Stack(fit: StackFit.expand, children: [
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 320),
+                    transitionBuilder: (child, animation) => FadeTransition(
+                      opacity: animation,
+                      child: ScaleTransition(
+                        scale: Tween<double>(begin: .96, end: 1).animate(
+                          CurvedAnimation(
+                            parent: animation,
+                            curve: Curves.easeOutCubic,
+                          ),
                         ),
+                        child: child,
                       ),
-                      child: child,
+                    ),
+                    child: Image.network(
+                      images[_selected],
+                      key: ValueKey(images[_selected]),
+                      width: double.infinity,
+                      height: double.infinity,
+                      fit: BoxFit.cover,
+                      alignment: Alignment.center,
+                      errorBuilder: (_, __, ___) => const ColoredBox(
+                        color: AppTheme.ink,
+                        child: Icon(Icons.broken_image_outlined,
+                            color: Colors.white, size: 44),
+                      ),
                     ),
                   ),
-                  child: Image.network(
-                    images[_selected],
-                    key: ValueKey(images[_selected]),
-                    width: double.infinity,
-                    height: double.infinity,
-                    fit: BoxFit.cover,
-                    alignment: Alignment.center,
-                    errorBuilder: (_, __, ___) => const ColoredBox(
-                      color: AppTheme.ink,
-                      child: Icon(Icons.broken_image_outlined,
-                          color: Colors.white, size: 44),
-                    ),
-                  ),
-                ),
-                if (images.length > 1)
-                  PositionedDirectional(
-                    start: 12,
-                    end: 12,
-                    bottom: 12,
-                    child: Container(
-                      height: thumbnailHeight,
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(.35),
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: images.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 6),
-                        itemBuilder: (_, index) => AnimatedScale(
-                          duration: const Duration(milliseconds: 220),
-                          scale: index == _selected ? 1.06 : 1,
-                          curve: Curves.easeOutBack,
-                          child: GestureDetector(
-                            onTap: () => setState(() => _selected = index),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 220),
-                              width: index == _selected ? 84 : 66,
-                              clipBehavior: Clip.antiAlias,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: index == _selected
-                                      ? AppTheme.coolYellow
-                                      : Colors.white70,
-                                  width: index == _selected ? 3 : 1,
+                  if (images.length > 1)
+                    PositionedDirectional(
+                      start: 12,
+                      end: 12,
+                      bottom: 12,
+                      child: Container(
+                        height: thumbnailHeight,
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(.35),
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: images.length,
+                          separatorBuilder: (_, __) => const SizedBox(width: 6),
+                          itemBuilder: (_, index) => AnimatedScale(
+                            duration: const Duration(milliseconds: 220),
+                            scale: index == _selected ? 1.06 : 1,
+                            curve: Curves.easeOutBack,
+                            child: GestureDetector(
+                              onTap: () => setState(() => _selected = index),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 220),
+                                width: index == _selected ? 84 : 66,
+                                clipBehavior: Clip.antiAlias,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: index == _selected
+                                        ? AppTheme.coolYellow
+                                        : Colors.white70,
+                                    width: index == _selected ? 3 : 1,
+                                  ),
                                 ),
+                                child: Image.network(images[index],
+                                    fit: BoxFit.cover),
                               ),
-                              child: Image.network(images[index],
-                                  fit: BoxFit.cover),
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-              ]),
+                ]),
+              ),
             ),
-          ),
-        ]),
+          ]),
+        ),
       ),
     );
   }
@@ -448,134 +552,139 @@ class _AdCardState extends State<_AdCard> {
     final images = _images;
     if (_imagePage >= images.length) _imagePage = 0;
     final playable = _controller?.value.isInitialized == true && !_failed;
-    return Container(
-      height: 184,
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(0, 8, 0, 4),
-      clipBehavior: Clip.antiAlias,
-      decoration: const BoxDecoration(
-        borderRadius: BorderRadius.zero,
-        color: AppTheme.ink,
-      ),
-      child: Stack(fit: StackFit.expand, children: [
-        if (playable)
-          FittedBox(
-            fit: BoxFit.cover,
-            child: SizedBox(
-              width: _controller!.value.size.width,
-              height: _controller!.value.size.height,
-              child: VideoPlayer(_controller!),
-            ),
-          )
-        else if (images.isNotEmpty)
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 350),
-            child: Image.network(
-              images[_imagePage],
-              key: ValueKey(images[_imagePage]),
-              width: double.infinity,
-              height: double.infinity,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _openAdvertisement(context, widget.data),
+      child: Container(
+        height: 184,
+        width: double.infinity,
+        margin: const EdgeInsets.fromLTRB(0, 8, 0, 4),
+        clipBehavior: Clip.antiAlias,
+        decoration: const BoxDecoration(
+          borderRadius: BorderRadius.zero,
+          color: AppTheme.ink,
+        ),
+        child: Stack(fit: StackFit.expand, children: [
+          if (playable)
+            FittedBox(
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const ColoredBox(
-                color: AppTheme.ink,
-                child: Icon(Icons.broken_image_outlined,
-                    color: Colors.white, size: 42),
+              child: SizedBox(
+                width: _controller!.value.size.width,
+                height: _controller!.value.size.height,
+                child: VideoPlayer(_controller!),
+              ),
+            )
+          else if (images.isNotEmpty)
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 350),
+              child: Image.network(
+                images[_imagePage],
+                key: ValueKey(images[_imagePage]),
+                width: double.infinity,
+                height: double.infinity,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const ColoredBox(
+                  color: AppTheme.ink,
+                  child: Icon(Icons.broken_image_outlined,
+                      color: Colors.white, size: 42),
+                ),
               ),
             ),
-          ),
-        DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(colors: [
-              Colors.black.withOpacity(.68),
-              Colors.black.withOpacity(.08),
-            ]),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(18),
-          child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                if (_controller != null)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(.25),
-                        borderRadius: BorderRadius.circular(10)),
-                    child: const Text('فيديو تسويقي',
-                        style: TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.w800)),
-                  ),
-                Text(title,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900)),
-                if (subtitle.isNotEmpty)
-                  Text(subtitle, style: const TextStyle(color: Colors.white)),
-              ]),
-        ),
-        PositionedDirectional(
-          top: 10,
-          end: 10,
-          child: Container(
-            width: 126,
-            height: 38,
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          DecoratedBox(
             decoration: BoxDecoration(
-              color: AppTheme.navy.withOpacity(.90),
-              borderRadius: BorderRadius.circular(13),
-              border: Border.all(color: Colors.white.withOpacity(.25)),
-            ),
-            child: const BarakahBrandName(light: true, compact: true),
-          ),
-        ),
-        if (playable)
-          Positioned(
-            top: 10,
-            left: 10,
-            child: IconButton(
-              onPressed: () => setState(() {
-                _controller!.value.isPlaying
-                    ? _controller!.pause()
-                    : _controller!.play();
-              }),
-              icon: Icon(_controller!.value.isPlaying
-                  ? Icons.pause_circle_outline
-                  : Icons.play_circle_outline),
-              color: Colors.white,
-              iconSize: 32,
+              gradient: LinearGradient(colors: [
+                Colors.black.withOpacity(.68),
+                Colors.black.withOpacity(.08),
+              ]),
             ),
           ),
-        if (!playable && images.length > 1)
+          Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  if (_controller != null)
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(.25),
+                          borderRadius: BorderRadius.circular(10)),
+                      child: const Text('فيديو تسويقي',
+                          style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800)),
+                    ),
+                  Text(title,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.w900)),
+                  if (subtitle.isNotEmpty)
+                    Text(subtitle, style: const TextStyle(color: Colors.white)),
+                ]),
+          ),
           PositionedDirectional(
-            top: 18,
-            start: 14,
-            child: Row(
-              children: List.generate(
-                images.length,
-                (index) => GestureDetector(
-                  onTap: () => setState(() => _imagePage = index),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    width: index == _imagePage ? 18 : 7,
-                    height: 7,
-                    margin: const EdgeInsetsDirectional.only(end: 4),
-                    decoration: BoxDecoration(
-                      color: index == _imagePage
-                          ? AppTheme.coolYellow
-                          : Colors.white70,
-                      borderRadius: BorderRadius.circular(8),
+            top: 10,
+            end: 10,
+            child: Container(
+              width: 126,
+              height: 38,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppTheme.navy.withOpacity(.90),
+                borderRadius: BorderRadius.circular(13),
+                border: Border.all(color: Colors.white.withOpacity(.25)),
+              ),
+              child: const BarakahBrandName(light: true, compact: true),
+            ),
+          ),
+          if (playable)
+            Positioned(
+              top: 10,
+              left: 10,
+              child: IconButton(
+                onPressed: () => setState(() {
+                  _controller!.value.isPlaying
+                      ? _controller!.pause()
+                      : _controller!.play();
+                }),
+                icon: Icon(_controller!.value.isPlaying
+                    ? Icons.pause_circle_outline
+                    : Icons.play_circle_outline),
+                color: Colors.white,
+                iconSize: 32,
+              ),
+            ),
+          if (!playable && images.length > 1)
+            PositionedDirectional(
+              top: 18,
+              start: 14,
+              child: Row(
+                children: List.generate(
+                  images.length,
+                  (index) => GestureDetector(
+                    onTap: () => setState(() => _imagePage = index),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      width: index == _imagePage ? 18 : 7,
+                      height: 7,
+                      margin: const EdgeInsetsDirectional.only(end: 4),
+                      decoration: BoxDecoration(
+                        color: index == _imagePage
+                            ? AppTheme.coolYellow
+                            : Colors.white70,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
-      ]),
+        ]),
+      ),
     );
   }
 }

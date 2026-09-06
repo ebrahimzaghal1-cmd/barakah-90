@@ -187,6 +187,11 @@ class AdminDashboard extends StatelessWidget {
         page: const AdminManageProducts(),
       ),
       _AdminItem(
+        title: 'عروض نهاية الأسبوع',
+        icon: Icons.local_offer_rounded,
+        page: const AdminManageAds(placementFilter: 'weekend_offers'),
+      ),
+      _AdminItem(
         title: 'إدارة الإعلانات',
         icon: Icons.campaign_rounded,
         page: const AdminManageAds(),

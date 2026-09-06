@@ -692,7 +692,9 @@ async function createPartnerApplication(request, env) {
     "phone",
     "activityType",
     "businessCategory",
-    "area"
+    "area",
+    "locationUrl",
+    "identityDocumentRef"
   ];
   for (const field of required) {
     if (!String(data?.[field] || "").trim()) {
@@ -774,14 +776,21 @@ async function createPartnerApplication(request, env) {
   const adminTokens = [...roleAdmins, ...flagAdmins].flatMap(
     (admin) => Array.isArray(admin.fcmTokens) ? admin.fcmTokens : []
   );
-  await sendPushToTokens(env, token, adminTokens, {
-    title: "طلب انضمام شريك جديد 🤝",
-    body: `${record.businessName} بانتظار المراجعة.`,
-    data: {
-      type: "partner_application",
-      applicationId
-    }
-  });
+  // The application is already committed at this point. A push notification is
+  // best-effort and must never make the applicant see a failed submission (or
+  // submit duplicates) when FCM is temporarily unavailable.
+  try {
+    await sendPushToTokens(env, token, adminTokens, {
+      title: "طلب انضمام شريك جديد 🤝",
+      body: `${record.businessName} بانتظار المراجعة.`,
+      data: {
+        type: "partner_application",
+        applicationId
+      }
+    });
+  } catch (error) {
+    console.error("partner_application_notification_failed", error.message);
+  }
   return { applicationId, status: "pending" };
 }
 __name(createPartnerApplication, "createPartnerApplication");

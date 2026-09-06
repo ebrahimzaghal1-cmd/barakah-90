@@ -202,6 +202,9 @@ class _AdminManageHomeStripsState extends State<AdminManageHomeStrips> {
                       DropdownMenuItem(
                           value: 'nearby', child: Text('أماكن قريبة')),
                       DropdownMenuItem(
+                          value: 'weekendOffers',
+                          child: Text('عروض نهاية الأسبوع')),
+                      DropdownMenuItem(
                           value: 'market', child: Text('فتح الماركت')),
                       DropdownMenuItem(
                           value: 'external', child: Text('فتح رابط خارجي')),

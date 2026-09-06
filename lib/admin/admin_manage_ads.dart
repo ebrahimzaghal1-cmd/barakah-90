@@ -9,13 +9,23 @@ import '../theme/app_theme.dart';
 
 /// لوحة بسيطة لإدارة إعلانات الصفحة الرئيسية من الجوال مباشرة.
 class AdminManageAds extends StatelessWidget {
-  const AdminManageAds({super.key});
+  const AdminManageAds({super.key, this.placementFilter});
+
+  final String? placementFilter;
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('إدارة الإعلانات'), centerTitle: true),
+        appBar: AppBar(
+          title: Text(placementFilter == 'weekend_offers'
+              ? 'عروض نهاية الأسبوع'
+              : 'إدارة الإعلانات'),
+          centerTitle: true,
+        ),
         floatingActionButton: FloatingActionButton.extended(
-          onPressed: () => _openEditor(context),
+          onPressed: () => _openEditor(
+            context,
+            initialPlacement: placementFilter,
+          ),
           backgroundColor: AppTheme.deepYellow,
           foregroundColor: Colors.white,
           icon: const Icon(Icons.add_rounded),
@@ -24,7 +34,10 @@ class AdminManageAds extends StatelessWidget {
         body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: FirebaseFirestore.instance.collection('ads').snapshots(),
           builder: (context, snapshot) {
-            final ads = snapshot.data?.docs ?? [];
+            final ads = (snapshot.data?.docs ?? []).where((ad) {
+              return placementFilter == null ||
+                  ad.data()['placement']?.toString() == placementFilter;
+            }).toList();
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             }
@@ -165,6 +178,7 @@ class AdminManageAds extends StatelessWidget {
         'restaurants_between_5' => 'المطاعم - ممول بين القسم 5 و6',
         'restaurants_between_6' => 'المطاعم - ممول بين القسم 6 و7',
         'restaurants_between_7' => 'المطاعم - ممول بين القسم 7 و8',
+        'weekend_offers' => 'صفحة عروض نهاية الأسبوع',
         _ => 'كل الصفحات',
       };
 
@@ -190,7 +204,8 @@ class AdminManageAds extends StatelessWidget {
   }
 
   static Future<void> _openEditor(BuildContext context,
-      {QueryDocumentSnapshot<Map<String, dynamic>>? doc}) async {
+      {QueryDocumentSnapshot<Map<String, dynamic>>? doc,
+      String? initialPlacement}) async {
     if (doc == null) {
       final existing = await FirebaseFirestore.instance.collection('ads').get();
       if (!context.mounted) return;
@@ -205,14 +220,18 @@ class AdminManageAds extends StatelessWidget {
     await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => _AdEditor(existing: doc),
+          builder: (_) => _AdEditor(
+            existing: doc,
+            initialPlacement: initialPlacement,
+          ),
         ));
   }
 }
 
 class _AdEditor extends StatefulWidget {
-  const _AdEditor({this.existing});
+  const _AdEditor({this.existing, this.initialPlacement});
   final QueryDocumentSnapshot<Map<String, dynamic>>? existing;
+  final String? initialPlacement;
 
   @override
   State<_AdEditor> createState() => _AdEditorState();
@@ -222,6 +241,7 @@ class _AdEditorState extends State<_AdEditor> {
   final _formKey = GlobalKey<FormState>();
   final _title = TextEditingController();
   final _subtitle = TextEditingController();
+  final _destinationUrl = TextEditingController();
   final _picker = ImagePicker();
   XFile? _imageFile;
   Uint8List? _imageBytes;
@@ -231,6 +251,7 @@ class _AdEditorState extends State<_AdEditor> {
   String _placement = 'restaurant';
   String _displaySize = 'large';
   String _adFormat = 'banner';
+  String _actionType = 'automatic';
   bool _active = true;
   bool _saving = false;
   String _uploadProgress = '';
@@ -242,10 +263,14 @@ class _AdEditorState extends State<_AdEditor> {
     super.initState();
     _title.text = _existing['title']?.toString() ?? '';
     _subtitle.text = _existing['subtitle']?.toString() ?? '';
-    _placement = _existing['placement']?.toString() ?? 'restaurant';
+    _destinationUrl.text = _existing['destinationUrl']?.toString() ?? '';
+    _placement = _existing['placement']?.toString() ??
+        widget.initialPlacement ??
+        'restaurant';
     _displaySize = _existing['displaySize']?.toString() ?? 'large';
     _adFormat = _existing['adFormat']?.toString() ??
         (_existingGallery.isNotEmpty ? 'gallery' : 'banner');
+    _actionType = _existing['actionType']?.toString() ?? 'automatic';
     _active = _existing['isActive'] != false;
   }
 
@@ -253,6 +278,7 @@ class _AdEditorState extends State<_AdEditor> {
   void dispose() {
     _title.dispose();
     _subtitle.dispose();
+    _destinationUrl.dispose();
     super.dispose();
   }
 
@@ -383,6 +409,8 @@ class _AdEditorState extends State<_AdEditor> {
         'placement': _placement,
         'displaySize': _displaySize,
         'adFormat': _adFormat,
+        'actionType': _actionType,
+        'destinationUrl': _destinationUrl.text.trim(),
         'isActive': _active,
         'image': image,
         'gallery': gallery,
@@ -443,7 +471,8 @@ class _AdEditorState extends State<_AdEditor> {
                 _adFormat = value ?? 'banner';
                 if (_adFormat == 'gallery' &&
                     _placement != 'market_gallery' &&
-                    _placement != 'restaurants_gallery') {
+                    _placement != 'restaurants_gallery' &&
+                    _placement != 'weekend_offers') {
                   _placement = 'market_gallery';
                 }
               }),
@@ -461,6 +490,31 @@ class _AdEditorState extends State<_AdEditor> {
                 controller: _subtitle,
                 decoration:
                     const InputDecoration(labelText: 'وصف قصير (اختياري)')),
+            const SizedBox(height: 14),
+            DropdownButtonFormField<String>(
+              value: _actionType,
+              decoration:
+                  const InputDecoration(labelText: 'ماذا يحدث عند الضغط؟'),
+              items: const [
+                DropdownMenuItem(
+                    value: 'automatic', child: Text('تلقائي حسب مكان الإعلان')),
+                DropdownMenuItem(
+                    value: 'restaurantOffers', child: Text('فتح عروض المطاعم')),
+                DropdownMenuItem(
+                    value: 'details', child: Text('عرض تفاصيل الإعلان')),
+              ],
+              onChanged: (value) =>
+                  setState(() => _actionType = value ?? 'automatic'),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _destinationUrl,
+              keyboardType: TextInputType.url,
+              decoration: const InputDecoration(
+                labelText: 'رابط خارجي عند الضغط (اختياري)',
+                hintText: 'https://example.com',
+              ),
+            ),
             const SizedBox(height: 20),
             DropdownButtonFormField<String>(
               value: _placement,
@@ -468,6 +522,9 @@ class _AdEditorState extends State<_AdEditor> {
               items: const [
                 DropdownMenuItem(
                     value: 'restaurant', child: Text('الصفحة الرئيسية فقط')),
+                DropdownMenuItem(
+                    value: 'weekend_offers',
+                    child: Text('صفحة عروض نهاية الأسبوع')),
                 DropdownMenuItem(
                     value: 'market_top',
                     child: Text('الماركت - إعلان رئيسي كبير أعلى الصفحة')),

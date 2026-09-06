@@ -56,7 +56,7 @@ class _SplashScreenState extends State<SplashScreen>
     SharedPreferences? prefs;
     try {
       prefs = await SharedPreferences.getInstance()
-          .timeout(const Duration(seconds: 4));
+          .timeout(const Duration(milliseconds: 1500));
     } catch (error) {
       debugPrint('تعذر قراءة حالة شاشة البداية: $error');
     }
@@ -129,6 +129,9 @@ class _SplashScreenState extends State<SplashScreen>
   void _startWelcome() {
     _logoController.forward(from: 0);
     _welcomeTimer?.cancel();
+    // لا نعتمد على اكتمال حركة شاشة البداية وحدها. إذا تعثر رسم إطار على
+    // iPhone أو أوقف النظام الحركة، افتح التطبيق تلقائيًا خلال مدة قصيرة.
+    _welcomeTimer = Timer(const Duration(milliseconds: 3500), _enterApp);
   }
 
   void _enterApp() {
@@ -259,7 +262,7 @@ class _AnimatedBarakahEntranceState extends State<_AnimatedBarakahEntrance>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 6500),
+      duration: const Duration(milliseconds: 3000),
     )
       ..addStatusListener((status) {
         if (status == AnimationStatus.completed) _finish();

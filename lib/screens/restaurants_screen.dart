@@ -3,8 +3,10 @@ import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
+import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/home_strip_card_style.dart';
@@ -28,6 +30,7 @@ import 'categories_screen.dart';
 import 'restaurant_details_screen.dart';
 import 'authentication_screen.dart';
 import 'restaurant_offers_screen.dart';
+import 'weekend_offers_screen.dart';
 import 'location_picker_screen.dart';
 
 const _barakahNavy = Color(0xFF071B3C);
@@ -904,7 +907,7 @@ class _AllItemsScreenState extends State<AllItemsScreen> {
                     final items = (widget.trendingOnly
                             ? businesses.where(
                                 (doc) => doc.data()['isTrending'] == true)
-                            : allItems)
+                            : businesses)
                         .where((item) => _matches(item.data()))
                         .toList();
                     if (widget.trendingOnly) {
@@ -1148,6 +1151,21 @@ class _RestaurantsQuickRow extends StatelessWidget {
 class _RestaurantHomeStrips extends StatelessWidget {
   const _RestaurantHomeStrips();
 
+  bool _isWeekendStrip(Map<String, dynamic> data) {
+    final title = data['title']?.toString().toLowerCase() ?? '';
+    return title.contains('weekend') ||
+        title.contains('ويك اند') ||
+        title.contains('نهاية الأسبوع') ||
+        title.contains('نهاية الاسبوع');
+  }
+
+  void _openWeekendOffers(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const WeekendOffersScreen()),
+    );
+  }
+
   Widget _fallback() => const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1194,13 +1212,37 @@ class _RestaurantHomeStrips extends StatelessWidget {
               children: [
                 for (var index = 0; index < strips.length; index++) ...[
                   if (index > 0) const SizedBox(height: 22),
-                  Text(
-                    strips[index].data()['title']?.toString() ?? 'تصنيفات بركة',
-                    style: const TextStyle(
-                      color: AppTheme.ink,
-                      fontSize: 19,
-                      fontWeight: FontWeight.w900,
-                    ),
+                  Builder(
+                    builder: (context) {
+                      final data = strips[index].data();
+                      final opensWeekendOffers = _isWeekendStrip(data);
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: opensWeekendOffers
+                            ? () => _openWeekendOffers(context)
+                            : null,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 3),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  data['title']?.toString() ?? 'تصنيفات بركة',
+                                  style: const TextStyle(
+                                    color: AppTheme.ink,
+                                    fontSize: 19,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ),
+                              if (opensWeekendOffers)
+                                const Icon(Icons.arrow_back_ios_new_rounded,
+                                    size: 17, color: AppTheme.navy),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
                   ),
                   const SizedBox(height: 12),
                   Builder(
@@ -1219,6 +1261,7 @@ class _RestaurantHomeStrips extends StatelessWidget {
                           height: cardStyle.stripHeight,
                           child: _CategoriesRow(
                             cardStyle: cardStyle,
+                            openWeekendOffers: _isWeekendStrip(stripData),
                             items: ((stripData['quickItems'] as List?) ??
                                     const [])
                                 .whereType<Map>()
@@ -1280,14 +1323,26 @@ class _CategoriesRow extends StatelessWidget {
   const _CategoriesRow({
     this.items = const [],
     this.cardStyle = const HomeStripCardStyle(),
+    this.openWeekendOffers = false,
   });
 
   final List<Map<String, dynamic>> items;
   final HomeStripCardStyle cardStyle;
+  final bool openWeekendOffers;
 
   Future<void> _openItem(
       BuildContext context, Map<String, dynamic> item) async {
-    switch (item['actionType']?.toString() ?? 'details') {
+    final configuredAction = item['actionType']?.toString() ?? 'details';
+    final action = openWeekendOffers && configuredAction == 'details'
+        ? 'weekendOffers'
+        : configuredAction;
+    switch (action) {
+      case 'weekendOffers':
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const WeekendOffersScreen()),
+        );
+        return;
       case 'play':
         if (kLoyaltyRewardsEnabled) {
           await Navigator.push(context,
@@ -1949,6 +2004,71 @@ class _NearbyPlacesScreenState extends State<_NearbyPlacesScreen> {
     return '${km.toStringAsFixed(km < 10 ? 1 : 0)} كم';
   }
 
+  void _openPlace(
+    QueryDocumentSnapshot<Map<String, dynamic>> place,
+  ) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => RestaurantDetailsScreen(restaurant: place),
+      ),
+    );
+  }
+
+  Widget _placesMap(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> places,
+  ) {
+    final current = LatLng(_latitude!, _longitude!);
+    final markers = <Marker>[
+      Marker(
+        point: current,
+        width: 48,
+        height: 48,
+        child: const Icon(
+          Icons.my_location_rounded,
+          color: Colors.blue,
+          size: 34,
+        ),
+      ),
+      ...places.map((place) {
+        final coordinates = _coordinates(place.data())!;
+        return Marker(
+          point: LatLng(coordinates.latitude, coordinates.longitude),
+          width: 54,
+          height: 64,
+          child: GestureDetector(
+            onTap: () => _openPlace(place),
+            child: const Icon(
+              Icons.location_on_rounded,
+              color: Colors.red,
+              size: 48,
+            ),
+          ),
+        );
+      }),
+    ];
+
+    return Container(
+      height: 300,
+      margin: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: AppTheme.navy.withOpacity(.15)),
+      ),
+      child: FlutterMap(
+        options: MapOptions(initialCenter: current, initialZoom: 13),
+        children: [
+          TileLayer(
+            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            userAgentPackageName: 'com.barakah.market',
+          ),
+          MarkerLayer(markers: markers),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
@@ -2039,98 +2159,127 @@ class _NearbyPlacesScreenState extends State<_NearbyPlacesScreen> {
                           return left.compareTo(right);
                         });
 
-                        if (places.isEmpty) {
-                          return const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(30),
-                              child: Text(
-                                'لا توجد أماكن بإحداثيات موقع مسجلة حالياً.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: AppTheme.navy,
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                          );
-                        }
-
                         return LayoutBuilder(
                           builder: (context, constraints) {
                             final columns = constraints.maxWidth >= 700 ? 3 : 2;
-                            return GridView.builder(
-                              padding:
-                                  const EdgeInsets.fromLTRB(16, 18, 16, 28),
-                              itemCount: places.length,
-                              gridDelegate:
-                                  SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: columns,
-                                crossAxisSpacing: 12,
-                                mainAxisSpacing: 12,
-                                childAspectRatio: .66,
-                              ),
-                              itemBuilder: (context, index) {
-                                final place = places[index];
-                                final distance =
-                                    _distanceFor(place.data()) ?? 0;
-                                return GestureDetector(
-                                  onTap: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => RestaurantDetailsScreen(
-                                        restaurant: place,
-                                      ),
-                                    ),
-                                  ),
-                                  child: Stack(
+                            return Column(
+                              children: [
+                                _placesMap(places),
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.fromLTRB(18, 8, 18, 2),
+                                  child: Row(
                                     children: [
-                                      Positioned.fill(
-                                        child: RestaurantCard(
-                                          restaurant: place,
-                                        ),
-                                      ),
-                                      PositionedDirectional(
-                                        top: 8,
-                                        start: 8,
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 9, vertical: 5),
-                                          decoration: BoxDecoration(
-                                            color:
-                                                AppTheme.navy.withOpacity(.92),
-                                            borderRadius:
-                                                BorderRadius.circular(999),
-                                            border: Border.all(
-                                              color: AppTheme.coolYellow,
-                                              width: 1.2,
-                                            ),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              const Icon(
-                                                Icons.location_on_rounded,
-                                                color: AppTheme.coolYellow,
-                                                size: 15,
-                                              ),
-                                              const SizedBox(width: 3),
-                                              Text(
-                                                _distanceLabel(distance),
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.w900,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
+                                      const Icon(Icons.storefront_rounded,
+                                          color: AppTheme.navy),
+                                      const SizedBox(width: 7),
+                                      Text(
+                                        '${places.length} مكان مسجل بالقرب منك',
+                                        style: const TextStyle(
+                                          color: AppTheme.navy,
+                                          fontWeight: FontWeight.w900,
                                         ),
                                       ),
                                     ],
                                   ),
-                                );
-                              },
+                                ),
+                                Expanded(
+                                  child: places.isEmpty
+                                      ? const Center(
+                                          child: Padding(
+                                            padding: EdgeInsets.all(30),
+                                            child: Text(
+                                              'الخريطة جاهزة، لكن لا توجد أماكن بإحداثيات مسجلة حالياً.',
+                                              textAlign: TextAlign.center,
+                                              style: TextStyle(
+                                                color: AppTheme.navy,
+                                                fontSize: 17,
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                            ),
+                                          ),
+                                        )
+                                      : GridView.builder(
+                                          padding: const EdgeInsets.fromLTRB(
+                                              16, 10, 16, 28),
+                                          itemCount: places.length,
+                                          gridDelegate:
+                                              SliverGridDelegateWithFixedCrossAxisCount(
+                                            crossAxisCount: columns,
+                                            crossAxisSpacing: 12,
+                                            mainAxisSpacing: 12,
+                                            childAspectRatio: .66,
+                                          ),
+                                          itemBuilder: (context, index) {
+                                            final place = places[index];
+                                            final distance =
+                                                _distanceFor(place.data()) ?? 0;
+                                            return GestureDetector(
+                                              onTap: () => _openPlace(place),
+                                              child: Stack(
+                                                children: [
+                                                  Positioned.fill(
+                                                    child: RestaurantCard(
+                                                      restaurant: place,
+                                                    ),
+                                                  ),
+                                                  PositionedDirectional(
+                                                    top: 8,
+                                                    start: 8,
+                                                    child: Container(
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
+                                                          horizontal: 9,
+                                                          vertical: 5),
+                                                      decoration: BoxDecoration(
+                                                        color: AppTheme.navy
+                                                            .withOpacity(.92),
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(999),
+                                                        border: Border.all(
+                                                          color: AppTheme
+                                                              .coolYellow,
+                                                          width: 1.2,
+                                                        ),
+                                                      ),
+                                                      child: Row(
+                                                        mainAxisSize:
+                                                            MainAxisSize.min,
+                                                        children: [
+                                                          const Icon(
+                                                            Icons
+                                                                .location_on_rounded,
+                                                            color: AppTheme
+                                                                .coolYellow,
+                                                            size: 15,
+                                                          ),
+                                                          const SizedBox(
+                                                              width: 3),
+                                                          Text(
+                                                            _distanceLabel(
+                                                                distance),
+                                                            style:
+                                                                const TextStyle(
+                                                              color:
+                                                                  Colors.white,
+                                                              fontSize: 11,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w900,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                ),
+                              ],
                             );
                           },
                         );

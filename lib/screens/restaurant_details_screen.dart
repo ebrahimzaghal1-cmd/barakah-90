@@ -12,6 +12,7 @@ import '../widgets/barakah_brand.dart';
 import '../widgets/business_rating.dart';
 import '../widgets/favorite_button.dart';
 import '../widgets/barber_booking_section.dart';
+import 'cart_screen.dart';
 
 class RestaurantDetailsScreen extends StatelessWidget {
   const RestaurantDetailsScreen({super.key, required this.restaurant});
@@ -384,15 +385,14 @@ class _BusinessProducts extends StatelessWidget {
                   style: IconButton.styleFrom(
                       backgroundColor: AppTheme.deepYellow,
                       foregroundColor: Colors.white),
-                  tooltip: 'أضف للسلة',
-                  icon: const Icon(Icons.add_shopping_cart_rounded),
-                  onPressed: () {
+                  tooltip: 'اشترِ الآن',
+                  icon: const Icon(Icons.shopping_bag_rounded),
+                  onPressed: () async {
                     try {
                       CartService.instance.addProduct(product.id, data);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('تمت إضافة $title إلى السلة')),
-                      );
+                      await showCheckout(context);
                     } on StateError catch (error) {
+                      if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(error.message.toString()),

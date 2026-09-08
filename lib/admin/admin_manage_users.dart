@@ -5,11 +5,167 @@ import 'package:crypto/crypto.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
 import '../services/user_profile_service.dart';
 
-class AdminManageUsers extends StatelessWidget {
+enum _UsersOrder { newestFirst, oldestFirst }
+
+class AdminManageUsers extends StatefulWidget {
   const AdminManageUsers({super.key});
+
+  @override
+  State<AdminManageUsers> createState() => _AdminManageUsersState();
+}
+
+class _AdminManageUsersState extends State<AdminManageUsers> {
+  _UsersOrder _usersOrder = _UsersOrder.newestFirst;
+  final Set<String> _deletingUserIds = {};
+
+  DateTime? _joinDate(dynamic value) {
+    if (value is Timestamp) return value.toDate();
+    if (value is DateTime) return value;
+    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+    if (value is String) return DateTime.tryParse(value);
+    return null;
+  }
+
+  String _joinDateText(dynamic value) {
+    final date = _joinDate(value)?.toLocal();
+    if (date == null) return 'غير متوفر';
+
+    String twoDigits(int number) => number.toString().padLeft(2, '0');
+
+    return '${twoDigits(date.day)}/${twoDigits(date.month)}/${date.year} '
+        '${twoDigits(date.hour)}:${twoDigits(date.minute)}';
+  }
+
+  int _compareUsers(
+    QueryDocumentSnapshot<Map<String, dynamic>> a,
+    QueryDocumentSnapshot<Map<String, dynamic>> b,
+  ) {
+    final aDate = _joinDate(a.data()['createdAt']);
+    final bDate = _joinDate(b.data()['createdAt']);
+
+    // الحسابات القديمة التي لا تحتوي على تاريخ تبقى في نهاية القائمة.
+    if (aDate == null && bDate == null) return 0;
+    if (aDate == null) return 1;
+    if (bDate == null) return -1;
+
+    return _usersOrder == _UsersOrder.newestFirst
+        ? bDate.compareTo(aDate)
+        : aDate.compareTo(bDate);
+  }
+
+  Future<void> _deleteUser(
+    QueryDocumentSnapshot<Map<String, dynamic>> document,
+  ) async {
+    final data = document.data();
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final isAdmin = data['role']?.toString() == 'admin' ||
+        data['isAdmin'] == true ||
+        document.id == currentUser?.uid;
+
+    if (isAdmin) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('لا يمكن حذف حساب أدمن من لوحة المستخدمين.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    final name = data['displayName']?.toString().trim() ?? '';
+    final email = data['email']?.toString().trim() ?? '';
+    final accountLabel = name.isNotEmpty
+        ? name
+        : email.isNotEmpty
+            ? email
+            : document.id;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('حذف المشترك؟'),
+        content: Text(
+          'سيتم حذف حساب $accountLabel نهائيًا وتنظيف بياناته الشخصية. '
+          'لا يمكن التراجع عن هذا الإجراء.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            icon: const Icon(Icons.delete_forever_rounded),
+            label: const Text('حذف نهائي'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _deletingUserIds.add(document.id));
+
+    try {
+      if (currentUser == null) {
+        throw Exception('جلسة الأدمن غير متوفرة.');
+      }
+
+      final idToken = await currentUser.getIdToken(true);
+      if (idToken == null || idToken.isEmpty) {
+        throw Exception('تعذر الحصول على جلسة الأدمن.');
+      }
+
+      final response = await http.post(
+        Uri.parse(
+          'https://barakah-secure-api.ebrahimzaghal1.workers.dev/v1/admin/account/delete',
+        ),
+        headers: {
+          'content-type': 'application/json',
+          'authorization': 'Bearer $idToken',
+        },
+        body: jsonEncode({
+          'userId': document.id,
+          'directAdminDelete': true,
+        }),
+      );
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        var message = 'تعذر حذف المشترك.';
+        try {
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map) {
+            message =
+                (decoded['message'] ?? decoded['error'] ?? message).toString();
+          }
+        } catch (_) {}
+        throw Exception(message);
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تم حذف حساب $accountLabel بنجاح.'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      final message = error.toString().replaceFirst('Exception: ', '');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _deletingUserIds.remove(document.id));
+      }
+    }
+  }
 
   Future<void> _editLoyaltyPoints(
     BuildContext context,
@@ -162,16 +318,7 @@ class AdminManageUsers extends StatelessWidget {
               if (!snapshot.hasData) {
                 return const Center(child: CircularProgressIndicator());
               }
-              final users = snapshot.data!.docs.toList()
-                ..sort((a, b) {
-                  final aName =
-                      (a.data()['displayName'] ?? a.data()['email'] ?? '')
-                          .toString();
-                  final bName =
-                      (b.data()['displayName'] ?? b.data()['email'] ?? '')
-                          .toString();
-                  return aName.toLowerCase().compareTo(bName.toLowerCase());
-                });
+              final users = snapshot.data!.docs.toList()..sort(_compareUsers);
               return ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
@@ -185,6 +332,29 @@ class AdminManageUsers extends StatelessWidget {
                           style: const TextStyle(
                               fontSize: 24, fontWeight: FontWeight.w900)),
                     ),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<_UsersOrder>(
+                    initialValue: _usersOrder,
+                    decoration: const InputDecoration(
+                      labelText: 'ترتيب المستخدمين',
+                      prefixIcon: Icon(Icons.sort_rounded),
+                      border: OutlineInputBorder(),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: _UsersOrder.newestFirst,
+                        child: Text('الأحدث انضمامًا إلى الأقدم'),
+                      ),
+                      DropdownMenuItem(
+                        value: _UsersOrder.oldestFirst,
+                        child: Text('الأقدم انضمامًا إلى الأحدث'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() => _usersOrder = value);
+                    },
                   ),
                   const SizedBox(height: 12),
                   if (users.isEmpty)
@@ -266,50 +436,96 @@ class AdminManageUsers extends StatelessWidget {
                                     ),
                                   ],
                                 ),
+                                const SizedBox(height: 5),
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.calendar_month_outlined,
+                                      size: 18,
+                                    ),
+                                    const SizedBox(width: 7),
+                                    Expanded(
+                                      child: Text(
+                                        'تاريخ الانضمام: '
+                                        '${_joinDateText(data['createdAt'])}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ],
                             ),
                           ),
-                          trailing: PopupMenuButton<String>(
-                            tooltip: 'إدارة نقاط وبطاقة بركة',
-                            icon: const Icon(
-                              Icons.more_vert_rounded,
-                            ),
-                            onSelected: (value) async {
-                              if (value == 'points') {
-                                await _editLoyaltyPoints(
-                                  context,
-                                  document,
-                                );
-                              } else if (value == 'pin') {
-                                await _resetBarakahCardPin(
-                                  context,
-                                  document,
-                                );
-                              }
-                            },
-                            itemBuilder: (context) => const [
-                              PopupMenuItem<String>(
-                                value: 'points',
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.stars_rounded),
-                                    SizedBox(width: 10),
-                                    Text('تعديل نقاط بركة'),
+                          trailing: _deletingUserIds.contains(document.id)
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.5,
+                                  ),
+                                )
+                              : PopupMenuButton<String>(
+                                  tooltip: 'إدارة نقاط وبطاقة بركة',
+                                  icon: const Icon(
+                                    Icons.more_vert_rounded,
+                                  ),
+                                  onSelected: (value) async {
+                                    if (value == 'points') {
+                                      await _editLoyaltyPoints(
+                                        context,
+                                        document,
+                                      );
+                                    } else if (value == 'pin') {
+                                      await _resetBarakahCardPin(
+                                        context,
+                                        document,
+                                      );
+                                    } else if (value == 'delete') {
+                                      await _deleteUser(document);
+                                    }
+                                  },
+                                  itemBuilder: (context) => [
+                                    const PopupMenuItem<String>(
+                                      value: 'points',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.stars_rounded),
+                                          SizedBox(width: 10),
+                                          Text('تعديل نقاط بركة'),
+                                        ],
+                                      ),
+                                    ),
+                                    const PopupMenuItem<String>(
+                                      value: 'pin',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.password_rounded),
+                                          SizedBox(width: 10),
+                                          Text('إعادة PIN بطاقة بركة'),
+                                        ],
+                                      ),
+                                    ),
+                                    const PopupMenuDivider(),
+                                    const PopupMenuItem<String>(
+                                      value: 'delete',
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            Icons.delete_forever_rounded,
+                                            color: Colors.red,
+                                          ),
+                                          SizedBox(width: 10),
+                                          Text(
+                                            'حذف المشترك',
+                                            style: TextStyle(color: Colors.red),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   ],
                                 ),
-                              ),
-                              PopupMenuItem<String>(
-                                value: 'pin',
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.password_rounded),
-                                    SizedBox(width: 10),
-                                    Text('إعادة PIN بطاقة بركة'),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
                         ),
                       );
                     }),

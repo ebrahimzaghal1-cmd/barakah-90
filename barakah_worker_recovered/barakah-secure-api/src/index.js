@@ -92,6 +92,7 @@ var index_default = {
       if (request.method === "POST" && url.pathname === "/v1/admin/account/delete") {
         const body = await readJson(request);
         const targetUid = String(body?.userId || "").trim();
+        const directAdminDelete = body?.directAdminDelete === true;
 
         if (!targetUid) {
           fail(400, "missing-user-id", "معرّف المستخدم مطلوب.");
@@ -108,6 +109,10 @@ var index_default = {
           fail(403, "permission-denied", "غير مسموح بتنفيذ حذف الحسابات.");
         }
 
+        if (targetUid === user.uid) {
+          fail(403, "admin-account-protected", "لا يمكن للأدمن حذف حسابه من لوحة المستخدمين.");
+        }
+
         const deletionRequest = await firestoreGet(
           env,
           token,
@@ -115,9 +120,12 @@ var index_default = {
         );
 
         if (
-          !deletionRequest ||
-          deletionRequest.userId !== targetUid ||
-          deletionRequest.status !== "pending"
+          !directAdminDelete &&
+          (
+            !deletionRequest ||
+            deletionRequest.userId !== targetUid ||
+            deletionRequest.status !== "pending"
+          )
         ) {
           fail(
             409,
@@ -1124,7 +1132,7 @@ async function deleteCurrentAccount(env, user, targetUid = user.uid, adminDelete
     `users/${encodeURIComponent(targetUid)}`
   );
 
-  if (profile?.role === "admin") {
+  if (profile?.role === "admin" || profile?.isAdmin === true) {
     fail(
       403,
       "admin-account-protected",

@@ -13,6 +13,61 @@ import '../widgets/barakah_brand.dart';
 import 'authentication_screen.dart';
 import 'restaurants_screen.dart';
 
+/// يفتح خطوات إتمام الطلب من أي شاشة دون الحاجة للمرور بصفحة السلة.
+Future<void> showCheckout(BuildContext context) async {
+  final cart = CartService.instance;
+  final businessIds = cart.items
+      .map((item) => item.businessId.trim())
+      .where((id) => id.isNotEmpty)
+      .toSet();
+  if (cart.items.any((item) => item.businessId.trim().isEmpty)) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('يوجد صنف غير مرتبط بمحل. احذفه وأضفه مجددًا.'),
+        backgroundColor: Colors.red,
+      ),
+    );
+    return;
+  }
+  if (businessIds.length > 1) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('يجب أن تكون أصناف الطلب من محل واحد فقط.'),
+        backgroundColor: Colors.orange,
+      ),
+    );
+    return;
+  }
+
+  if (FirebaseAuth.instance.currentUser == null) {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const AuthenticationScreen(),
+      ),
+    );
+    if (!context.mounted) return;
+    if (FirebaseAuth.instance.currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('سجّل الدخول أولًا لإتمام الطلب.'),
+        ),
+      );
+      return;
+    }
+  }
+
+  if (!context.mounted) return;
+
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => const _CheckoutSheet(),
+  );
+}
+
 class CartScreen extends StatelessWidget {
   const CartScreen({super.key});
 
@@ -60,7 +115,7 @@ class CartScreen extends StatelessWidget {
                   ),
                   _CheckoutBar(
                     total: cart.total,
-                    onCheckout: () => _showCheckout(context),
+                    onCheckout: () => showCheckout(context),
                   ),
                 ],
               );
@@ -68,60 +123,6 @@ class CartScreen extends StatelessWidget {
           ),
         ),
       );
-
-  Future<void> _showCheckout(BuildContext context) async {
-    final cart = CartService.instance;
-    final businessIds = cart.items
-        .map((item) => item.businessId.trim())
-        .where((id) => id.isNotEmpty)
-        .toSet();
-    if (cart.items.any((item) => item.businessId.trim().isEmpty)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('يوجد صنف غير مرتبط بمحل. احذفه وأضفه مجددًا.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-    if (businessIds.length > 1) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('يجب أن تكون أصناف الطلب من محل واحد فقط.'),
-          backgroundColor: Colors.orange,
-        ),
-      );
-      return;
-    }
-
-    if (FirebaseAuth.instance.currentUser == null) {
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const AuthenticationScreen(),
-        ),
-      );
-      if (!context.mounted) return;
-      if (FirebaseAuth.instance.currentUser == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('سجّل الدخول أولًا لإتمام الطلب.'),
-          ),
-        );
-        return;
-      }
-    }
-
-    if (!context.mounted) return;
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => const _CheckoutSheet(),
-    );
-  }
 }
 
 class _EmptyCart extends StatelessWidget {

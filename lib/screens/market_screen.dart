@@ -21,6 +21,7 @@ import '../widgets/restaurant_card.dart';
 import 'categories_screen.dart';
 import 'authentication_screen.dart';
 import 'favorites_screen.dart';
+import 'cart_screen.dart';
 import 'products_screen.dart';
 import 'restaurant_details_screen.dart';
 import 'restaurants_screen.dart';
@@ -948,17 +949,12 @@ class _BestSellingProductsStrip extends StatelessWidget {
                   borderRadius: BorderRadius.circular(18),
                   clipBehavior: Clip.antiAlias,
                   child: InkWell(
-                    onTap: () {
+                    onTap: () async {
                       try {
                         CartService.instance.addProduct(product.id, data);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'تمت إضافة ${data['title'] ?? 'الصنف'} إلى السلة',
-                            ),
-                          ),
-                        );
+                        await showCheckout(context);
                       } on StateError catch (error) {
+                        if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(error.message.toString()),
@@ -1057,7 +1053,7 @@ class _BestSellingProductsStrip extends StatelessWidget {
                                 ),
                               ),
                               const Icon(
-                                Icons.add_circle_rounded,
+                                Icons.shopping_bag_rounded,
                                 color: AppTheme.navy,
                                 size: 24,
                               ),

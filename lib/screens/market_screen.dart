@@ -949,20 +949,6 @@ class _BestSellingProductsStrip extends StatelessWidget {
                   borderRadius: BorderRadius.circular(18),
                   clipBehavior: Clip.antiAlias,
                   child: InkWell(
-                    onTap: () async {
-                      try {
-                        CartService.instance.addProduct(product.id, data);
-                        await showCheckout(context);
-                      } on StateError catch (error) {
-                        if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(error.message.toString()),
-                            backgroundColor: Colors.orange,
-                          ),
-                        );
-                      }
-                    },
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -1052,10 +1038,56 @@ class _BestSellingProductsStrip extends StatelessWidget {
                                   ],
                                 ),
                               ),
-                              const Icon(
-                                Icons.shopping_bag_rounded,
-                                color: AppTheme.navy,
-                                size: 24,
+                              IconButton(
+                                tooltip: 'أضف للسلة',
+                                visualDensity: VisualDensity.compact,
+                                constraints: const BoxConstraints(
+                                  minWidth: 30,
+                                  minHeight: 30,
+                                ),
+                                padding: EdgeInsets.zero,
+                                icon: const Icon(
+                                  Icons.add_shopping_cart_rounded,
+                                  color: AppTheme.navy,
+                                  size: 21,
+                                ),
+                                onPressed: () {
+                                  try {
+                                    CartService.instance
+                                        .addProduct(product.id, data);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('تمت الإضافة للسلة ✅'),
+                                      ),
+                                    );
+                                  } on StateError catch (error) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(error.message.toString()),
+                                        backgroundColor: Colors.orange,
+                                      ),
+                                    );
+                                  }
+                                },
+                              ),
+                              IconButton.filled(
+                                tooltip: 'شراء الآن',
+                                visualDensity: VisualDensity.compact,
+                                constraints: const BoxConstraints(
+                                  minWidth: 30,
+                                  minHeight: 30,
+                                ),
+                                padding: EdgeInsets.zero,
+                                style: IconButton.styleFrom(
+                                  backgroundColor: AppTheme.deepYellow,
+                                  foregroundColor: Colors.white,
+                                ),
+                                icon: const Icon(
+                                  Icons.shopping_bag_rounded,
+                                  size: 18,
+                                ),
+                                onPressed: () =>
+                                    buyProductNow(context, product.id, data),
                               ),
                             ],
                           ),

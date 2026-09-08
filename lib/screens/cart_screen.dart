@@ -68,6 +68,55 @@ Future<void> showCheckout(BuildContext context) async {
   );
 }
 
+Future<void> buyProductNow(
+  BuildContext context,
+  String productId,
+  Map<String, dynamic> product,
+) async {
+  final cart = CartService.instance;
+  final productBusinessId = product['businessId']?.toString().trim() ?? '';
+
+  if (cart.items.isNotEmpty &&
+      cart.items.first.businessId != productBusinessId) {
+    final replace = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('بدء شراء فوري جديد؟'),
+        content: Text(
+          'السلة تحتوي أصنافًا من ${cart.items.first.businessTitle}. '
+          'لشراء هذا المنتج الآن يجب تفريغ السلة الحالية.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('الاحتفاظ بالسلة'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('تفريغ وشراء الآن'),
+          ),
+        ],
+      ),
+    );
+    if (replace != true) return;
+    cart.clear();
+  }
+
+  try {
+    cart.addProduct(productId, product);
+    if (!context.mounted) return;
+    await showCheckout(context);
+  } on StateError catch (error) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(error.message.toString()),
+        backgroundColor: Colors.orange,
+      ),
+    );
+  }
+}
+
 class CartScreen extends StatelessWidget {
   const CartScreen({super.key});
 

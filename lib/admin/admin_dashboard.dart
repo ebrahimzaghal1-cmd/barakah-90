@@ -23,6 +23,7 @@ import 'admin_appointments_accounting_screen.dart';
 
 import '../theme/app_theme.dart';
 import '../services/user_profile_service.dart';
+import '../services/admin_submission_notification_service.dart';
 
 class AdminDashboard extends StatelessWidget {
   const AdminDashboard({super.key});
@@ -1442,6 +1443,10 @@ class _AdminAuctionRequestsScreen extends StatelessWidget {
       );
 
       await batch.commit();
+      await AdminSubmissionNotificationService.notifyAuctionStatus(
+        saleId: sale.id,
+        status: 'commission_paid',
+      );
 
       if (!context.mounted) return;
 
@@ -1492,6 +1497,10 @@ class _AdminAuctionRequestsScreen extends StatelessWidget {
       );
 
       await batch.commit();
+      await AdminSubmissionNotificationService.notifyAuctionStatus(
+        saleId: sale.id,
+        status: 'completed',
+      );
 
       if (!context.mounted) return;
 
@@ -1509,6 +1518,78 @@ class _AdminAuctionRequestsScreen extends StatelessWidget {
           content: Text('تعذر إتمام البيع: $error'),
           backgroundColor: Colors.red,
         ),
+      );
+    }
+  }
+
+  Future<void> _cancelSale(
+    BuildContext context,
+    QueryDocumentSnapshot<Map<String, dynamic>> sale,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('إلغاء حجز المزاد'),
+        content: const Text(
+          'سيتم إلغاء العملية وإعادة السلعة للبيع. لن تُحذف العملية من السجل.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('رجوع'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('إلغاء الحجز'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final data = sale.data();
+    final auctionRequestId =
+        data['auctionRequestId']?.toString().trim() ?? sale.id;
+    try {
+      final firestore = FirebaseFirestore.instance;
+      final batch = firestore.batch();
+      batch.update(sale.reference, {
+        'status': 'cancelled',
+        'commissionPaid': false,
+        'cancelledAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      batch.update(
+        firestore.collection('auction_requests').doc(auctionRequestId),
+        {
+          'buyerId': FieldValue.delete(),
+          'buyerEmail': FieldValue.delete(),
+          'saleStatus': FieldValue.delete(),
+          'salePrice': FieldValue.delete(),
+          'commissionRate': FieldValue.delete(),
+          'commissionAmount': FieldValue.delete(),
+          'commissionPaid': FieldValue.delete(),
+          'reservedAt': FieldValue.delete(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+      );
+      await batch.commit();
+      await AdminSubmissionNotificationService.notifyAuctionStatus(
+        saleId: sale.id,
+        status: 'cancelled',
+      );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('أُلغي الحجز وأعيدت السلعة للبيع ✅'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('تعذر إلغاء الحجز: $error')),
       );
     }
   }
@@ -1575,9 +1656,8 @@ class _AdminAuctionRequestsScreen extends StatelessWidget {
                     const SizedBox(height: 8),
                     Text('السعر: ${data['startingPrice'] ?? 0} ₪'),
                     Text('المنطقة: ${data['area'] ?? ''}'),
-                    Text('الهاتف: ${data['contactPhone'] ?? ''}'),
+                    _AuctionPrivateDetails(requestId: doc.id),
                     Text('الحالة: ${data['condition'] ?? ''}'),
-                    Text('صاحب الطلب: ${data['userEmail'] ?? ''}'),
                     Text('حالة الطلب: $status'),
                     if (status == 'pending') ...[
                       const SizedBox(height: 12),
@@ -1696,6 +1776,10 @@ class _AdminAuctionRequestsScreen extends StatelessWidget {
                 statusLabel = 'تم البيع';
                 break;
 
+              case 'cancelled':
+                statusLabel = 'أُلغي الحجز';
+                break;
+
               default:
                 statusLabel = 'بانتظار العمولة';
             }
@@ -1736,14 +1820,25 @@ class _AdminAuctionRequestsScreen extends StatelessWidget {
                     ),
                     if (status == 'pending_commission') ...[
                       const SizedBox(height: 12),
-                      FilledButton.icon(
-                        onPressed: () => _confirmCommission(context, sale),
-                        icon: const Icon(
-                          Icons.payments_rounded,
-                        ),
-                        label: const Text(
-                          'تأكيد استلام عمولة بركة',
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: () =>
+                                  _confirmCommission(context, sale),
+                              icon: const Icon(Icons.payments_rounded),
+                              label: const Text('تأكيد استلام العمولة'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: () => _cancelSale(context, sale),
+                              icon: const Icon(Icons.undo_rounded),
+                              label: const Text('إلغاء الحجز'),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                     if (status == 'commission_paid') ...[
@@ -1794,6 +1889,35 @@ class _AdminAuctionRequestsScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _AuctionPrivateDetails extends StatelessWidget {
+  const _AuctionPrivateDetails({required this.requestId});
+
+  final String requestId;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('auction_private')
+          .doc(requestId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        final data = snapshot.data?.data();
+        if (data == null) {
+          return const Text('بيانات التواصل محفوظة بشكل خاص.');
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('الهاتف: ${data['contactPhone'] ?? ''}'),
+            Text('صاحب الطلب: ${data['userEmail'] ?? ''}'),
+          ],
+        );
+      },
     );
   }
 }

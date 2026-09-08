@@ -42,4 +42,30 @@ class AdminSubmissionNotificationService {
     }
     return false;
   }
+
+  static Future<bool> notifyAuctionStatus({
+    required String saleId,
+    required String status,
+  }) async {
+    try {
+      final token = await FirebaseAuth.instance.currentUser?.getIdToken();
+      if (token == null || token.isEmpty) return false;
+      final response = await http
+          .post(
+            Uri.parse(
+              'https://barakah-secure-api.ebrahimzaghal1.workers.dev/v1/admin/auction/status-notification',
+            ),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json; charset=utf-8',
+            },
+            body: jsonEncode({'saleId': saleId, 'status': status}),
+          )
+          .timeout(const Duration(seconds: 20));
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (error) {
+      debugPrint('تعذر إرسال إشعار حالة المزاد: $error');
+      return false;
+    }
+  }
 }

@@ -16,6 +16,14 @@ class AdminBusinessAccountingScreen extends StatefulWidget {
 
 class _AdminBusinessAccountingScreenState
     extends State<AdminBusinessAccountingScreen> {
+  String _auctionStatusLabel(Object? value) => switch (value?.toString()) {
+        'pending_commission' => 'بانتظار استلام العمولة',
+        'commission_paid' => 'تم استلام العمولة',
+        'completed' => 'تم البيع',
+        'cancelled' => 'أُلغي الحجز',
+        _ => 'قيد المتابعة',
+      };
+
   String selectedPeriod = 'اليوم';
 
   static const double defaultCommissionRate = 10.0;
@@ -371,13 +379,18 @@ class _AdminBusinessAccountingScreenState
 
               final sales = snapshot.data!.docs.where((doc) {
                 final data = doc.data();
+                if (data['status']?.toString() == 'cancelled') return false;
                 final rawDate = data['createdAt'] ?? data['updatedAt'];
                 final accountingDate = rawDate is Timestamp ? rawDate : null;
 
                 return _isInsideSelectedPeriod(accountingDate);
               }).toList();
 
-              final totalSales = sales.fold<double>(
+              final completedSales = sales
+                  .where((doc) => doc.data()['status'] == 'completed')
+                  .toList();
+
+              final totalSales = completedSales.fold<double>(
                 0,
                 (total, doc) => total + _toDouble(doc.data()['salePrice']),
               );
@@ -425,7 +438,7 @@ class _AdminBusinessAccountingScreenState
                         Expanded(
                           child: _summaryCard(
                             title: 'عمليات البيع',
-                            value: '${sales.length}',
+                            value: '${completedSales.length}',
                             icon: Icons.gavel_rounded,
                           ),
                         ),
@@ -554,7 +567,7 @@ class _AdminBusinessAccountingScreenState
                                 'عمولة بركة: ${_toDouble(data['commissionAmount']).toStringAsFixed(2)} ₪',
                               ),
                               Text(
-                                'حالة العملية: ${data['status'] ?? 'pending_commission'}',
+                                'حالة العملية: ${_auctionStatusLabel(data['status'])}',
                               ),
                             ],
                           ),

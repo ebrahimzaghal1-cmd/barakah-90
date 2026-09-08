@@ -408,19 +408,20 @@ service cloud.firestore {
 
 
     match /auction_requests/{requestId} {
-      allow read: if true;
+      // Public auction documents contain listing data only. Contact details
+      // live in auction_private so they are never exposed by a public query.
+      allow read: if resource.data.status in ['approved', 'sold'] ||
+        (signedIn() && (resource.data.userId == request.auth.uid || isAdmin()));
 
       allow create: if signedIn() &&
         request.resource.data.userId == request.auth.uid &&
         request.resource.data.status == 'pending' &&
         request.resource.data.keys().hasOnly([
           'userId',
-          'userEmail',
           'itemName',
           'description',
           'startingPrice',
           'area',
-          'contactPhone',
           'condition',
           'image',
           'imageUrls',
@@ -435,9 +436,8 @@ service cloud.firestore {
         request.resource.data.description.size() > 0 &&
         request.resource.data.description.size() <= 1200 &&
         request.resource.data.startingPrice is number &&
-        request.resource.data.startingPrice >= 0 &&
+        request.resource.data.startingPrice > 0 &&
         request.resource.data.area is string &&
-        request.resource.data.contactPhone is string &&
         request.resource.data.condition in [
           'جديدة',
           'مستعملة - ممتازة',
@@ -460,20 +460,64 @@ service cloud.firestore {
           (!('buyerId' in resource.data) || resource.data.buyerId == '') &&
           request.resource.data.buyerId == request.auth.uid &&
           request.resource.data.saleStatus == 'pending_commission' &&
+          request.resource.data.salePrice == resource.data.startingPrice &&
           request.resource.data.commissionRate == 10 &&
-          request.resource.data.commissionPaid == false
+          request.resource.data.commissionAmount ==
+            resource.data.startingPrice * 10 / 100 &&
+          request.resource.data.commissionPaid == false &&
+          request.resource.data.reservedAt == request.time &&
+          request.resource.data.updatedAt == request.time &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'buyerId', 'buyerEmail', 'saleStatus', 'salePrice',
+            'commissionRate', 'commissionAmount', 'commissionPaid',
+            'reservedAt', 'updatedAt'
+          ])
         );
 
       allow delete: if isAdmin();
     }
 
+    match /auction_private/{requestId} {
+      allow create: if signedIn() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.keys().hasOnly([
+          'userId', 'userEmail', 'contactPhone', 'createdAt', 'updatedAt'
+        ]) &&
+        request.resource.data.userEmail is string &&
+        request.resource.data.contactPhone is string &&
+        request.resource.data.contactPhone.size() > 0 &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.updatedAt == request.time;
+      allow read: if signedIn() &&
+        (resource.data.userId == request.auth.uid || isAdmin());
+      allow update, delete: if isAdmin();
+    }
+
 
     match /auction_sales/{saleId} {
       allow create: if signedIn() &&
+        saleId == request.resource.data.auctionRequestId &&
         request.resource.data.buyerId == request.auth.uid &&
         request.resource.data.status == 'pending_commission' &&
         request.resource.data.commissionRate == 10 &&
-        request.resource.data.commissionPaid == false;
+        request.resource.data.commissionPaid == false &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.updatedAt == request.time &&
+        request.resource.data.keys().hasOnly([
+          'auctionRequestId', 'sellerId', 'buyerId', 'buyerEmail',
+          'itemName', 'image', 'salePrice', 'commissionRate',
+          'commissionAmount', 'commissionPaid', 'status',
+          'createdAt', 'updatedAt'
+        ]) &&
+        getAfter(/databases/$(database)/documents/auction_requests/$(saleId)).data.buyerId == request.auth.uid &&
+        request.resource.data.sellerId ==
+          getAfter(/databases/$(database)/documents/auction_requests/$(saleId)).data.userId &&
+        request.resource.data.itemName ==
+          getAfter(/databases/$(database)/documents/auction_requests/$(saleId)).data.itemName &&
+        request.resource.data.salePrice ==
+          getAfter(/databases/$(database)/documents/auction_requests/$(saleId)).data.startingPrice &&
+        request.resource.data.commissionAmount ==
+          request.resource.data.salePrice * 10 / 100;
 
       allow read: if signedIn() &&
         (
@@ -482,7 +526,34 @@ service cloud.firestore {
           isAdmin()
         );
 
-      allow update, delete: if isAdmin();
+      allow update: if isAdmin() ||
+        (
+          signedIn() &&
+          resource.data.status == 'cancelled' &&
+          saleId == request.resource.data.auctionRequestId &&
+          request.resource.data.buyerId == request.auth.uid &&
+          request.resource.data.status == 'pending_commission' &&
+          request.resource.data.commissionRate == 10 &&
+          request.resource.data.commissionPaid == false &&
+          request.resource.data.createdAt == request.time &&
+          request.resource.data.updatedAt == request.time &&
+          request.resource.data.keys().hasOnly([
+            'auctionRequestId', 'sellerId', 'buyerId', 'buyerEmail',
+            'itemName', 'image', 'salePrice', 'commissionRate',
+            'commissionAmount', 'commissionPaid', 'status',
+            'createdAt', 'updatedAt'
+          ]) &&
+          getAfter(/databases/$(database)/documents/auction_requests/$(saleId)).data.buyerId == request.auth.uid &&
+          request.resource.data.sellerId ==
+            getAfter(/databases/$(database)/documents/auction_requests/$(saleId)).data.userId &&
+          request.resource.data.itemName ==
+            getAfter(/databases/$(database)/documents/auction_requests/$(saleId)).data.itemName &&
+          request.resource.data.salePrice ==
+            getAfter(/databases/$(database)/documents/auction_requests/$(saleId)).data.startingPrice &&
+          request.resource.data.commissionAmount ==
+            request.resource.data.salePrice * 10 / 100
+        );
+      allow delete: if isAdmin();
     }
 
 

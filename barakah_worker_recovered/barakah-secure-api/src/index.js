@@ -33,6 +33,13 @@ var index_default = {
           cors
         );
       }
+      if (request.method === "POST" && url.pathname === "/v1/admin/auction/status-notification") {
+        return json(
+          await notifyAuctionStatus(request, env, user),
+          200,
+          cors
+        );
+      }
       if (request.method === "POST" && url.pathname === "/v1/media/upload-auth") {
         return json(
           await createImageKitUploadAuth(env, user),
@@ -823,7 +830,16 @@ async function notifyAdminsAboutVerifiedRequest(request, env, user) {
     auction_request: {
       collection: "auction_requests",
       title: "طلب مزاد جديد 🔨",
-      label: (record) => record.itemName || "إعلان مزاد جديد"
+      label: (record) => record.itemName || "إعلان مزاد جديد",
+      ownerField: "userId",
+      expectedStatus: "pending"
+    },
+    auction_sale: {
+      collection: "auction_sales",
+      title: "حجز جديد في المزاد 🛍️",
+      label: (record) => record.itemName || "سلعة مزاد",
+      ownerField: "buyerId",
+      expectedStatus: "pending_commission"
     },
     driver_application: {
       collection: "driver_applications",
@@ -851,7 +867,11 @@ async function notifyAdminsAboutVerifiedRequest(request, env, user) {
     token,
     `${definition.collection}/${encodeURIComponent(documentId)}`
   );
-  if (!record || record.userId !== user.uid || record.status !== "pending") {
+  if (
+    !record ||
+    record[definition.ownerField || "userId"] !== user.uid ||
+    record.status !== (definition.expectedStatus || "pending")
+  ) {
     fail(403, "request-not-owned", "تعذر التحقق من الطلب الجديد.");
   }
   const tokens = await adminPushTokens(env, token);
@@ -866,6 +886,60 @@ async function notifyAdminsAboutVerifiedRequest(request, env, user) {
   return { ok: true, type: requestType, documentId };
 }
 __name(notifyAdminsAboutVerifiedRequest, "notifyAdminsAboutVerifiedRequest");
+async function notifyAuctionStatus(request, env, user) {
+  const body = await readJson(request);
+  const saleId = String(body?.saleId || "").trim();
+  const status = String(body?.status || "").trim();
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(saleId)) {
+    fail(400, "invalid-sale-id", "معرّف عملية المزاد غير صالح.");
+  }
+  if (!["commission_paid", "completed", "cancelled"].includes(status)) {
+    fail(400, "invalid-sale-status", "حالة عملية المزاد غير مدعومة.");
+  }
+  const token = await serviceToken(env);
+  const actor = await firestoreGet(
+    env,
+    token,
+    `users/${encodeURIComponent(user.uid)}`
+  );
+  if (actor?.role !== "admin" && actor?.isAdmin !== true) {
+    fail(403, "permission-denied", "هذه العملية متاحة للأدمن فقط.");
+  }
+  const sale = await firestoreGet(
+    env,
+    token,
+    `auction_sales/${encodeURIComponent(saleId)}`
+  );
+  if (!sale || sale.status !== status) {
+    fail(409, "sale-status-mismatch", "لم يتم تأكيد حالة البيع الجديدة.");
+  }
+  const labels = {
+    commission_paid: {
+      title: "تم تأكيد عمولة المزاد ✅",
+      body: "يمكن الآن متابعة تسليم السلعة مع إدارة بركة."
+    },
+    completed: {
+      title: "اكتملت عملية المزاد 🎉",
+      body: "تم تسجيل بيع السلعة بنجاح."
+    },
+    cancelled: {
+      title: "أُلغي حجز المزاد",
+      body: "أعيدت السلعة للعرض ويمكن حجزها من جديد."
+    }
+  };
+  const targetIds = [...new Set([sale.buyerId, sale.sellerId].filter(Boolean))];
+  const tokenGroups = await Promise.all(
+    targetIds.map((uid) => userPushTokens(env, token, uid))
+  );
+  const message = labels[status];
+  await sendPushToTokens(env, token, tokenGroups.flat(), {
+    title: message.title,
+    body: message.body,
+    data: { type: "auction_status", saleId, status }
+  });
+  return { ok: true, saleId, status };
+}
+__name(notifyAuctionStatus, "notifyAuctionStatus");
 async function sendSupportMessage(request, env, user) {
   const body = await readJson(request);
   const threadId = String(body?.threadId || "").trim();

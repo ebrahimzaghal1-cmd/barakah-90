@@ -10,6 +10,7 @@ import '../services/order_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/barakah_brand.dart';
 import 'authentication_screen.dart';
+import 'auction_activity_screen.dart';
 import '../widgets/barakah_reactions.dart';
 
 class OrdersScreen extends StatelessWidget {
@@ -227,6 +228,25 @@ class _OrdersSplitViewState extends State<_OrdersSplitView> {
                     child: _OrdersSummaryPanel(
                       currentCount: widget.currentOrders.length,
                       previousCount: widget.previousOrders.length,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 760),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const AuctionActivityScreen(),
+                          ),
+                        ),
+                        icon: const Icon(Icons.gavel_rounded),
+                        label: const Text('مشترياتي ومبيعاتي في المزاد'),
+                      ),
                     ),
                   ),
                 ),

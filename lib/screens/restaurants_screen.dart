@@ -29,6 +29,7 @@ import '../config/app_features.dart';
 import 'categories_screen.dart';
 import 'restaurant_details_screen.dart';
 import 'authentication_screen.dart';
+import 'auction_activity_screen.dart';
 import 'restaurant_offers_screen.dart';
 import 'weekend_offers_screen.dart';
 import 'location_picker_screen.dart';
@@ -2556,7 +2557,7 @@ class _BarakahAuctionScreenState extends State<BarakahAuctionScreen> {
     String requestId,
     Map<String, dynamic> data,
   ) async {
-    final user = FirebaseAuth.instance.currentUser;
+    var user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
       final shouldLogin = await showDialog<bool>(
@@ -2587,13 +2588,16 @@ class _BarakahAuctionScreenState extends State<BarakahAuctionScreen> {
             builder: (_) => const AuthenticationScreen(),
           ),
         );
+        user = FirebaseAuth.instance.currentUser;
       }
-      return;
+      if (user == null) return;
     }
+    if (!mounted) return;
+    final buyer = user;
 
     final sellerId = data['userId']?.toString().trim() ?? '';
 
-    if (sellerId == user.uid) {
+    if (sellerId == buyer.uid) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('لا يمكنك شراء إعلانك الخاص.'),
@@ -2661,13 +2665,22 @@ class _BarakahAuctionScreenState extends State<BarakahAuctionScreen> {
           throw Exception('تم حجز هذه السلعة بالفعل.');
         }
 
+        final freshRawPrice = freshData['startingPrice'];
+        final freshPrice = freshRawPrice is num
+            ? freshRawPrice.toDouble()
+            : double.tryParse(freshRawPrice?.toString() ?? '') ?? 0;
+        if (freshPrice <= 0) {
+          throw Exception('سعر هذه السلعة غير صالح.');
+        }
+        final freshCommission = freshPrice * commissionRate / 100;
+
         transaction.update(requestRef, {
-          'buyerId': user.uid,
-          'buyerEmail': user.email ?? '',
+          'buyerId': buyer.uid,
+          'buyerEmail': buyer.email ?? '',
           'saleStatus': 'pending_commission',
-          'salePrice': price,
+          'salePrice': freshPrice,
           'commissionRate': commissionRate,
-          'commissionAmount': commissionAmount,
+          'commissionAmount': freshCommission,
           'commissionPaid': false,
           'reservedAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
@@ -2678,19 +2691,23 @@ class _BarakahAuctionScreenState extends State<BarakahAuctionScreen> {
         transaction.set(saleRef, {
           'auctionRequestId': requestId,
           'sellerId': freshData['userId'] ?? '',
-          'buyerId': user.uid,
-          'buyerEmail': user.email ?? '',
+          'buyerId': buyer.uid,
+          'buyerEmail': buyer.email ?? '',
           'itemName': freshData['itemName'] ?? '',
           'image': freshData['image'] ?? '',
-          'salePrice': price,
+          'salePrice': freshPrice,
           'commissionRate': commissionRate,
-          'commissionAmount': commissionAmount,
+          'commissionAmount': freshCommission,
           'commissionPaid': false,
           'status': 'pending_commission',
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         });
       });
+      await AdminSubmissionNotificationService.notify(
+        type: 'auction_sale',
+        documentId: requestId,
+      );
 
       if (!mounted) return;
 
@@ -2991,7 +3008,7 @@ class _BarakahAuctionScreenState extends State<BarakahAuctionScreen> {
                               if (itemName.text.trim().isEmpty ||
                                   description.text.trim().isEmpty ||
                                   price == null ||
-                                  price < 0 ||
+                                  price <= 0 ||
                                   area.text.trim().isEmpty ||
                                   phone.text.trim().isEmpty) {
                                 ScaffoldMessenger.of(sheetContext).showSnackBar(
@@ -3026,17 +3043,20 @@ class _BarakahAuctionScreenState extends State<BarakahAuctionScreen> {
                                   );
                                 }
 
-                                final auctionRequest = await FirebaseFirestore
-                                    .instance
+                                final firestore = FirebaseFirestore.instance;
+                                final auctionRequest = firestore
                                     .collection('auction_requests')
-                                    .add({
+                                    .doc();
+                                final privateDetails = firestore
+                                    .collection('auction_private')
+                                    .doc(auctionRequest.id);
+                                final batch = firestore.batch();
+                                batch.set(auctionRequest, {
                                   'userId': user.uid,
-                                  'userEmail': user.email ?? '',
                                   'itemName': itemName.text.trim(),
                                   'description': description.text.trim(),
                                   'startingPrice': price,
                                   'area': area.text.trim(),
-                                  'contactPhone': phone.text.trim(),
                                   'condition': condition,
 
                                   // صور الإعلان
@@ -3047,6 +3067,14 @@ class _BarakahAuctionScreenState extends State<BarakahAuctionScreen> {
                                   'createdAt': FieldValue.serverTimestamp(),
                                   'updatedAt': FieldValue.serverTimestamp(),
                                 });
+                                batch.set(privateDetails, {
+                                  'userId': user.uid,
+                                  'userEmail': user.email ?? '',
+                                  'contactPhone': phone.text.trim(),
+                                  'createdAt': FieldValue.serverTimestamp(),
+                                  'updatedAt': FieldValue.serverTimestamp(),
+                                });
+                                await batch.commit();
                                 await AdminSubmissionNotificationService.notify(
                                   type: 'auction_request',
                                   documentId: auctionRequest.id,
@@ -3123,6 +3151,32 @@ class _BarakahAuctionScreenState extends State<BarakahAuctionScreen> {
       appBar: AppBar(
         title: const Text('مزاد بركة'),
         centerTitle: true,
+        actions: [
+          IconButton(
+            tooltip: 'عملياتي في المزاد',
+            onPressed: () async {
+              if (FirebaseAuth.instance.currentUser == null) {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const AuthenticationScreen(),
+                  ),
+                );
+              }
+              if (!context.mounted ||
+                  FirebaseAuth.instance.currentUser == null) {
+                return;
+              }
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const AuctionActivityScreen(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.receipt_long_rounded),
+          ),
+        ],
       ),
       body: BarakahBrandBackdrop(
         child: Column(

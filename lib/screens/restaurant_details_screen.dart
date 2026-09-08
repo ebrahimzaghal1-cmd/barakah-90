@@ -381,26 +381,39 @@ class _BusinessProducts extends StatelessWidget {
                   backgroundColor: AppTheme.navy,
                 ),
                 const SizedBox(width: 4),
-                IconButton.filled(
-                  style: IconButton.styleFrom(
-                      backgroundColor: AppTheme.deepYellow,
-                      foregroundColor: Colors.white),
-                  tooltip: 'اشترِ الآن',
-                  icon: const Icon(Icons.shopping_bag_rounded),
-                  onPressed: () async {
-                    try {
-                      CartService.instance.addProduct(product.id, data);
-                      await showCheckout(context);
-                    } on StateError catch (error) {
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(error.message.toString()),
-                          backgroundColor: Colors.orange,
-                        ),
-                      );
-                    }
-                  },
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton.filledTonal(
+                      tooltip: 'أضف للسلة',
+                      icon: const Icon(Icons.add_shopping_cart_rounded),
+                      onPressed: () {
+                        try {
+                          CartService.instance.addProduct(product.id, data);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text('تمت الإضافة للسلة ✅')),
+                          );
+                        } on StateError catch (error) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(error.message.toString()),
+                              backgroundColor: Colors.orange,
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                    IconButton.filled(
+                      style: IconButton.styleFrom(
+                        backgroundColor: AppTheme.deepYellow,
+                        foregroundColor: Colors.white,
+                      ),
+                      tooltip: 'شراء الآن',
+                      icon: const Icon(Icons.shopping_bag_rounded),
+                      onPressed: () => buyProductNow(context, product.id, data),
+                    ),
+                  ],
                 ),
               ]),
             );

@@ -1032,6 +1032,7 @@ class _BestSellingProductsStrip extends StatelessWidget {
                       context,
                       product.id,
                       data,
+                      isMarket: true,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,

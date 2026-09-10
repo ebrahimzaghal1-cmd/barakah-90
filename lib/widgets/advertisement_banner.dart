@@ -14,37 +14,67 @@ Future<void> _openAdvertisement(
   BuildContext context,
   Map<String, dynamic> data,
 ) async {
-  final action = data['actionType']?.toString().trim() ?? '';
+  final action = data['actionType']?.toString().trim() ?? 'automatic';
   final destinationUrl = data['destinationUrl']?.toString().trim() ?? '';
-  final placement = data['placement']?.toString() ?? '';
+  final placement = data['placement']?.toString().trim() ?? '';
 
+  // إذا كان للإعلان رابط خاص، تكون له الأولوية عند الضغط.
   if (destinationUrl.isNotEmpty) {
-    final uri = Uri.tryParse(destinationUrl);
-    if (uri != null &&
-        await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      return;
+    var normalizedUrl = destinationUrl;
+
+    // السماح بكتابة الرابط بدون https:// من لوحة الأدمن.
+    if (!normalizedUrl.startsWith('http://') &&
+        !normalizedUrl.startsWith('https://')) {
+      normalizedUrl = 'https://$normalizedUrl';
     }
+
+    final uri = Uri.tryParse(normalizedUrl);
+
+    if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+      try {
+        final opened = await launchUrl(
+          uri,
+          mode: LaunchMode.platformDefault,
+        );
+
+        if (opened) return;
+      } catch (_) {
+        // تظهر رسالة للمستخدم بالأسفل.
+      }
+    }
+
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تعذر فتح رابط العرض.')),
+        const SnackBar(
+          content: Text('تعذر فتح رابط الإعلان. تأكد من صحة الرابط.'),
+        ),
       );
     }
     return;
   }
 
+  // فتح عروض المطاعم عند اختيارها صراحة،
+  // أو تلقائيًا للإعلانات الموضوعة في أقسام المطاعم.
   final isRestaurantOffer = action == 'restaurantOffers' ||
       ((action.isEmpty || action == 'automatic') &&
-          (placement == 'restaurant' || placement.startsWith('restaurants_')));
+          (placement == 'restaurant' ||
+              placement.startsWith('restaurants_')));
+
   if (isRestaurantOffer && context.mounted) {
-    await Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => const RestaurantOffersScreen(),
-    ));
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const RestaurantOffersScreen(),
+      ),
+    );
     return;
   }
 
+  // إذا لم يوجد رابط أو وجهة خاصة، تعرض تفاصيل الإعلان.
   if (!context.mounted) return;
+
   final title = data['title']?.toString() ?? 'إعلان بركة';
   final subtitle = data['subtitle']?.toString() ?? '';
+
   showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
@@ -55,15 +85,21 @@ Future<void> _openAdvertisement(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(title,
-                textAlign: TextAlign.right,
-                style:
-                    const TextStyle(fontSize: 23, fontWeight: FontWeight.w900)),
+            Text(
+              title,
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                fontSize: 23,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
             if (subtitle.isNotEmpty) ...[
               const SizedBox(height: 10),
-              Text(subtitle,
-                  textAlign: TextAlign.right,
-                  style: const TextStyle(fontSize: 16, height: 1.5)),
+              Text(
+                subtitle,
+                textAlign: TextAlign.right,
+                style: const TextStyle(fontSize: 16, height: 1.5),
+              ),
             ],
           ],
         ),

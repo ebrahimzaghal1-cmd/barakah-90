@@ -11,13 +11,118 @@ import 'restaurant_details_screen.dart';
 import '../services/order_service.dart';
 import '../services/barber_booking_service.dart';
 import '../services/media_upload_service.dart';
+import '../services/business_manager_service.dart';
 import '../theme/app_theme.dart';
+import '../services/agent_order_service.dart';
+import '../widgets/agent_earnings_panel.dart';
 
 class MerchantDashboard extends StatelessWidget {
   const MerchantDashboard({super.key});
 
   Future<String> _uploadStoreImage(XFile image) async {
     return MediaUploadService().upload(image, isVideo: false);
+  }
+
+  Future<void> _addBusinessManager(
+    BuildContext context,
+    String businessId,
+  ) async {
+    final controller = TextEditingController();
+    final email = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('إضافة مدير للمحل'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'أدخل بريد شخص لديه حساب مسجل في بركة. سيدخل بحسابه الخاص ويدير هذا المحل.',
+              style: TextStyle(height: 1.5),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                labelText: 'بريد مدير المحل',
+                prefixIcon: Icon(Icons.email_outlined),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final value = controller.text.trim().toLowerCase();
+              if (value.isNotEmpty) Navigator.pop(dialogContext, value);
+            },
+            child: const Text('إضافة'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (email == null || !context.mounted) return;
+    try {
+      await BusinessManagerService().updateManager(
+        businessId: businessId,
+        email: email,
+        add: true,
+      );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تمت إضافة $email كمدير للمحل ✅'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error is StateError
+              ? error.message.toString()
+              : 'تعذر إضافة مدير المحل.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _removeBusinessManager(
+    BuildContext context,
+    String businessId,
+    String email,
+  ) async {
+    try {
+      await BusinessManagerService().updateManager(
+        businessId: businessId,
+        email: email,
+        add: false,
+      );
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('تمت إزالة مدير المحل.'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error is StateError
+              ? error.message.toString()
+              : 'تعذر إزالة مدير المحل.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Future<void> _editBusiness(
@@ -654,9 +759,83 @@ class MerchantDashboard extends StatelessWidget {
                                   const TextStyle(fontWeight: FontWeight.w900)),
                           subtitle: Text(data['category']?.toString() ?? ''),
                         ),
+                        if (data['ownerId']?.toString() == user.uid) ...[
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppTheme.coolYellow.withOpacity(.12),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'مديرو المحل',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                const Text(
+                                  'أضف أكثر من شخص بالإيميل لإدارة نفس المحل بحسابه الخاص.',
+                                  style: TextStyle(
+                                    color: Colors.black54,
+                                    height: 1.4,
+                                  ),
+                                ),
+                                if (data['managerEmails'] is List &&
+                                    (data['managerEmails'] as List)
+                                        .isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  Wrap(
+                                    spacing: 7,
+                                    runSpacing: 7,
+                                    children: (data['managerEmails'] as List)
+                                        .map((value) => value.toString())
+                                        .where((email) => email.isNotEmpty)
+                                        .map(
+                                          (email) => InputChip(
+                                            label: Text(email),
+                                            onDeleted: () =>
+                                                _removeBusinessManager(
+                                              context,
+                                              business.id,
+                                              email,
+                                            ),
+                                          ),
+                                        )
+                                        .toList(),
+                                  ),
+                                ],
+                                const SizedBox(height: 8),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => _addBusinessManager(
+                                      context,
+                                      business.id,
+                                    ),
+                                    icon: const Icon(
+                                      Icons.person_add_alt_1_rounded,
+                                    ),
+                                    label: const Text(
+                                      'إضافة مدير للمحل بالإيميل',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String>(
-                          value: const ['open', 'busy', 'closed']
+                          value: const ['open', 'busy', 'closed', 'coming_soon']
                                   .contains(businessStatus)
                               ? businessStatus
                               : 'open',
@@ -675,6 +854,9 @@ class MerchantDashboard extends StatelessWidget {
                             DropdownMenuItem(
                                 value: 'closed',
                                 child: Text('مغلق — لا يستقبل طلبات')),
+                            DropdownMenuItem(
+                                value: 'coming_soon',
+                                child: Text('قريبًا — يظهر دون استقبال طلبات')),
                           ],
                           onChanged: (value) {
                             if (value != null) {
@@ -682,6 +864,22 @@ class MerchantDashboard extends StatelessWidget {
                                   .update({'businessStatus': value});
                             }
                           },
+                        ),
+                        SwitchListTile.adaptive(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text(
+                            'إظهار متجري في «جديد في بركة»',
+                            style: TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                          subtitle: const Text(
+                            'يمكنك إزالته عندما لا يعود المتجر جديدًا',
+                          ),
+                          secondary: const Icon(Icons.new_releases_rounded),
+                          value: data['isNewInBarakah'] == true,
+                          onChanged: (value) => business.reference.update({
+                            'isNewInBarakah': value,
+                            'updatedAt': FieldValue.serverTimestamp(),
+                          }),
                         ),
                         const SizedBox(height: 8),
                         SizedBox(
@@ -822,6 +1020,11 @@ class MerchantDashboard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 8),
+                        if (data['kind']?.toString() == 'agent') ...[
+                          _MerchantAgentOrders(agentId: business.id),
+                          AgentEarningsPanel(agentId: business.id),
+                          const SizedBox(height: 8),
+                        ],
                         _MerchantCoupons(businessId: business.id),
                         const SizedBox(height: 8),
                         _MerchantOrders(businessId: business.id),
@@ -846,6 +1049,219 @@ class MerchantDashboard extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+}
+
+class _MerchantAgentOrders extends StatelessWidget {
+  const _MerchantAgentOrders({required this.agentId});
+
+  final String agentId;
+
+  String _statusLabel(String status) => switch (status) {
+        'accepted' => 'تم القبول',
+        'completed' => 'مكتمل',
+        'rejected' => 'مرفوض',
+        _ => 'بانتظار الرد',
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    return ExpansionTile(
+      leading: const Icon(Icons.shopping_bag_outlined),
+      title: const Text(
+        'طلبات الوسيطة',
+        style: TextStyle(fontWeight: FontWeight.w900),
+      ),
+      children: [
+        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: FirebaseFirestore.instance
+              .collection('agent_orders')
+              .where('agentId', isEqualTo: agentId)
+              .snapshots(),
+          builder: (context, snapshot) {
+            final orders = (snapshot.data?.docs ?? []).toList()
+              ..sort((a, b) {
+                final aTime = a.data()['createdAt'];
+                final bTime = b.data()['createdAt'];
+                final aMillis =
+                    aTime is Timestamp ? aTime.millisecondsSinceEpoch : 0;
+                final bMillis =
+                    bTime is Timestamp ? bTime.millisecondsSinceEpoch : 0;
+                return bMillis.compareTo(aMillis);
+              });
+            if (orders.isEmpty) {
+              return const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('لا توجد طلبات للوسيطة بعد.'),
+              );
+            }
+            return Column(
+              children: orders.map((order) {
+                final data = order.data();
+                final status = data['status']?.toString() ?? 'pending';
+                return Card(
+                  margin: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          data['details']?.toString() ?? '',
+                          style: const TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                        const SizedBox(height: 6),
+                        Text('الهاتف: ${data['customerPhone'] ?? ''}'),
+                        Text('العنوان: ${data['deliveryAddress'] ?? ''}'),
+                        Text('الدفع: عند الاستلام'),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Chip(label: Text(_statusLabel(status))),
+                            const Spacer(),
+                            if (status == 'accepted')
+                              FilledButton.icon(
+                                onPressed: () async {
+                                  final controller = TextEditingController();
+
+                                  final code = await showDialog<String>(
+                                    context: context,
+                                    builder: (dialogContext) {
+                                      return AlertDialog(
+                                        title: const Text(
+                                          'تأكيد التسليم',
+                                        ),
+                                        content: TextField(
+                                          controller: controller,
+                                          autofocus: true,
+                                          maxLength: 6,
+                                          keyboardType: TextInputType.number,
+                                          decoration: const InputDecoration(
+                                            labelText: 'رمز التسليم',
+                                            hintText:
+                                                'أدخل رمز العميل المكوّن من 6 أرقام',
+                                          ),
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () => Navigator.pop(
+                                              dialogContext,
+                                            ),
+                                            child: const Text('إلغاء'),
+                                          ),
+                                          FilledButton(
+                                            onPressed: () => Navigator.pop(
+                                              dialogContext,
+                                              controller.text.trim(),
+                                            ),
+                                            child: const Text('تأكيد'),
+                                          ),
+                                        ],
+                                      );
+                                    },
+                                  );
+
+                                  controller.dispose();
+
+                                  if (code == null || code.isEmpty) {
+                                    return;
+                                  }
+
+                                  try {
+                                    await AgentOrderService().completeDelivery(
+                                      orderId: order.id,
+                                      code: code,
+                                    );
+
+                                    if (!context.mounted) return;
+
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          'تم تأكيد التسليم وتسجيل مستحق الوسيطة ✅',
+                                        ),
+                                      ),
+                                    );
+                                  } catch (error) {
+                                    if (!context.mounted) return;
+
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          error is StateError
+                                              ? error.message.toString()
+                                              : 'تعذر تأكيد التسليم.',
+                                        ),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                  }
+                                },
+                                icon: const Icon(
+                                  Icons.verified_rounded,
+                                ),
+                                label: const Text(
+                                  'تأكيد التسليم',
+                                ),
+                              )
+                            else if (status == 'pending')
+                              PopupMenuButton<String>(
+                                onSelected: (value) async {
+                                  try {
+                                    await AgentOrderService().updateStatus(
+                                      orderId: order.id,
+                                      status: value,
+                                    );
+
+                                    if (!context.mounted) return;
+
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          value == 'accepted'
+                                              ? 'تم قبول الطلب ✅'
+                                              : 'تم رفض الطلب.',
+                                        ),
+                                      ),
+                                    );
+                                  } catch (error) {
+                                    if (!context.mounted) return;
+
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          error is StateError
+                                              ? error.message.toString()
+                                              : 'تعذر تحديث طلب الوسيطة.',
+                                        ),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                  }
+                                },
+                                itemBuilder: (_) => const [
+                                  PopupMenuItem(
+                                    value: 'accepted',
+                                    child: Text('قبول الطلب'),
+                                  ),
+                                  PopupMenuItem(
+                                    value: 'rejected',
+                                    child: Text('رفض الطلب'),
+                                  ),
+                                ],
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            );
+          },
+        ),
+      ],
     );
   }
 }

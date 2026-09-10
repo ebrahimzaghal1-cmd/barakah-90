@@ -12,6 +12,7 @@ import '../widgets/barakah_brand.dart';
 import 'authentication_screen.dart';
 import 'auction_activity_screen.dart';
 import '../widgets/barakah_reactions.dart';
+import '../widgets/customer_agent_orders_panel.dart';
 
 class OrdersScreen extends StatelessWidget {
   const OrdersScreen({super.key});
@@ -248,6 +249,15 @@ class _OrdersSplitViewState extends State<_OrdersSplitView> {
                         label: const Text('مشترياتي ومبيعاتي في المزاد'),
                       ),
                     ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxWidth: 760,
+                    ),
+                    child: const CustomerAgentOrdersPanel(),
                   ),
                 ),
                 const SizedBox(height: 14),

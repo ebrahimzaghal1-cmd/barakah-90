@@ -15,6 +15,15 @@ class BarakahCardProvisionResult {
   final String? initialPin;
 }
 
+class AdminAccess {
+  const AdminAccess({required this.isOwner, required this.canManageOrders});
+
+  final bool isOwner;
+  final bool canManageOrders;
+
+  bool get canOpenAdmin => isOwner || canManageOrders;
+}
+
 class UserProfileService {
   UserProfileService({FirebaseFirestore? firestore})
       : _firestore = firestore ?? FirebaseFirestore.instance;
@@ -22,6 +31,7 @@ class UserProfileService {
   final FirebaseFirestore _firestore;
 
   static const int signupGiftPoints = 50;
+  static const String primaryAdminUid = 'Y3YeLin9gYTbqN4if72o3iTrUSn2';
 
   Future<bool> claimSignupGift(User user) async {
     final reference = _firestore.collection('users').doc(user.uid);
@@ -148,6 +158,7 @@ class UserProfileService {
       'signupGiftClaimed': true,
       'signupGiftPoints': signupGiftPoints,
       'signupGiftClaimedAt': FieldValue.serverTimestamp(),
+      'joinedAt': FieldValue.serverTimestamp(),
       'createdAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
@@ -168,6 +179,9 @@ class UserProfileService {
     if (existing.exists) {
       final currentData = existing.data() ?? <String, dynamic>{};
       final authenticatedName = (displayName ?? user.displayName ?? '').trim();
+      final legacyJoinDate = currentData['createdAt'] ??
+          currentData['registeredAt'] ??
+          currentData['timestamp'];
       final updates = <String, dynamic>{
         // مزامنة بيانات Firebase Auth للحسابات القديمة التي أُنشئت قبل
         // إضافة حقول البريد والهاتف إلى مجموعة users.
@@ -177,6 +191,8 @@ class UserProfileService {
         if (authenticatedName.isNotEmpty &&
             (currentData['displayName'] ?? '').toString().trim().isEmpty)
           'displayName': authenticatedName,
+        if (currentData['joinedAt'] == null && legacyJoinDate != null)
+          'joinedAt': legacyJoinDate,
         'lastLoginAt': FieldValue.serverTimestamp(),
       };
       await reference.set(updates, SetOptions(merge: true));
@@ -195,12 +211,23 @@ class UserProfileService {
   }
 
   Future<bool> isAdmin(String uid) async {
+    return (await adminAccess(uid)).isOwner;
+  }
+
+  Future<AdminAccess> adminAccess(String uid) async {
     final profile = await _firestore
         .collection('users')
         .doc(uid)
         .get(const GetOptions(source: Source.server));
-
-    return profile.data()?['role']?.toString() == 'admin';
+    final data = profile.data() ?? const <String, dynamic>{};
+    final permissions = data['adminPermissions'];
+    final canManageOrders = data['role']?.toString() == 'order_supervisor' &&
+        permissions is Map &&
+        permissions['manageOrders'] == true;
+    return AdminAccess(
+      isOwner: uid == primaryAdminUid && data['role']?.toString() == 'admin',
+      canManageOrders: canManageOrders,
+    );
   }
 
   Future<void> updateCustomerProfile(String uid, Map<String, dynamic> data) {

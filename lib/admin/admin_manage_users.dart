@@ -30,22 +30,47 @@ class _AdminManageUsersState extends State<AdminManageUsers> {
     return null;
   }
 
-  String _joinDateText(dynamic value) {
-    final date = _joinDate(value)?.toLocal();
+  DateTime? _joinDateFromData(Map<String, dynamic> data) {
+    for (final field in const [
+      'joinedAt',
+      'createdAt',
+      'registeredAt',
+      'timestamp',
+    ]) {
+      final date = _joinDate(data[field]);
+      if (date != null) return date;
+    }
+    return null;
+  }
+
+  String _joinDateText(Map<String, dynamic> data) {
+    final date = _joinDateFromData(data)?.toLocal();
     if (date == null) return 'غير متوفر';
 
     String twoDigits(int number) => number.toString().padLeft(2, '0');
+    const weekDays = [
+      'الاثنين',
+      'الثلاثاء',
+      'الأربعاء',
+      'الخميس',
+      'الجمعة',
+      'السبت',
+      'الأحد',
+    ];
+    final hour = date.hour % 12 == 0 ? 12 : date.hour % 12;
+    final period = date.hour < 12 ? 'ص' : 'م';
 
-    return '${twoDigits(date.day)}/${twoDigits(date.month)}/${date.year} '
-        '${twoDigits(date.hour)}:${twoDigits(date.minute)}';
+    return 'اليوم: ${weekDays[date.weekday - 1]}\n'
+        'التاريخ: ${twoDigits(date.day)}/${twoDigits(date.month)}/${date.year}\n'
+        'الوقت: ${twoDigits(hour)}:${twoDigits(date.minute)} $period';
   }
 
   int _compareUsers(
     QueryDocumentSnapshot<Map<String, dynamic>> a,
     QueryDocumentSnapshot<Map<String, dynamic>> b,
   ) {
-    final aDate = _joinDate(a.data()['createdAt']);
-    final bDate = _joinDate(b.data()['createdAt']);
+    final aDate = _joinDateFromData(a.data());
+    final bDate = _joinDateFromData(b.data());
 
     // الحسابات القديمة التي لا تحتوي على تاريخ تبقى في نهاية القائمة.
     if (aDate == null && bDate == null) return 0;
@@ -286,6 +311,67 @@ class _AdminManageUsersState extends State<AdminManageUsers> {
     );
   }
 
+  Future<void> _setOrderSupervisor(
+    BuildContext context,
+    QueryDocumentSnapshot<Map<String, dynamic>> document,
+    bool enabled,
+  ) async {
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    if (currentUid != UserProfileService.primaryAdminUid) {
+      throw StateError('صاحب التطبيق فقط يستطيع تعيين المشرفين.');
+    }
+    if (document.id == UserProfileService.primaryAdminUid) return;
+
+    final reference =
+        FirebaseFirestore.instance.collection('users').doc(document.id);
+    await FirebaseFirestore.instance.runTransaction((transaction) async {
+      final snapshot = await transaction.get(reference);
+      final data = snapshot.data() ?? const <String, dynamic>{};
+      if (enabled) {
+        final currentRole = data['role']?.toString() ?? 'customer';
+        transaction.set(
+          reference,
+          {
+            if (currentRole != 'order_supervisor')
+              'roleBeforeSupervision': currentRole,
+            'role': 'order_supervisor',
+            'adminPermissions': {'manageOrders': true},
+            'supervisorAssignedBy': currentUid,
+            'supervisorAssignedAt': FieldValue.serverTimestamp(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+      } else {
+        final previousRole = data['roleBeforeSupervision']?.toString().trim();
+        transaction.set(
+          reference,
+          {
+            'role': previousRole == null || previousRole.isEmpty
+                ? 'customer'
+                : previousRole,
+            'roleBeforeSupervision': FieldValue.delete(),
+            'adminPermissions': FieldValue.delete(),
+            'supervisorAssignedBy': FieldValue.delete(),
+            'supervisorAssignedAt': FieldValue.delete(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          },
+          SetOptions(merge: true),
+        );
+      }
+    });
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(enabled
+            ? 'تم تعيين الحساب كمشرف طلبات.'
+            : 'تم سحب صلاحية إشراف الطلبات.'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final current = FirebaseAuth.instance.currentUser;
@@ -371,6 +457,8 @@ class _AdminManageUsersState extends State<AdminManageUsers> {
                       final phone = data['phone']?.toString().trim() ?? '';
                       final loyaltyPoints =
                           (data['loyaltyPoints'] as num?)?.toInt() ?? 0;
+                      final isOrderSupervisor =
+                          data['role']?.toString() == 'order_supervisor';
                       return Card(
                         margin: const EdgeInsets.only(bottom: 10),
                         child: ListTile(
@@ -409,6 +497,16 @@ class _AdminManageUsersState extends State<AdminManageUsers> {
                                     ),
                                   ],
                                 ),
+                                if (isOrderSupervisor) ...[
+                                  const SizedBox(height: 5),
+                                  const Text(
+                                    'مشرف طلبات • بلا صلاحيات مالية',
+                                    style: TextStyle(
+                                      color: Colors.blue,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ],
                                 if (phone.isNotEmpty) ...[
                                   const SizedBox(height: 5),
                                   Row(
@@ -446,8 +544,7 @@ class _AdminManageUsersState extends State<AdminManageUsers> {
                                     const SizedBox(width: 7),
                                     Expanded(
                                       child: Text(
-                                        'تاريخ الانضمام: '
-                                        '${_joinDateText(data['createdAt'])}',
+                                        _joinDateText(data),
                                         style: const TextStyle(
                                           fontWeight: FontWeight.w700,
                                         ),
@@ -484,9 +581,31 @@ class _AdminManageUsersState extends State<AdminManageUsers> {
                                       );
                                     } else if (value == 'delete') {
                                       await _deleteUser(document);
+                                    } else if (value == 'supervisor') {
+                                      await _setOrderSupervisor(
+                                        context,
+                                        document,
+                                        !isOrderSupervisor,
+                                      );
                                     }
                                   },
                                   itemBuilder: (context) => [
+                                    if (document.id !=
+                                        UserProfileService.primaryAdminUid)
+                                      PopupMenuItem<String>(
+                                        value: 'supervisor',
+                                        child: Row(
+                                          children: [
+                                            Icon(isOrderSupervisor
+                                                ? Icons.person_off_outlined
+                                                : Icons.admin_panel_settings),
+                                            const SizedBox(width: 10),
+                                            Text(isOrderSupervisor
+                                                ? 'سحب إشراف الطلبات'
+                                                : 'تعيين كمشرف طلبات'),
+                                          ],
+                                        ),
+                                      ),
                                     const PopupMenuItem<String>(
                                       value: 'points',
                                       child: Row(

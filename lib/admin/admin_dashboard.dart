@@ -7,6 +7,7 @@ import 'admin_manage_categories.dart';
 import 'admin_manage_products.dart';
 import 'admin_manage_restaurants.dart';
 import 'admin_operations_screen.dart';
+import 'order_supervisor_screen.dart';
 import 'admin_add_item_screen.dart';
 import 'admin_manage_ads.dart';
 import 'admin_manage_drivers.dart';
@@ -20,6 +21,8 @@ import 'admin_customer_service.dart';
 import 'admin_support_inbox.dart';
 import 'admin_app_share_settings.dart';
 import 'admin_appointments_accounting_screen.dart';
+import 'admin_agent_finance_screen.dart';
+import 'admin_manage_agent_applications.dart';
 
 import '../theme/app_theme.dart';
 import '../services/user_profile_service.dart';
@@ -32,10 +35,13 @@ class AdminDashboard extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
 
-    return FutureBuilder<bool>(
+    return FutureBuilder<AdminAccess>(
       future: user == null
-          ? Future.value(false)
-          : UserProfileService().isAdmin(user.uid),
+          ? Future.value(const AdminAccess(
+              isOwner: false,
+              canManageOrders: false,
+            ))
+          : UserProfileService().adminAccess(user.uid),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
@@ -45,7 +51,9 @@ class AdminDashboard extends StatelessWidget {
           );
         }
 
-        if (snapshot.data != true) {
+        final access = snapshot.data ??
+            const AdminAccess(isOwner: false, canManageOrders: false);
+        if (!access.canOpenAdmin) {
           return Scaffold(
             appBar: AppBar(
               title: const Text('صلاحيات الأدمن'),
@@ -66,6 +74,10 @@ class AdminDashboard extends StatelessWidget {
           );
         }
 
+        if (!access.isOwner && access.canManageOrders) {
+          return const OrderSupervisorScreen();
+        }
+
         return _buildDashboard(context);
       },
     );
@@ -73,6 +85,16 @@ class AdminDashboard extends StatelessWidget {
 
   Widget _buildDashboard(BuildContext context) {
     final items = [
+      _AdminItem(
+        title: 'مالية الوسيطات',
+        icon: Icons.account_balance_wallet_rounded,
+        page: const AdminAgentFinanceScreen(),
+      ),
+      _AdminItem(
+        title: 'طلبات انضمام الوسيطات',
+        icon: Icons.support_agent_rounded,
+        page: const AdminManageAgentApplications(),
+      ),
       _AdminItem(
         title: 'إدارة المطاعم',
         icon: Icons.storefront,
@@ -352,6 +374,17 @@ class AdminDashboard extends StatelessWidget {
                         context,
                         MaterialPageRoute(
                           builder: (_) => const AdminManageDrivers(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    _AdminRequestShortcut(
+                      title: 'طلبات الوسيطات',
+                      icon: Icons.support_agent_rounded,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const AdminManageAgentApplications(),
                         ),
                       ),
                     ),

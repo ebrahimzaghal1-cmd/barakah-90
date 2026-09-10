@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../screens/location_picker_screen.dart';
 import '../services/media_upload_service.dart';
+import '../services/business_manager_service.dart';
 import '../theme/app_theme.dart';
 import 'admin_manage_products.dart';
 
@@ -55,6 +56,11 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
         TextEditingController(text: '${restaurant['commissionRate'] ?? 10}');
     final ownerEmailController =
         TextEditingController(text: restaurant['ownerEmail'] ?? '');
+    final managerEmailController = TextEditingController();
+    var managerEmails = ((restaurant['managerEmails'] as List?) ?? const [])
+        .map((value) => value.toString().trim())
+        .where((value) => value.isNotEmpty)
+        .toList();
     final preparationController = TextEditingController(
         text: (restaurant['preparationMinutes'] ?? 30).toString());
 
@@ -110,6 +116,7 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
     var isSaving = false;
     var hasDeliveryOffer = restaurant['hasDeliveryOffer'] == true;
     var isTrending = restaurant['isTrending'] == true;
+    var isNewInBarakah = restaurant['isNewInBarakah'] == true;
     double? latitude = (restaurant['latitude'] as num?)?.toDouble();
     double? longitude = (restaurant['longitude'] as num?)?.toDouble();
 
@@ -175,6 +182,7 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
                 'commissionRate': commissionRate,
                 'hasDeliveryOffer': hasDeliveryOffer,
                 'isTrending': isTrending,
+                'isNewInBarakah': isNewInBarakah,
                 'businessStatus': businessStatus,
                 'openingTime': openingTimeController.text.trim(),
                 'closingTime': closingTimeController.text.trim(),
@@ -381,6 +389,17 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
                         ? null
                         : (value) => setDialogState(() => isTrending = value),
                   ),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('إضافة إلى شريط جديد في بركة'),
+                    subtitle: const Text('يمكن إزالته من الشريط في أي وقت'),
+                    secondary: const Icon(Icons.new_releases_rounded),
+                    value: isNewInBarakah,
+                    onChanged: isSaving
+                        ? null
+                        : (value) =>
+                            setDialogState(() => isNewInBarakah = value),
+                  ),
                   TextField(
                     controller: categoryController,
                     decoration: const InputDecoration(
@@ -405,6 +424,130 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
                       prefixIcon: Icon(Icons.storefront_outlined),
                     ),
                   ),
+                  if (doc != null) ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: managerEmailController,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: InputDecoration(
+                        labelText: 'إضافة مدير آخر للمحل بالإيميل',
+                        helperText: 'يجب أن يكون لديه حساب مسجل في تطبيق بركة',
+                        prefixIcon: const Icon(Icons.person_add_alt_1_rounded),
+                        suffixIcon: IconButton(
+                          tooltip: 'إضافة مدير',
+                          onPressed: isSaving
+                              ? null
+                              : () async {
+                                  final email = managerEmailController.text
+                                      .trim()
+                                      .toLowerCase();
+                                  if (email.isEmpty) return;
+                                  try {
+                                    await BusinessManagerService()
+                                        .updateManager(
+                                      businessId: doc.id,
+                                      email: email,
+                                      add: true,
+                                    );
+                                    managerEmailController.clear();
+                                    setDialogState(() {
+                                      if (!managerEmails.contains(email)) {
+                                        managerEmails = [...managerEmails, email];
+                                      }
+                                    });
+                                    if (!context.mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          'تمت إضافة $email كمدير للمحل ✅',
+                                        ),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+                                  } catch (error) {
+                                    if (!context.mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(error is StateError
+                                            ? error.message.toString()
+                                            : 'تعذر إضافة مدير المحل.'),
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    );
+                                  }
+                                },
+                          icon: const Icon(Icons.add_circle_rounded),
+                        ),
+                      ),
+                    ),
+                    if (managerEmails.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      const Align(
+                        alignment: AlignmentDirectional.centerEnd,
+                        child: Text(
+                          'مديرو المحل الحاليون',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      ...managerEmails.map(
+                        (managerEmail) => Card(
+                          margin: const EdgeInsets.only(bottom: 6),
+                          child: ListTile(
+                            dense: true,
+                            title: Text(managerEmail),
+                            trailing: IconButton(
+                              tooltip: 'إزالة المدير',
+                              icon: const Icon(
+                                Icons.person_remove_alt_1_rounded,
+                              ),
+                              onPressed: isSaving
+                                  ? null
+                                  : () async {
+                                      try {
+                                        await BusinessManagerService()
+                                            .updateManager(
+                                          businessId: doc.id,
+                                          email: managerEmail,
+                                          add: false,
+                                        );
+                                        setDialogState(() {
+                                          managerEmails = managerEmails
+                                              .where((value) =>
+                                                  value != managerEmail)
+                                              .toList();
+                                        });
+                                        if (!context.mounted) return;
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              'تمت إزالة $managerEmail من إدارة المحل.',
+                                            ),
+                                            backgroundColor: Colors.green,
+                                          ),
+                                        );
+                                      } catch (error) {
+                                        if (!context.mounted) return;
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              error is StateError
+                                                  ? error.message.toString()
+                                                  : 'تعذر إزالة مدير المحل.',
+                                            ),
+                                            backgroundColor: Colors.red,
+                                          ),
+                                        );
+                                      }
+                                    },
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                   const SizedBox(height: 12),
                   TextField(
                     controller: preparationController,
@@ -557,7 +700,7 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
                   ],
                   const SizedBox(height: 6),
                   DropdownButtonFormField<String>(
-                    value: const ['open', 'busy', 'closed']
+                    value: const ['open', 'busy', 'closed', 'coming_soon']
                             .contains(businessStatus)
                         ? businessStatus
                         : 'open',
@@ -577,6 +720,10 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
                       DropdownMenuItem(
                         value: 'closed',
                         child: Text('مغلق مؤقتًا — لا يستقبل الطلبات'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'coming_soon',
+                        child: Text('قريبًا — يظهر في التبويب دون طلبات'),
                       ),
                     ],
                     onChanged: isSaving
@@ -627,6 +774,7 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
     }
     commissionController.dispose();
     ownerEmailController.dispose();
+    managerEmailController.dispose();
     preparationController.dispose();
   }
 

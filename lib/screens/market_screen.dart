@@ -17,6 +17,7 @@ import '../widgets/barakah_brand.dart';
 import '../widgets/barakah_media_image.dart';
 import '../widgets/home_strip_card.dart';
 import '../widgets/favorite_button.dart';
+import '../widgets/new_in_barakah_strip.dart';
 import '../widgets/restaurant_card.dart';
 import 'categories_screen.dart';
 import 'authentication_screen.dart';
@@ -123,6 +124,80 @@ class _MarketScreenState extends State<MarketScreen> {
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 16),
                       child: AdvertisementBanner(placement: 'market_top'),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(20),
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const NearbyPlacesScreen(),
+                            ),
+                          ),
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 18,
+                              vertical: 15,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppTheme.navy,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: AppTheme.coolYellow,
+                                width: 1,
+                              ),
+                            ),
+                            child: const Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 24,
+                                  backgroundColor: AppTheme.coolYellow,
+                                  child: Icon(
+                                    Icons.support_agent_rounded,
+                                    color: AppTheme.navy,
+                                    size: 27,
+                                  ),
+                                ),
+                                SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'الوسيطات الأقرب',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 17,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                      SizedBox(height: 3),
+                                      Text(
+                                        'اعثر على وسيطات بركة الأقرب إلى موقعك',
+                                        style: TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Icon(
+                                  Icons.arrow_back_ios_new_rounded,
+                                  color: AppTheme.coolYellow,
+                                  size: 18,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
@@ -569,6 +644,10 @@ class _MarketContent extends StatelessWidget {
     final sections = <Widget>[
       const _MarketOfferBanner(),
       _MarketHomeStrips(fallbackCategories: categories, items: items),
+      const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 20),
+        child: NewInBarakahStrip(itemType: 'market'),
+      ),
       _TrendingMarketSection(items: items),
       const AdvertisementBanner(placement: 'market'),
       const SponsoredAdsFeed(placement: 'market_gallery'),
@@ -949,6 +1028,11 @@ class _BestSellingProductsStrip extends StatelessWidget {
                   borderRadius: BorderRadius.circular(18),
                   clipBehavior: Clip.antiAlias,
                   child: InkWell(
+                    onTap: () => showProductPurchaseOptions(
+                      context,
+                      product.id,
+                      data,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -1184,14 +1268,20 @@ class _MarketCategoriesStrip extends StatelessWidget {
                 image: categoryImage,
                 onTap: () {
                   AnalyticsService.instance.recordCategoryView(title);
+
+                  final isAgentCategory =
+                      title.contains("وسيط") || title.contains("وسطاء");
+
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => CategoriesScreen(
-                        title: title,
-                        image: image,
-                        description: description,
-                      ),
+                      builder: (_) => isAgentCategory
+                          ? const NearbyPlacesScreen()
+                          : CategoriesScreen(
+                              title: title,
+                              image: image,
+                              description: description,
+                            ),
                     ),
                   );
                 },

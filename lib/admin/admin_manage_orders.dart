@@ -5,9 +5,14 @@ import '../services/order_service.dart';
 import '../theme/app_theme.dart';
 
 class AdminManageOrders extends StatelessWidget {
-  const AdminManageOrders({super.key, this.embedded = false});
+  const AdminManageOrders({
+    super.key,
+    this.embedded = false,
+    this.supervisorMode = false,
+  });
 
   final bool embedded;
+  final bool supervisorMode;
 
   static const _statuses = {
     'new': 'جديد',
@@ -51,6 +56,18 @@ class AdminManageOrders extends StatelessWidget {
   Future<Map<String, dynamic>> _loadCustomerSummary(
     Map<String, dynamic> orderData,
   ) async {
+    if (supervisorMode) {
+      return {
+        'name': _firstNonEmpty([
+          orderData['customerName'],
+          orderData['customerEmail'],
+        ]),
+        'phone': _firstNonEmpty([orderData['customerPhone']]),
+        'email': _firstNonEmpty([orderData['customerEmail']]),
+        'totalOrders': 0,
+        'completedOrders': 0,
+      };
+    }
     final firestore = FirebaseFirestore.instance;
 
     final customerId = _firstNonEmpty(
@@ -206,7 +223,7 @@ class AdminManageOrders extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (isNewCustomer)
+                  if (!supervisorMode && isNewCustomer)
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 9,
@@ -243,30 +260,32 @@ class AdminManageOrders extends StatelessWidget {
                 'البريد الإلكتروني',
                 customer['email']?.toString() ?? 'غير مضاف',
               ),
-              const Divider(height: 18),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'إجمالي الطلبات: $totalOrders',
-                      style: const TextStyle(
-                        color: AppTheme.navy,
-                        fontWeight: FontWeight.w900,
+              if (!supervisorMode) ...[
+                const Divider(height: 18),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'إجمالي الطلبات: $totalOrders',
+                        style: const TextStyle(
+                          color: AppTheme.navy,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
                     ),
-                  ),
-                  Expanded(
-                    child: Text(
-                      'المكتملة: $completedOrders',
-                      textAlign: TextAlign.end,
-                      style: const TextStyle(
-                        color: AppTheme.navy,
-                        fontWeight: FontWeight.w900,
+                    Expanded(
+                      child: Text(
+                        'المكتملة: $completedOrders',
+                        textAlign: TextAlign.end,
+                        style: const TextStyle(
+                          color: AppTheme.navy,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ],
           ),
         );
@@ -351,7 +370,9 @@ class AdminManageOrders extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '${lines.length} أصناف • ${data['total'] ?? 0} ₪',
+                      supervisorMode
+                          ? '${lines.length} أصناف'
+                          : '${lines.length} أصناف • ${data['total'] ?? 0} ₪',
                     ),
                     const SizedBox(height: 8),
                     _OrderActionPanel(
@@ -388,18 +409,19 @@ class AdminManageOrders extends StatelessWidget {
                       subtitle: Text(
                         'الكمية: ${item['quantity'] ?? 1}',
                       ),
-                      trailing: Text(
-                        '${item['price'] ?? 0} ₪',
-                      ),
+                      trailing: supervisorMode
+                          ? null
+                          : Text('${item['price'] ?? 0} ₪'),
                     );
                   }),
-                  Align(
-                    alignment: AlignmentDirectional.centerStart,
-                    child: Text(
-                      '${data['deliveryMethod'] ?? ''} • ${data['paymentMethod'] ?? ''}',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                  if (!supervisorMode)
+                    Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: Text(
+                        '${data['deliveryMethod'] ?? ''} • ${data['paymentMethod'] ?? ''}',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
                     ),
-                  ),
                 ],
               ),
             );
@@ -410,7 +432,7 @@ class AdminManageOrders extends StatelessWidget {
     if (embedded) return body;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('إدارة الطلبات'),
+        title: Text(supervisorMode ? 'إشراف الطلبات' : 'إدارة الطلبات'),
         centerTitle: true,
       ),
       body: body,

@@ -10,6 +10,8 @@ const {getFirestore, FieldValue} = require("firebase-admin/firestore");
 
 initializeApp();
 
+const PRIMARY_ADMIN_UID = "Y3YeLin9gYTbqN4if72o3iTrUSn2";
+
 // يحافظ على عدّاد مبيعات كل صنف بعد تسليم الطلب، لتغذية شريط
 // "الأكثر مبيعاً" بترتيب حقيقي لا يعتمد على اختيار يدوي.
 exports.updateProductSalesCounters = onDocumentUpdated(
@@ -301,23 +303,17 @@ exports.notifyAdminsOnNewOrder = onDocumentCreated(
 
     const db = getFirestore();
 
-    const adminDocs = new Map();
-
-    const [roleAdmins, flagAdmins] = await Promise.all([
-      db.collection("users")
-        .where("role", "==", "admin")
-        .get(),
-
-      db.collection("users")
-        .where("isAdmin", "==", true)
-        .get(),
+    const [owner, supervisors] = await Promise.all([
+      db.collection("users").doc(PRIMARY_ADMIN_UID).get(),
+      db.collection("users").where("role", "==", "order_supervisor").get(),
     ]);
 
-    for (const doc of [
-      ...roleAdmins.docs,
-      ...flagAdmins.docs,
-    ]) {
-      adminDocs.set(doc.id, doc);
+    const adminDocs = new Map();
+    if (owner.exists) adminDocs.set(owner.id, owner);
+    for (const doc of supervisors.docs) {
+      if (doc.data()?.adminPermissions?.manageOrders === true) {
+        adminDocs.set(doc.id, doc);
+      }
     }
 
     const tokens = [
@@ -395,14 +391,7 @@ exports.notifyAdminsOnPartnerApplication = onDocumentCreated(
   async (event) => {
     const application = event.data?.data() || {};
     const db = getFirestore();
-    const [roleAdmins, flagAdmins] = await Promise.all([
-      db.collection("users").where("role", "==", "admin").get(),
-      db.collection("users").where("isAdmin", "==", true).get(),
-    ]);
-    const adminIds = new Set([
-      ...roleAdmins.docs.map((doc) => doc.id),
-      ...flagAdmins.docs.map((doc) => doc.id),
-    ]);
+    const adminIds = new Set([PRIMARY_ADMIN_UID]);
     const tokens = [
       ...new Set((await Promise.all(
         [...adminIds].map((uid) => tokensForUser(db, uid)),

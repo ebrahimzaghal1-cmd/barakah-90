@@ -4,6 +4,11 @@ var __name = (target, value) => __defProp(target, "name", { value, configurable:
 // src/index.js
 var JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
 var MAX_ITEMS = 50;
+var PRIMARY_ADMIN_UID = "Y3YeLin9gYTbqN4if72o3iTrUSn2";
+function isPrimaryAdmin(user, actor) {
+  return user?.uid === PRIMARY_ADMIN_UID && actor?.role === "admin";
+}
+__name(isPrimaryAdmin, "isPrimaryAdmin");
 var index_default = {
   async fetch(request, env) {
     const cors = corsHeaders(request, env);
@@ -25,6 +30,9 @@ var index_default = {
       const user = await authenticate(request, env);
       if (request.method === "POST" && url.pathname === "/v1/support/messages") {
         return json(await sendSupportMessage(request, env, user), 201, cors);
+      }
+      if (request.method === "GET" && url.pathname === "/v1/order-supervisor/orders") {
+        return json(await listOrderSupervisorOrders(env, user), 200, cors);
       }
       if (request.method === "POST" && url.pathname === "/v1/admin/new-request") {
         return json(
@@ -112,7 +120,7 @@ var index_default = {
           `users/${encodeURIComponent(user.uid)}`
         );
 
-        if (actor?.role !== "admin") {
+        if (!isPrimaryAdmin(user, actor)) {
           fail(403, "permission-denied", "غير مسموح بتنفيذ حذف الحسابات.");
         }
 
@@ -169,6 +177,13 @@ var index_default = {
           cors
         );
       }
+      if (request.method === "POST" && url.pathname === "/v1/merchant/managers") {
+        return json(
+          await updateBusinessManager(request, env, user),
+          200,
+          cors
+        );
+      }
       const merchantProductUpdateMatch = url.pathname.match(
         /^\/v1\/merchant\/products\/([^/]+)\/update$/
       );
@@ -201,7 +216,123 @@ var index_default = {
       if (request.method === "POST" && url.pathname === "/v1/orders") {
         return json(await createOrder(request, env, user), 201, cors);
       }
-      if (request.method === "GET" && url.pathname === "/v1/driver/orders/available") {
+      if (request.method === "POST" && url.pathname === "/v1/agent-orders") {
+        return json(await createAgentOrder(request, env, user), 201, cors);
+      }
+
+    const agentOrderAcceptMatch = url.pathname.match(
+      /^\/v1\/agent-orders\/([^/]+)\/accept$/
+    );
+    if (request.method === "POST" && agentOrderAcceptMatch) {
+      return json(
+        await updateAgentOrderStatus(
+          env,
+          user,
+          decodeURIComponent(agentOrderAcceptMatch[1]),
+          "accepted"
+        ),
+        200,
+        cors
+      );
+    }
+
+    const agentOrderRejectMatch = url.pathname.match(
+      /^\/v1\/agent-orders\/([^/]+)\/reject$/
+    );
+    if (request.method === "POST" && agentOrderRejectMatch) {
+      return json(
+        await updateAgentOrderStatus(
+          env,
+          user,
+          decodeURIComponent(agentOrderRejectMatch[1]),
+          "rejected"
+        ),
+        200,
+        cors
+      );
+    }
+
+  
+    const agentOrderDeliveryCodeMatch = url.pathname.match(
+      /^\/v1\/agent-orders\/([^/]+)\/delivery-code$/
+    );
+    if (request.method === "GET" && agentOrderDeliveryCodeMatch) {
+      return json(
+        await getAgentOrderDeliveryCode(
+          env,
+          user,
+          decodeURIComponent(agentOrderDeliveryCodeMatch[1])
+        ),
+        200,
+        cors
+      );
+    }
+
+
+    const agentOrderDisputeMatch = url.pathname.match(
+      /^\/v1\/agent-orders\/([^/]+)\/dispute$/
+    );
+    if (request.method === "POST" && agentOrderDisputeMatch) {
+      return json(
+        await createAgentOrderDispute(
+          request,
+          env,
+          user,
+          decodeURIComponent(agentOrderDisputeMatch[1])
+        ),
+        201,
+        cors
+      );
+    }
+
+    const agentOrderResolveDisputeMatch = url.pathname.match(
+      /^\/v1\/agent-orders\/([^/]+)\/resolve-dispute$/
+    );
+    if (request.method === "POST" && agentOrderResolveDisputeMatch) {
+      return json(
+        await resolveAgentOrderDispute(
+          request,
+          env,
+          user,
+          decodeURIComponent(agentOrderResolveDisputeMatch[1])
+        ),
+        200,
+        cors
+      );
+    }
+
+    const agentOrderSettleMatch = url.pathname.match(
+      /^\/v1\/agent-orders\/([^/]+)\/settle$/
+    );
+    if (request.method === "POST" && agentOrderSettleMatch) {
+      return json(
+        await settleAgentOrderEarning(
+          env,
+          user,
+          decodeURIComponent(agentOrderSettleMatch[1])
+        ),
+        200,
+        cors
+      );
+    }
+
+    const agentOrderCompleteMatch = url.pathname.match(
+      /^\/v1\/agent-orders\/([^/]+)\/complete$/
+    );
+    if (request.method === "POST" && agentOrderCompleteMatch) {
+      return json(
+        await completeAgentOrder(
+          request,
+          env,
+          user,
+          decodeURIComponent(agentOrderCompleteMatch[1])
+        ),
+        200,
+        cors
+      );
+    }
+
+    if (request.method === "GET" && url.pathname === "/v1/driver/orders/available") {
         return json(
           await listAvailableDriverOrders(env, user),
           200,
@@ -521,7 +652,7 @@ async function firestoreCommit(env, token, writes) {
 }
 __name(firestoreCommit, "firestoreCommit");
 async function firestoreQuery(env, token, collectionId, filters = []) {
-  const where = filters.length === 1 ? filters[0] : {
+  const where = filters.length === 0 ? null : filters.length === 1 ? filters[0] : {
     compositeFilter: { op: "AND", filters }
   };
   const response = await fetch(`${firestoreBase(env)}:runQuery`, {
@@ -529,7 +660,7 @@ async function firestoreQuery(env, token, collectionId, filters = []) {
     headers: { ...JSON_HEADERS, authorization: `Bearer ${token}` },
     body: JSON.stringify({ structuredQuery: {
       from: [{ collectionId }],
-      where,
+      ...(where ? { where } : {}),
       limit: 100
     } })
   });
@@ -542,6 +673,39 @@ function fieldEquals(fieldPath, value) {
   return { fieldFilter: { field: { fieldPath }, op: "EQUAL", value: encodeValue(value) } };
 }
 __name(fieldEquals, "fieldEquals");
+async function listOrderSupervisorOrders(env, user) {
+  const token = await serviceToken(env);
+  const actor = await firestoreGet(
+    env,
+    token,
+    `users/${encodeURIComponent(user.uid)}`
+  );
+  const allowed = isPrimaryAdmin(user, actor) ||
+    (actor?.role === "order_supervisor" && actor?.adminPermissions?.manageOrders === true);
+  if (!allowed) {
+    fail(403, "permission-denied", "غير مسموح بعرض طلبات الإشراف.");
+  }
+  const orders = await firestoreQuery(env, token, "orders");
+  orders.sort((left, right) => Date.parse(right.createdAt || 0) - Date.parse(left.createdAt || 0));
+  return {
+    orders: orders.map((order) => ({
+      id: order.id,
+      orderNumber: order.orderNumber || null,
+      status: order.status || "new",
+      deliveryMethod: order.deliveryMethod || "delivery",
+      customerName: order.customerName || order.customerEmail || "عميل بركة",
+      customerPhone: order.customerPhone || "",
+      deliveryAddress: order.deliveryAddress || "",
+      businessTitle: order.businessTitle || "",
+      createdAt: order.createdAt || null,
+      items: (Array.isArray(order.items) ? order.items : []).map((item) => ({
+        title: item?.title || "صنف",
+        quantity: Number(item?.quantity || 1)
+      }))
+    }))
+  };
+}
+__name(listOrderSupervisorOrders, "listOrderSupervisorOrders");
 async function sendPushToTokens(env, token, deviceTokens, { title, body, data = {} }) {
   const uniqueTokens = [...new Set((deviceTokens || []).filter((value) => typeof value === "string" && value.length > 20))];
   if (!uniqueTokens.length) return;
@@ -652,15 +816,16 @@ async function notifyCustomerOrderStatus(env, token, order, orderId, status) {
 }
 __name(notifyCustomerOrderStatus, "notifyCustomerOrderStatus");
 async function notifyAdminsAboutOrder(env, token, orderId, order) {
-  const admins = await firestoreQuery(
-    env,
-    token,
-    "users",
-    [fieldEquals("role", "admin")]
-  );
-  const adminTokens = admins.flatMap(
-    (admin) => Array.isArray(admin.fcmTokens) ? admin.fcmTokens : []
-  );
+  const [ownerTokens, supervisors] = await Promise.all([
+    adminPushTokens(env, token),
+    firestoreQuery(env, token, "users", [fieldEquals("role", "order_supervisor")])
+  ]);
+  const adminTokens = [
+    ...ownerTokens,
+    ...supervisors
+      .filter((supervisor) => supervisor.adminPermissions?.manageOrders === true)
+      .flatMap((supervisor) => Array.isArray(supervisor.fcmTokens) ? supervisor.fcmTokens : [])
+  ];
   let merchantTokens = [];
   if (order.businessId) {
     const business = await firestoreGet(
@@ -668,13 +833,13 @@ async function notifyAdminsAboutOrder(env, token, orderId, order) {
       token,
       `items/${encodeURIComponent(order.businessId)}`
     );
-    if (business?.ownerId) {
-      merchantTokens = await userPushTokens(
-        env,
-        token,
-        business.ownerId
-      );
-    }
+    const merchantUserIds = [
+      business?.ownerId,
+      ...(Array.isArray(business?.managerIds) ? business.managerIds : [])
+    ].filter(Boolean);
+    merchantTokens = (await Promise.all(
+      [...new Set(merchantUserIds)].map((uid) => userPushTokens(env, token, uid))
+    )).flat();
   }
   const orderLabel = String(
     order.orderNumber || orderId.substring(0, 6).toUpperCase()
@@ -736,6 +901,7 @@ async function createPartnerApplication(request, env) {
     nationalId: text(data.nationalId, 80),
     activityType: text(data.activityType, 80),
     businessCategory: text(data.businessCategory, 120),
+    requestedBusinessStatus: data.requestedBusinessStatus === "coming_soon" ? "coming_soon" : "open",
     barberServices: Array.isArray(data.barberServices)
       ? data.barberServices.slice(0, 30).map((service) => ({
         title: text(service?.title, 120),
@@ -784,13 +950,7 @@ async function createPartnerApplication(request, env) {
     record
   );
 
-  const [roleAdmins, flagAdmins] = await Promise.all([
-    firestoreQuery(env, token, "users", [fieldEquals("role", "admin")]),
-    firestoreQuery(env, token, "users", [fieldEquals("isAdmin", true)])
-  ]);
-  const adminTokens = [...roleAdmins, ...flagAdmins].flatMap(
-    (admin) => Array.isArray(admin.fcmTokens) ? admin.fcmTokens : []
-  );
+  const adminTokens = await adminPushTokens(env, token);
   // The application is already committed at this point. A push notification is
   // best-effort and must never make the applicant see a failed submission (or
   // submit duplicates) when FCM is temporarily unavailable.
@@ -810,13 +970,12 @@ async function createPartnerApplication(request, env) {
 }
 __name(createPartnerApplication, "createPartnerApplication");
 async function adminPushTokens(env, token) {
-  const [roleAdmins, flagAdmins] = await Promise.all([
-    firestoreQuery(env, token, "users", [fieldEquals("role", "admin")]),
-    firestoreQuery(env, token, "users", [fieldEquals("isAdmin", true)])
-  ]);
-  return [...roleAdmins, ...flagAdmins].flatMap(
-    (admin) => Array.isArray(admin.fcmTokens) ? admin.fcmTokens : []
+  const owner = await firestoreGet(
+    env,
+    token,
+    `users/${encodeURIComponent(PRIMARY_ADMIN_UID)}`
   );
+  return Array.isArray(owner?.fcmTokens) ? owner.fcmTokens : [];
 }
 __name(adminPushTokens, "adminPushTokens");
 async function notifyAdminsAboutVerifiedRequest(request, env, user) {
@@ -902,7 +1061,7 @@ async function notifyAuctionStatus(request, env, user) {
     token,
     `users/${encodeURIComponent(user.uid)}`
   );
-  if (actor?.role !== "admin" && actor?.isAdmin !== true) {
+  if (!isPrimaryAdmin(user, actor)) {
     fail(403, "permission-denied", "هذه العملية متاحة للأدمن فقط.");
   }
   const sale = await firestoreGet(
@@ -993,7 +1152,7 @@ async function sendSupportMessage(request, env, user) {
     senderName = String(actor.displayName || "خدمة عملاء بركة");
     notificationTitle = "رد جديد من خدمة عملاء بركة 💬";
     recipientTokens = await userPushTokens(env, token, thread.customerId);
-  } else if (actor.role === "admin" || actor.isAdmin === true) {
+  } else if (isPrimaryAdmin(user, actor)) {
     senderRole = "admin";
     senderName = String(actor.displayName || "إدارة بركة");
     notificationTitle = "رد جديد من إدارة بركة 💬";
@@ -1183,6 +1342,93 @@ function encodeValue(value) {
   return { stringValue: String(value) };
 }
 __name(encodeValue, "encodeValue");
+
+function normalizeProductOptionGroups(rawGroups) {
+  if (rawGroups === void 0 || rawGroups === null) return [];
+
+  if (!Array.isArray(rawGroups)) {
+    fail(400, "invalid-option-groups", "خيارات المنتج غير صالحة.");
+  }
+
+  if (rawGroups.length > 12) {
+    fail(400, "too-many-option-groups", "الحد الأقصى لمجموعات الخيارات هو 12.");
+  }
+
+  const usedGroupIds = new Set();
+
+  return rawGroups.map((rawGroup, groupIndex) => {
+    if (!rawGroup || typeof rawGroup !== "object" || Array.isArray(rawGroup)) {
+      fail(400, "invalid-option-group", "إحدى مجموعات الخيارات غير صالحة.");
+    }
+
+    const name = String(rawGroup.name || "").trim();
+    const required = rawGroup.required === true;
+    let id = String(rawGroup.id || "").trim() || `group_${groupIndex + 1}`;
+
+    if (!name || name.length > 80) {
+      fail(400, "invalid-option-group-name", "اسم مجموعة الخيارات غير صالح.");
+    }
+
+    if (id.length > 100 || usedGroupIds.has(id)) {
+      fail(400, "invalid-option-group-id", "معرف مجموعة الخيارات غير صالح أو مكرر.");
+    }
+
+    usedGroupIds.add(id);
+
+    const rawOptions = rawGroup.options;
+
+    if (!Array.isArray(rawOptions) || rawOptions.length === 0) {
+      fail(400, "missing-product-options", `أضف خيارًا داخل مجموعة "${name}".`);
+    }
+
+    if (rawOptions.length > 30) {
+      fail(400, "too-many-product-options", `خيارات "${name}" أكثر من الحد المسموح.`);
+    }
+
+    const usedOptionIds = new Set();
+
+    const options = rawOptions.map((rawOption, optionIndex) => {
+      if (!rawOption || typeof rawOption !== "object" || Array.isArray(rawOption)) {
+        fail(400, "invalid-product-option", `خيار داخل "${name}" غير صالح.`);
+      }
+
+      const optionName = String(rawOption.name || "").trim();
+      let optionId =
+        String(rawOption.id || "").trim() || `option_${optionIndex + 1}`;
+
+      const priceDelta = Number(rawOption.priceDelta || 0);
+
+      if (!optionName || optionName.length > 120) {
+        fail(400, "invalid-product-option-name", `اسم خيار داخل "${name}" غير صالح.`);
+      }
+
+      if (optionId.length > 100 || usedOptionIds.has(optionId)) {
+        fail(400, "invalid-product-option-id", "معرف الخيار غير صالح أو مكرر.");
+      }
+
+      if (!Number.isFinite(priceDelta) || priceDelta < 0 || priceDelta > 1e6) {
+        fail(400, "invalid-option-price", `سعر الخيار "${optionName}" غير صالح.`);
+      }
+
+      usedOptionIds.add(optionId);
+
+      return {
+        id: optionId,
+        name: optionName,
+        priceDelta: Math.round(priceDelta * 100) / 100
+      };
+    });
+
+    return {
+      id,
+      name,
+      required,
+      selectionType: "single",
+      options
+    };
+  });
+}
+__name(normalizeProductOptionGroups, "normalizeProductOptionGroups");
 async function deleteCurrentAccount(env, user, targetUid = user.uid, adminDelete = false) {
   // Firebase considers deletion sensitive. Require a recent sign-in so a
   // stolen long-lived session cannot permanently remove an account.
@@ -1206,7 +1452,7 @@ async function deleteCurrentAccount(env, user, targetUid = user.uid, adminDelete
     `users/${encodeURIComponent(targetUid)}`
   );
 
-  if (profile?.role === "admin" || profile?.isAdmin === true) {
+  if (profile?.role === "admin" || profile?.role === "order_supervisor" || profile?.isAdmin === true) {
     fail(
       403,
       "admin-account-protected",
@@ -1647,6 +1893,103 @@ async function changeBarakahPin(request, env, user) {
   );
 }
 __name(changeBarakahPin, "changeBarakahPin");
+function canManageBusiness(userId, business) {
+  return Boolean(
+    business &&
+      (business.ownerId === userId ||
+        (Array.isArray(business.managerIds) && business.managerIds.includes(userId)))
+  );
+}
+__name(canManageBusiness, "canManageBusiness");
+
+async function updateBusinessManager(request, env, user) {
+  const data = await readJson(request);
+  const businessId = String(data.businessId || "").trim();
+  const email = String(data.email || "").trim().toLowerCase();
+  const action = data.action === "remove" ? "remove" : "add";
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(businessId)) {
+    fail(400, "invalid-business", "رقم المحل غير صالح.");
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    fail(400, "invalid-email", "أدخل بريدًا إلكترونيًا صحيحًا.");
+  }
+
+  const token = await serviceToken(env);
+  const [actor, business, matches] = await Promise.all([
+    firestoreGet(env, token, `users/${encodeURIComponent(user.uid)}`),
+    firestoreGet(env, token, `items/${encodeURIComponent(businessId)}`),
+    firestoreQuery(env, token, "users", [fieldEquals("email", email)])
+  ]);
+  if (!business || business.kind === "product") {
+    fail(404, "business-not-found", "المحل غير موجود.");
+  }
+  const mayAssign = isPrimaryAdmin(user, actor) || business.ownerId === user.uid;
+  if (!mayAssign) {
+    fail(403, "permission-denied", "صاحب المحل أو أدمن بركة فقط يستطيع إضافة مديري المحل.");
+  }
+  const target = matches[0];
+  if (!target?.id) {
+    fail(404, "user-not-found", "لا يوجد حساب مسجل بهذا البريد. يجب أن يسجل الشخص في بركة أولًا.");
+  }
+  if (target.id === business.ownerId) {
+    fail(409, "already-owner", "هذا البريد يعود إلى صاحب المحل بالفعل.");
+  }
+  if (["admin", "order_supervisor", "driver", "customer_service"].includes(String(target.role || ""))) {
+    fail(409, "incompatible-role", "هذا الحساب مرتبط بوظيفة أخرى في بركة ولا يمكن إضافته كمدير محل.");
+  }
+
+  const managerIds = Array.isArray(business.managerIds) ? [...business.managerIds] : [];
+  const managerEmails = Array.isArray(business.managerEmails) ? [...business.managerEmails] : [];
+  const managedBusinessIds = Array.isArray(target.managedBusinessIds)
+    ? [...target.managedBusinessIds]
+    : [];
+
+  if (action === "add") {
+    if (!managerIds.includes(target.id)) managerIds.push(target.id);
+    if (!managerEmails.includes(email)) managerEmails.push(email);
+    if (!managedBusinessIds.includes(businessId)) managedBusinessIds.push(businessId);
+  } else {
+    const idIndex = managerIds.indexOf(target.id);
+    if (idIndex >= 0) managerIds.splice(idIndex, 1);
+    const emailIndex = managerEmails.indexOf(email);
+    if (emailIndex >= 0) managerEmails.splice(emailIndex, 1);
+    const businessIndex = managedBusinessIds.indexOf(businessId);
+    if (businessIndex >= 0) managedBusinessIds.splice(businessIndex, 1);
+  }
+
+  const targetUpdates = {
+    managedBusinessIds,
+    merchantBusinessId: managedBusinessIds[0] || null,
+    merchantEnabled: managedBusinessIds.length > 0,
+    updatedAt: new Date()
+  };
+  if (action === "add") {
+    targetUpdates.role = "merchant";
+    if (target.role !== "merchant") {
+      targetUpdates.roleBeforeMerchantManagement = target.role || "customer";
+    }
+    targetUpdates.merchantBusinessId = target.merchantBusinessId || businessId;
+    targetUpdates.merchantEnabled = true;
+  } else if (managedBusinessIds.length === 0) {
+    targetUpdates.role = target.roleBeforeMerchantManagement || "customer";
+    targetUpdates.roleBeforeMerchantManagement = null;
+  }
+
+  const result = await firestoreCommit(env, token, [
+    updateWrite(env, `items/${encodeURIComponent(businessId)}`, {
+      managerIds,
+      managerEmails,
+      updatedAt: new Date()
+    }, business.updateTime),
+    updateWrite(env, `users/${encodeURIComponent(target.id)}`, targetUpdates, target.updateTime)
+  ]);
+  if (!result) {
+    fail(409, "manager-list-changed", "تغيرت قائمة مديري المحل. حاول مجددًا.");
+  }
+  return { ok: true, action, email, managerIds, managerEmails };
+}
+__name(updateBusinessManager, "updateBusinessManager");
+
 async function createMerchantProduct(request, env, user) {
   const data = await readJson(request);
   const businessId = String(data.businessId || "").trim();
@@ -1655,6 +1998,8 @@ async function createMerchantProduct(request, env, user) {
   const image = String(data.image || "").trim();
   const price = Number(data.price);
   const stock = Number(data.stock);
+  const soldOut = data.soldOut === true;
+  const optionGroups = normalizeProductOptionGroups(data.optionGroups);
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(businessId)) {
     fail(
       400,
@@ -1717,7 +2062,7 @@ async function createMerchantProduct(request, env, user) {
       "\u0647\u0630\u0627 \u0627\u0644\u062D\u0633\u0627\u0628 \u063A\u064A\u0631 \u0645\u0641\u0648\u0636 \u0644\u0625\u062F\u0627\u0631\u0629 \u0645\u062A\u062C\u0631."
     );
   }
-  if (!business || business.kind === "product" || business.ownerId !== user.uid) {
+  if (!business || business.kind === "product" || !canManageBusiness(user.uid, business)) {
     fail(
       403,
       "business-not-owned",
@@ -1736,9 +2081,11 @@ async function createMerchantProduct(request, env, user) {
     type: String(business.type || ""),
     price: Math.round(price * 100) / 100,
     stock,
-    soldOut: stock <= 0,
-    ownerId: user.uid,
-    ownerEmail: user.email || null,
+    soldOut,
+    optionGroups,
+    ownerId: String(business.ownerId || user.uid),
+    ownerEmail: business.ownerEmail || user.email || null,
+    createdBy: user.uid,
     isActive: true,
     createdAt: /* @__PURE__ */ new Date(),
     updatedAt: /* @__PURE__ */ new Date()
@@ -1788,7 +2135,7 @@ async function requireOwnedMerchantProduct(env, token, user, productId) {
       "\u0647\u0630\u0627 \u0627\u0644\u062D\u0633\u0627\u0628 \u063A\u064A\u0631 \u0645\u0641\u0648\u0636 \u0644\u0625\u062F\u0627\u0631\u0629 \u0645\u062A\u062C\u0631."
     );
   }
-  if (!product || product.kind !== "product" || product.ownerId !== user.uid) {
+  if (!product || product.kind !== "product") {
     fail(
       403,
       "product-not-owned",
@@ -1800,7 +2147,7 @@ async function requireOwnedMerchantProduct(env, token, user, productId) {
     token,
     `items/${encodeURIComponent(product.businessId || "")}`
   );
-  if (!business || business.ownerId !== user.uid) {
+  if (!business || !canManageBusiness(user.uid, business)) {
     fail(
       403,
       "business-not-owned",
@@ -1817,6 +2164,7 @@ async function updateMerchantProduct(request, env, user, productId) {
   const image = String(data.image || "").trim();
   const price = Number(data.price);
   const stock = Number(data.stock);
+  const soldOut = data.soldOut === true;
   if (title.length < 2 || title.length > 120) {
     fail(
       400,
@@ -1859,6 +2207,10 @@ async function updateMerchantProduct(request, env, user, productId) {
     user,
     productId
   );
+  const optionGroups =
+    data.optionGroups === void 0
+      ? normalizeProductOptionGroups(product.optionGroups || [])
+      : normalizeProductOptionGroups(data.optionGroups);
   const result = await firestoreCommit(
     env,
     token,
@@ -1872,12 +2224,13 @@ async function updateMerchantProduct(request, env, user, productId) {
           image,
           price: Math.round(price * 100) / 100,
           stock,
-          soldOut: stock <= 0,
+          soldOut,
+          optionGroups,
           businessId: product.businessId,
           businessTitle: String(business.title || ""),
           category: String(business.category || ""),
           type: String(business.type || ""),
-          ownerId: user.uid,
+          ownerId: String(business.ownerId || product.ownerId || user.uid),
           kind: "product",
           updatedAt: /* @__PURE__ */ new Date()
         },
@@ -1894,7 +2247,8 @@ async function updateMerchantProduct(request, env, user, productId) {
   }
   console.log("MERCHANT_PRODUCT_UPDATED", {
     productId,
-    merchantUid: user.uid
+    merchantUid: user.uid,
+    businessOwnerUid: String(business.ownerId || "")
   });
   return {
     ok: true,
@@ -1904,7 +2258,7 @@ async function updateMerchantProduct(request, env, user, productId) {
 __name(updateMerchantProduct, "updateMerchantProduct");
 async function deleteMerchantProduct(env, user, productId) {
   const token = await serviceToken(env);
-  const { product } = await requireOwnedMerchantProduct(
+  const { product, business } = await requireOwnedMerchantProduct(
     env,
     token,
     user,
@@ -1937,7 +2291,8 @@ async function deleteMerchantProduct(env, user, productId) {
   await response.body?.cancel();
   console.log("MERCHANT_PRODUCT_DELETED", {
     productId,
-    merchantUid: user.uid
+    merchantUid: user.uid,
+    businessOwnerUid: String(business.ownerId || "")
   });
   return {
     ok: true,
@@ -1945,6 +2300,931 @@ async function deleteMerchantProduct(env, user, productId) {
   };
 }
 __name(deleteMerchantProduct, "deleteMerchantProduct");
+async function createAgentOrder(request, env, user) {
+  const data = await readJson(request);
+  const agentId = String(data.agentId || "").trim();
+  const details = String(data.details || "").trim().slice(0, 2e3);
+  const customerPhone = String(data.customerPhone || "").trim().slice(0, 40);
+  const deliveryAddress = String(data.deliveryAddress || "").trim().slice(0, 300);
+  const paymentMethod = data.paymentMethod === "cash" ? "cash" : "card";
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(agentId)) {
+    fail(400, "invalid-agent", "الوسيطة المحددة غير صالحة.");
+  }
+  if (details.length < 3 || customerPhone.length < 6 || deliveryAddress.length < 3) {
+    fail(400, "missing-field", "أكمل تفاصيل الطلب ورقم الهاتف وعنوان التسليم.");
+  }
+  if (paymentMethod !== "cash") {
+    fail(409, "card-payment-unavailable", "الدفع ببطاقة Visa غير متاح قبل ربط بوابة الدفع الآمنة.");
+  }
+
+  const token = await serviceToken(env);
+  const agent = await firestoreGet(env, token, `items/${encodeURIComponent(agentId)}`);
+  if (!agent || agent.kind !== "agent") {
+    fail(404, "agent-not-found", "الوسيطة غير موجودة.");
+  }
+  const rawAgentFee = Number(
+    agent.agentFee ?? agent.serviceFee ?? agent.fee ?? 0
+  );
+  const agentFee = Number.isFinite(rawAgentFee)
+    ? Math.round(Math.max(0, rawAgentFee) * 100) / 100
+    : 0;
+
+  const requestId = crypto.randomUUID().replace(/-/g, "");
+  const record = {
+    agentId,
+    agentName: String(agent.title || "الوسيطة"),
+    customerId: user.uid,
+    customerEmail: user.email || null,
+    customerPhone,
+    deliveryAddress,
+    details,
+    paymentMethod: "cash",
+    paymentStatus: "cash_on_delivery",
+    agentFee,
+    earningStatus: "none",
+    status: "pending",
+    createdAt: new Date(),
+    updatedAt: new Date()
+  };
+  await firestoreCreate(env, token, "agent_orders", requestId, record);
+
+  const recipients = [
+    agent.ownerId,
+    ...(Array.isArray(agent.managerIds) ? agent.managerIds : []),
+    PRIMARY_ADMIN_UID
+  ].filter(Boolean);
+  try {
+    const pushTokens = (await Promise.all(
+      [...new Set(recipients)].map((uid) => userPushTokens(env, token, uid))
+    )).flat();
+    await sendPushToTokens(env, token, pushTokens, {
+      title: "طلب جديد للوسيطة",
+      body: `طلب جديد إلى ${record.agentName}`,
+      data: { type: "agent_order", requestId, agentId }
+    });
+  } catch (error) {
+    console.error("agent_order_notification_failed", error.message);
+  }
+  return { ok: true, requestId, status: "pending" };
+}
+__name(createAgentOrder, "createAgentOrder");
+
+async function updateAgentOrderStatus(env, user, requestId, nextStatus) {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(requestId)) {
+    fail(
+      400,
+      "invalid-agent-order",
+      "رقم طلب الوسيطة غير صالح."
+    );
+  }
+
+  if (
+    nextStatus !== "accepted" &&
+    nextStatus !== "rejected"
+  ) {
+    fail(
+      400,
+      "invalid-agent-status",
+      "حالة طلب الوسيطة غير صالحة."
+    );
+  }
+
+  const token = await serviceToken(env);
+
+  const [actor, order] = await Promise.all([
+    firestoreGet(
+      env,
+      token,
+      `users/${encodeURIComponent(user.uid)}`
+    ),
+    firestoreGet(
+      env,
+      token,
+      `agent_orders/${encodeURIComponent(requestId)}`
+    )
+  ]);
+
+  if (!order) {
+    fail(
+      404,
+      "agent-order-not-found",
+      "طلب الوسيطة غير موجود."
+    );
+  }
+
+  const agent = await firestoreGet(
+    env,
+    token,
+    `items/${encodeURIComponent(order.agentId)}`
+  );
+
+  if (!agent || agent.kind !== "agent") {
+    fail(
+      404,
+      "agent-not-found",
+      "بيانات الوسيطة غير موجودة."
+    );
+  }
+
+  const allowed =
+    isPrimaryAdmin(user, actor) ||
+    canManageBusiness(user.uid, agent);
+
+  if (!allowed) {
+    fail(
+      403,
+      "permission-denied",
+      "غير مسموح لك بإدارة طلبات هذه الوسيطة."
+    );
+  }
+
+  if (order.status !== "pending") {
+    fail(
+      409,
+      "agent-order-already-handled",
+      "تم التعامل مع هذا الطلب مسبقًا."
+    );
+  }
+
+  const now = new Date();
+
+  const patch = {
+    status: nextStatus,
+    updatedAt: now
+  };
+
+  let deliveryCode = null;
+
+  if (nextStatus === "accepted") {
+    patch.acceptedBy = user.uid;
+    patch.acceptedAt = now;
+
+    deliveryCode = String(
+      crypto.getRandomValues(new Uint32Array(1))[0] % 1000000
+    ).padStart(6, "0");
+  } else {
+    patch.rejectedBy = user.uid;
+    patch.rejectedAt = now;
+  }
+
+  const writes = [
+    updateWrite(
+      env,
+      `agent_orders/${encodeURIComponent(requestId)}`,
+      patch,
+      order.updateTime
+    )
+  ];
+
+  if (nextStatus === "accepted") {
+    writes.push(
+      createWrite(
+        env,
+        `agent_order_secrets/${encodeURIComponent(requestId)}`,
+        {
+          orderId: requestId,
+          customerId: order.customerId,
+          agentId: order.agentId,
+          code: deliveryCode,
+          attempts: 0,
+          used: false,
+          createdAt: now,
+          updatedAt: now
+        }
+      )
+    );
+  }
+
+  const result = await firestoreCommit(
+    env,
+    token,
+    writes
+  );
+
+  if (!result) {
+    fail(
+      409,
+      "agent-order-changed",
+      "تغيّرت حالة الطلب أثناء العملية. حدّث الصفحة."
+    );
+  }
+
+  return {
+    ok: true,
+    requestId,
+    status: nextStatus
+  };
+}
+
+__name(
+  updateAgentOrderStatus,
+  "updateAgentOrderStatus"
+);
+
+async function getAgentOrderDeliveryCode(env, user, requestId) {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(requestId)) {
+    fail(400, "invalid-agent-order", "رقم طلب الوسيطة غير صالح.");
+  }
+
+  const token = await serviceToken(env);
+
+  const [order, secret] = await Promise.all([
+    firestoreGet(
+      env,
+      token,
+      `agent_orders/${encodeURIComponent(requestId)}`
+    ),
+    firestoreGet(
+      env,
+      token,
+      `agent_order_secrets/${encodeURIComponent(requestId)}`
+    )
+  ]);
+
+  if (!order) {
+    fail(404, "agent-order-not-found", "طلب الوسيطة غير موجود.");
+  }
+
+  if (order.customerId !== user.uid) {
+    fail(
+      403,
+      "permission-denied",
+      "رمز التسليم متاح لصاحب الطلب فقط."
+    );
+  }
+
+  if (order.status !== "accepted") {
+    fail(
+      409,
+      "delivery-code-unavailable",
+      "رمز التسليم يظهر بعد قبول الوسيطة للطلب."
+    );
+  }
+
+  if (!secret || secret.used === true) {
+    fail(
+      409,
+      "delivery-code-unavailable",
+      "رمز التسليم غير متاح لهذا الطلب."
+    );
+  }
+
+  return {
+    ok: true,
+    requestId,
+    code: String(secret.code || "")
+  };
+}
+
+__name(
+  getAgentOrderDeliveryCode,
+  "getAgentOrderDeliveryCode"
+);
+
+
+async function completeAgentOrder(request, env, user, requestId) {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(requestId)) {
+    fail(400, "invalid-agent-order", "رقم طلب الوسيطة غير صالح.");
+  }
+
+  const data = await readJson(request);
+  const code = String(data.code || "").trim();
+
+  if (!/^[0-9]{6}$/.test(code)) {
+    fail(
+      400,
+      "invalid-delivery-code",
+      "أدخل رمز التسليم المكوّن من 6 أرقام."
+    );
+  }
+
+  const token = await serviceToken(env);
+
+  const [actor, order, secret] = await Promise.all([
+    firestoreGet(
+      env,
+      token,
+      `users/${encodeURIComponent(user.uid)}`
+    ),
+    firestoreGet(
+      env,
+      token,
+      `agent_orders/${encodeURIComponent(requestId)}`
+    ),
+    firestoreGet(
+      env,
+      token,
+      `agent_order_secrets/${encodeURIComponent(requestId)}`
+    )
+  ]);
+
+  if (!order) {
+    fail(404, "agent-order-not-found", "طلب الوسيطة غير موجود.");
+  }
+
+  if (!secret) {
+    fail(
+      409,
+      "delivery-code-not-created",
+      "لم يتم إنشاء رمز تسليم لهذا الطلب."
+    );
+  }
+
+  const agent = await firestoreGet(
+    env,
+    token,
+    `items/${encodeURIComponent(order.agentId)}`
+  );
+
+  if (!agent || agent.kind !== "agent") {
+    fail(404, "agent-not-found", "بيانات الوسيطة غير موجودة.");
+  }
+
+  const allowed =
+    isPrimaryAdmin(user, actor) ||
+    canManageBusiness(user.uid, agent);
+
+  if (!allowed) {
+    fail(
+      403,
+      "permission-denied",
+      "غير مسموح لك بإتمام هذا الطلب."
+    );
+  }
+
+  if (order.status !== "accepted") {
+    fail(
+      409,
+      "invalid-agent-order-status",
+      "لا يمكن إتمام الطلب في حالته الحالية."
+    );
+  }
+
+  if (secret.used === true) {
+    fail(
+      409,
+      "delivery-code-used",
+      "تم استخدام رمز التسليم مسبقًا."
+    );
+  }
+
+  const attempts = Number(secret.attempts || 0);
+
+  if (attempts >= 5) {
+    fail(
+      429,
+      "delivery-code-locked",
+      "تم تجاوز عدد محاولات رمز التسليم."
+    );
+  }
+
+  if (String(secret.code || "") !== code) {
+    const failed = await firestoreCommit(
+      env,
+      token,
+      [
+        updateWrite(
+          env,
+          `agent_order_secrets/${encodeURIComponent(requestId)}`,
+          {
+            attempts: attempts + 1,
+            updatedAt: new Date()
+          },
+          secret.updateTime
+        )
+      ]
+    );
+
+    if (!failed) {
+      fail(
+        409,
+        "delivery-code-changed",
+        "تغيّرت بيانات رمز التسليم. حاول مجددًا."
+      );
+    }
+
+    fail(
+      409,
+      "wrong-delivery-code",
+      "رمز التسليم غير صحيح."
+    );
+  }
+
+  const now = new Date();
+
+  const rawFee = Number(order.agentFee || 0);
+  const agentFee = Number.isFinite(rawFee)
+    ? Math.round(Math.max(0, rawFee) * 100) / 100
+    : 0;
+
+  const writes = [
+    updateWrite(
+      env,
+      `agent_orders/${encodeURIComponent(requestId)}`,
+      {
+        status: "completed",
+        completedBy: user.uid,
+        completedAt: now,
+        earningStatus: "due",
+        updatedAt: now
+      },
+      order.updateTime
+    ),
+
+    updateWrite(
+      env,
+      `agent_order_secrets/${encodeURIComponent(requestId)}`,
+      {
+        used: true,
+        usedAt: now,
+        updatedAt: now
+      },
+      secret.updateTime
+    ),
+
+    createWrite(
+      env,
+      `agent_earnings/${encodeURIComponent(requestId)}`,
+      {
+        earningId: requestId,
+        orderId: requestId,
+        agentId: order.agentId,
+        agentName: order.agentName || "الوسيطة",
+        customerId: order.customerId,
+        amount: agentFee,
+        status: "due",
+        frozen: false,
+        disputeId: null,
+        createdAt: now,
+        updatedAt: now
+      }
+    )
+  ];
+
+  const result = await firestoreCommit(
+    env,
+    token,
+    writes
+  );
+
+  if (!result) {
+    fail(
+      409,
+      "agent-order-changed",
+      "تغيّرت بيانات الطلب أثناء تأكيد التسليم. حاول مجددًا."
+    );
+  }
+
+  return {
+    ok: true,
+    requestId,
+    status: "completed",
+    earningStatus: "due",
+    agentFee
+  };
+}
+
+__name(
+  completeAgentOrder,
+  "completeAgentOrder"
+);
+
+
+
+
+async function createAgentOrderDispute(request, env, user, requestId) {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(requestId)) {
+    fail(400, "invalid-agent-order", "رقم طلب الوسيطة غير صالح.");
+  }
+
+  const data = await readJson(request);
+  const reason = String(data.reason || "").trim();
+
+  if (reason.length < 5 || reason.length > 1000) {
+    fail(
+      400,
+      "invalid-dispute-reason",
+      "اكتب سبب الاعتراض بوضوح."
+    );
+  }
+
+  const token = await serviceToken(env);
+
+  const [order, earning] = await Promise.all([
+    firestoreGet(
+      env,
+      token,
+      `agent_orders/${encodeURIComponent(requestId)}`
+    ),
+    firestoreGet(
+      env,
+      token,
+      `agent_earnings/${encodeURIComponent(requestId)}`
+    )
+  ]);
+
+  if (!order) {
+    fail(404, "agent-order-not-found", "طلب الوسيطة غير موجود.");
+  }
+
+  if (order.customerId !== user.uid) {
+    fail(
+      403,
+      "permission-denied",
+      "الاعتراض متاح لصاحب الطلب فقط."
+    );
+  }
+
+  if (order.status !== "completed") {
+    fail(
+      409,
+      "invalid-agent-order-status",
+      "يمكن الاعتراض بعد إتمام الطلب فقط."
+    );
+  }
+
+  if (!earning) {
+    fail(
+      409,
+      "earning-not-found",
+      "لم يتم إنشاء مستحق لهذا الطلب."
+    );
+  }
+
+  if (
+    earning.status !== "due" ||
+    earning.frozen === true
+  ) {
+    fail(
+      409,
+      "earning-not-disputable",
+      "هذا المستحق غير متاح للاعتراض."
+    );
+  }
+
+  const disputeId = requestId;
+  const now = new Date();
+
+  const result = await firestoreCommit(
+    env,
+    token,
+    [
+      updateWrite(
+        env,
+        `agent_orders/${encodeURIComponent(requestId)}`,
+        {
+          status: "disputed",
+          earningStatus: "frozen",
+          disputeId,
+          disputedAt: now,
+          updatedAt: now
+        },
+        order.updateTime
+      ),
+
+      updateWrite(
+        env,
+        `agent_earnings/${encodeURIComponent(requestId)}`,
+        {
+          status: "frozen",
+          frozen: true,
+          disputeId,
+          frozenAt: now,
+          updatedAt: now
+        },
+        earning.updateTime
+      ),
+
+      createWrite(
+        env,
+        `agent_disputes/${encodeURIComponent(disputeId)}`,
+        {
+          disputeId,
+          orderId: requestId,
+          customerId: order.customerId,
+          agentId: order.agentId,
+          agentName: order.agentName || "الوسيطة",
+          amount: Number(earning.amount || 0),
+          reason,
+          status: "open",
+          createdBy: user.uid,
+          createdAt: now,
+          updatedAt: now
+        }
+      )
+    ]
+  );
+
+  if (!result) {
+    fail(
+      409,
+      "agent-dispute-conflict",
+      "تغيّرت بيانات الطلب أثناء تسجيل الاعتراض. حاول مجددًا."
+    );
+  }
+
+  return {
+    ok: true,
+    requestId,
+    disputeId,
+    status: "disputed",
+    earningStatus: "frozen"
+  };
+}
+
+async function resolveAgentOrderDispute(
+  request,
+  env,
+  user,
+  requestId
+) {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(requestId)) {
+    fail(400, "invalid-agent-order", "رقم طلب الوسيطة غير صالح.");
+  }
+
+  const data = await readJson(request);
+  const decision = String(data.decision || "").trim();
+  const adminNote = String(data.adminNote || "").trim();
+
+  if (!["release", "cancel"].includes(decision)) {
+    fail(
+      400,
+      "invalid-dispute-decision",
+      "قرار الاعتراض غير صالح."
+    );
+  }
+
+  if (adminNote.length > 1000) {
+    fail(
+      400,
+      "invalid-admin-note",
+      "ملاحظة الأدمن طويلة جدًا."
+    );
+  }
+
+  const token = await serviceToken(env);
+
+  const [actor, order, earning, dispute] = await Promise.all([
+    firestoreGet(
+      env,
+      token,
+      `users/${encodeURIComponent(user.uid)}`
+    ),
+    firestoreGet(
+      env,
+      token,
+      `agent_orders/${encodeURIComponent(requestId)}`
+    ),
+    firestoreGet(
+      env,
+      token,
+      `agent_earnings/${encodeURIComponent(requestId)}`
+    ),
+    firestoreGet(
+      env,
+      token,
+      `agent_disputes/${encodeURIComponent(requestId)}`
+    )
+  ]);
+
+  if (!isPrimaryAdmin(user, actor)) {
+    fail(
+      403,
+      "permission-denied",
+      "معالجة اعتراضات الوسيطات متاحة للأدمن الأساسي فقط."
+    );
+  }
+
+  if (!order || !earning || !dispute) {
+    fail(
+      404,
+      "agent-dispute-not-found",
+      "بيانات الاعتراض غير مكتملة أو غير موجودة."
+    );
+  }
+
+  if (
+    order.status !== "disputed" ||
+    earning.status !== "frozen" ||
+    earning.frozen !== true ||
+    dispute.status !== "open"
+  ) {
+    fail(
+      409,
+      "dispute-already-resolved",
+      "تمت معالجة هذا الاعتراض مسبقًا."
+    );
+  }
+
+  const now = new Date();
+
+  const release = decision === "release";
+
+  const orderData = release
+    ? {
+        status: "completed",
+        earningStatus: "due",
+        disputeId: null,
+        disputeResolvedAt: now,
+        disputeResolvedBy: user.uid,
+        updatedAt: now
+      }
+    : {
+        status: "completed",
+        earningStatus: "cancelled",
+        disputeId: null,
+        disputeResolvedAt: now,
+        disputeResolvedBy: user.uid,
+        updatedAt: now
+      };
+
+  const earningData = release
+    ? {
+        status: "due",
+        frozen: false,
+        disputeId: null,
+        unfrozenAt: now,
+        updatedAt: now
+      }
+    : {
+        status: "cancelled",
+        frozen: false,
+        disputeId: null,
+        cancelledAt: now,
+        cancelledBy: user.uid,
+        updatedAt: now
+      };
+
+  const disputeData = {
+    status: release ? "rejected" : "accepted",
+    decision,
+    adminNote,
+    resolvedBy: user.uid,
+    resolvedAt: now,
+    updatedAt: now
+  };
+
+  const result = await firestoreCommit(
+    env,
+    token,
+    [
+      updateWrite(
+        env,
+        `agent_orders/${encodeURIComponent(requestId)}`,
+        orderData,
+        order.updateTime
+      ),
+      updateWrite(
+        env,
+        `agent_earnings/${encodeURIComponent(requestId)}`,
+        earningData,
+        earning.updateTime
+      ),
+      updateWrite(
+        env,
+        `agent_disputes/${encodeURIComponent(requestId)}`,
+        disputeData,
+        dispute.updateTime
+      )
+    ]
+  );
+
+  if (!result) {
+    fail(
+      409,
+      "agent-dispute-conflict",
+      "تغيّرت بيانات الاعتراض أثناء المعالجة. حدّث الصفحة."
+    );
+  }
+
+  return {
+    ok: true,
+    requestId,
+    disputeStatus: disputeData.status,
+    earningStatus: earningData.status
+  };
+}
+
+async function settleAgentOrderEarning(env, user, requestId) {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(requestId)) {
+    fail(400, "invalid-agent-order", "رقم طلب الوسيطة غير صالح.");
+  }
+
+  const token = await serviceToken(env);
+
+  const [actor, order, earning] = await Promise.all([
+    firestoreGet(
+      env,
+      token,
+      `users/${encodeURIComponent(user.uid)}`
+    ),
+    firestoreGet(
+      env,
+      token,
+      `agent_orders/${encodeURIComponent(requestId)}`
+    ),
+    firestoreGet(
+      env,
+      token,
+      `agent_earnings/${encodeURIComponent(requestId)}`
+    )
+  ]);
+
+  if (!isPrimaryAdmin(user, actor)) {
+    fail(
+      403,
+      "permission-denied",
+      "تسوية مستحقات الوسيطات متاحة للأدمن الأساسي فقط."
+    );
+  }
+
+  if (!order || !earning) {
+    fail(
+      404,
+      "earning-not-found",
+      "مستحق الوسيطة غير موجود."
+    );
+  }
+
+  if (
+    earning.status !== "due" ||
+    earning.frozen === true
+  ) {
+    fail(
+      409,
+      "earning-not-settleable",
+      "لا يمكن دفع مستحق معلّق أو تمت تسويته مسبقًا."
+    );
+  }
+
+  const now = new Date();
+  const transactionId = `agent_${requestId}_settled`;
+
+  const result = await firestoreCommit(
+    env,
+    token,
+    [
+      updateWrite(
+        env,
+        `agent_orders/${encodeURIComponent(requestId)}`,
+        {
+          earningStatus: "settled",
+          settledAt: now,
+          settledBy: user.uid,
+          updatedAt: now
+        },
+        order.updateTime
+      ),
+
+      updateWrite(
+        env,
+        `agent_earnings/${encodeURIComponent(requestId)}`,
+        {
+          status: "settled",
+          frozen: false,
+          settledAt: now,
+          settledBy: user.uid,
+          transactionId,
+          updatedAt: now
+        },
+        earning.updateTime
+      ),
+
+      createWrite(
+        env,
+        `agent_finance_transactions/${encodeURIComponent(transactionId)}`,
+        {
+          transactionId,
+          type: "agent_settlement",
+          orderId: requestId,
+          earningId: requestId,
+          agentId: earning.agentId,
+          agentName: earning.agentName || "الوسيطة",
+          amount: Number(earning.amount || 0),
+          status: "settled",
+          createdBy: user.uid,
+          createdAt: now
+        }
+      )
+    ]
+  );
+
+  if (!result) {
+    fail(
+      409,
+      "earning-settlement-conflict",
+      "تغيّرت بيانات المستحق أثناء التسوية. حدّث الصفحة."
+    );
+  }
+
+  return {
+    ok: true,
+    requestId,
+    status: "settled",
+    transactionId
+  };
+}
+
 async function createOrder(request, env, user) {
   const idempotencyKey = (request.headers.get("idempotency-key") || "").trim();
   if (!/^[A-Za-z0-9_-]{16,100}$/.test(idempotencyKey)) {
@@ -1969,15 +3249,40 @@ async function createOrder(request, env, user) {
   if (!rawItems.length || rawItems.length > MAX_ITEMS) {
     fail(400, "invalid-items", "\u0627\u0644\u0633\u0644\u0629 \u0641\u0627\u0631\u063A\u0629 \u0623\u0648 \u062A\u062D\u062A\u0648\u064A \u0623\u0635\u0646\u0627\u0641\u064B\u0627 \u0643\u062B\u064A\u0631\u0629.");
   }
-  const requested = rawItems.map((item) => ({
-    productId: String(item.productId || "").trim(),
-    quantity: Number(item.quantity)
-  }));
+  const requested = rawItems.map((item) => {
+    const selectedOptions = Array.isArray(item?.selectedOptions)
+      ? item.selectedOptions
+      : [];
+    const specialNote = String(item?.specialNote || "").trim();
+
+    if (selectedOptions.length > 12) {
+      fail(
+        400,
+        "too-many-selected-options",
+        "عدد خيارات أحد المنتجات أكبر من الحد المسموح."
+      );
+    }
+
+    if (specialNote.length > 500) {
+      fail(
+        400,
+        "special-note-too-long",
+        "ملاحظة المنتج يجب ألا تتجاوز 500 حرف."
+      );
+    }
+
+    return {
+      productId: String(item?.productId || "").trim(),
+      quantity: Number(item?.quantity),
+      selectedOptions: selectedOptions.map((option) => ({
+        groupId: String(option?.groupId || "").trim(),
+        optionId: String(option?.optionId || "").trim()
+      })),
+      specialNote
+    };
+  });
   if (requested.some((item) => !/^[A-Za-z0-9_-]{1,128}$/.test(item.productId) || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 99)) {
     fail(400, "invalid-items", "\u0623\u062D\u062F \u0623\u0635\u0646\u0627\u0641 \u0627\u0644\u0633\u0644\u0629 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D.");
-  }
-  if (new Set(requested.map((item) => item.productId)).size !== requested.length) {
-    fail(400, "duplicate-items", "\u064A\u0648\u062C\u062F \u0635\u0646\u0641 \u0645\u0643\u0631\u0631 \u0641\u064A \u0627\u0644\u0633\u0644\u0629.");
   }
   const token = await serviceToken(env);
   const products = await Promise.all(requested.map((item) => firestoreGet(env, token, `items/${encodeURIComponent(item.productId)}`)));
@@ -1986,24 +3291,12 @@ async function createOrder(request, env, user) {
   }
   for (let index = 0; index < products.length; index += 1) {
     const product = products[index];
-    const requestedQuantity = requested[index].quantity;
-    const hasManagedStock = Number.isInteger(Number(product.stock));
     if (product.soldOut === true) {
       fail(
         409,
         "product-sold-out",
         `${String(product.title || "\u0627\u0644\u0645\u0646\u062A\u062C")} \u0646\u0641\u062F \u0645\u0646 \u0627\u0644\u0645\u062E\u0632\u0648\u0646.`
       );
-    }
-    if (hasManagedStock) {
-      const availableStock = Math.max(0, Math.floor(Number(product.stock)));
-      if (availableStock < requestedQuantity) {
-        fail(
-          409,
-          "insufficient-stock",
-          availableStock <= 0 ? `${String(product.title || "\u0627\u0644\u0645\u0646\u062A\u062C")} \u0646\u0641\u062F \u0645\u0646 \u0627\u0644\u0645\u062E\u0632\u0648\u0646.` : `\u0627\u0644\u0645\u062A\u0648\u0641\u0631 \u0645\u0646 ${String(product.title || "\u0627\u0644\u0645\u0646\u062A\u062C")} \u0647\u0648 ${availableStock} \u0641\u0642\u0637.`
-        );
-      }
     }
   }
   const businessIds = new Set(products.map((product) => String(product.businessId || "")));
@@ -2031,17 +3324,124 @@ async function createOrder(request, env, user) {
   }
   const scheduledMillis = Number(data.scheduledForMillis || 0);
   const scheduledFor = scheduledMillis > Date.now() + 6e4 ? new Date(scheduledMillis) : null;
+  if (business.businessStatus === "coming_soon") {
+    fail(409, "business-coming-soon", "هذا المتجر قريبًا في بركة ولا يستقبل طلبات بعد.");
+  }
   if (business.businessStatus === "closed" && !scheduledFor) {
     fail(409, "business-closed", "\u0627\u0644\u0645\u062D\u0644 \u0645\u063A\u0644\u0642 \u0627\u0644\u0622\u0646\u061B \u064A\u0645\u0643\u0646\u0643 \u062C\u062F\u0648\u0644\u0629 \u0627\u0644\u0637\u0644\u0628.");
   }
   const items = products.map((product, index) => {
-    const price = Number(product.price);
-    if (!Number.isFinite(price) || price < 0) fail(409, "invalid-product-price", "\u0633\u0639\u0631 \u0623\u062D\u062F \u0627\u0644\u0623\u0635\u0646\u0627\u0641 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D.");
+    const requestedItem = requested[index];
+    const basePrice = Number(product.price);
+
+    if (!Number.isFinite(basePrice) || basePrice < 0) {
+      fail(
+        409,
+        "invalid-product-price",
+        "سعر أحد الأصناف غير صالح."
+      );
+    }
+
+    const optionGroups = normalizeProductOptionGroups(
+      product.optionGroups || []
+    );
+
+    const requestedSelections = requestedItem.selectedOptions || [];
+    const selectionByGroup = new Map();
+
+    for (const selection of requestedSelections) {
+      if (
+        !selection.groupId ||
+        !selection.optionId ||
+        selectionByGroup.has(selection.groupId)
+      ) {
+        fail(
+          400,
+          "invalid-selected-options",
+          `اختيارات ${String(product.title || "المنتج")} غير صالحة.`
+        );
+      }
+
+      selectionByGroup.set(selection.groupId, selection.optionId);
+    }
+
+    const authoritativeSelections = [];
+    let optionsTotal = 0;
+
+    for (const group of optionGroups) {
+      const selectedOptionId = selectionByGroup.get(group.id);
+
+      if (!selectedOptionId) {
+        if (group.required === true) {
+          fail(
+            400,
+            "required-option-missing",
+            `اختر "${group.name}" للمنتج ${String(product.title || "")}.`
+          );
+        }
+        continue;
+      }
+
+      const option = group.options.find(
+        (candidate) => candidate.id === selectedOptionId
+      );
+
+      if (!option) {
+        fail(
+          400,
+          "invalid-selected-option",
+          `أحد خيارات ${String(product.title || "المنتج")} لم يعد متاحًا.`
+        );
+      }
+
+      const priceDelta = Number(option.priceDelta || 0);
+
+      if (
+        !Number.isFinite(priceDelta) ||
+        priceDelta < 0 ||
+        priceDelta > 1e6
+      ) {
+        fail(
+          409,
+          "invalid-option-price",
+          `سعر أحد خيارات ${String(product.title || "المنتج")} غير صالح.`
+        );
+      }
+
+      optionsTotal = money(optionsTotal + priceDelta);
+
+      authoritativeSelections.push({
+        groupId: group.id,
+        groupName: group.name,
+        optionId: option.id,
+        optionName: option.name,
+        priceDelta: money(priceDelta)
+      });
+
+      selectionByGroup.delete(group.id);
+    }
+
+    // أي groupId بقي هنا يعني أن التطبيق أرسل خيارًا
+    // غير موجود أصلًا في تعريف المنتج.
+    if (selectionByGroup.size > 0) {
+      fail(
+        400,
+        "unknown-option-group",
+        `أحد خيارات ${String(product.title || "المنتج")} غير معروف.`
+      );
+    }
+
+    const price = money(basePrice + optionsTotal);
+
     return {
-      productId: requested[index].productId,
-      title: String(product.title || "\u0645\u0646\u062A\u062C"),
+      productId: requestedItem.productId,
+      title: String(product.title || "منتج"),
+      basePrice: money(basePrice),
+      optionsTotal,
       price,
-      quantity: requested[index].quantity,
+      quantity: requestedItem.quantity,
+      selectedOptions: authoritativeSelections,
+      specialNote: requestedItem.specialNote || "",
       businessId,
       businessTitle: String(business.title || "")
     };
@@ -2049,8 +3449,6 @@ async function createOrder(request, env, user) {
   const subtotal = money(items.reduce((sum, item) => sum + item.price * item.quantity, 0));
   const deliveryMethod = data.deliveryMethod === "pickup" ? "pickup" : "delivery";
   const paymentMethod = data.paymentMethod === "cash" ? "cash" : "cash";
-  const deliveryFee = deliveryMethod === "delivery" ? money(Number(business.deliveryFee || 0)) : 0;
-  const total = money(subtotal + Math.max(0, deliveryFee));
   const [customer, loyaltySettings] = await Promise.all([
     firestoreGet(
       env,
@@ -2062,6 +3460,73 @@ async function createOrder(request, env, user) {
   if (!customer) {
     fail(409, "customer-missing", "\u062D\u0633\u0627\u0628 \u0627\u0644\u0632\u0628\u0648\u0646 \u063A\u064A\u0631 \u0645\u062A\u0627\u062D.");
   }
+  const customerPhone = String(
+    data.customerPhone || customer.phone || user.phone || ""
+  ).trim();
+  const deliveryAddress = String(
+    data.deliveryAddress || customer.address || ""
+  ).trim();
+  const deliveryLatitude = finiteOrNull(
+    data.deliveryLatitude ?? customer.agentLatitude
+  );
+  const deliveryLongitude = finiteOrNull(
+    data.deliveryLongitude ?? customer.agentLongitude
+  );
+  let deliveryFee = 0;
+  if (deliveryMethod === "delivery") {
+    if (!customerPhone) {
+      fail(
+        400,
+        "customer-phone-required",
+        "\u0623\u0636\u0641 \u0631\u0642\u0645 \u0627\u0644\u0647\u0627\u062A\u0641 \u0625\u0644\u0649 \u062D\u0633\u0627\u0628\u0643 \u0642\u0628\u0644 \u0637\u0644\u0628 \u0627\u0644\u062A\u0648\u0635\u064A\u0644."
+      );
+    }
+    if (!deliveryAddress) {
+      fail(
+        400,
+        "delivery-address-required",
+        "\u0623\u0636\u0641 \u0639\u0646\u0648\u0627\u0646 \u0627\u0644\u062A\u0648\u0635\u064A\u0644 \u0625\u0644\u0649 \u062D\u0633\u0627\u0628\u0643 \u0642\u0628\u0644 \u0645\u062A\u0627\u0628\u0639\u0629 \u0627\u0644\u0637\u0644\u0628."
+      );
+    }
+    if (deliveryLatitude === null || deliveryLongitude === null) {
+      fail(
+        400,
+        "delivery-location-required",
+        "\u062D\u062F\u062F \u0645\u0648\u0642\u0639 \u0627\u0644\u062A\u0648\u0635\u064A\u0644 \u0639\u0644\u0649 \u0627\u0644\u062E\u0631\u064A\u0637\u0629 \u0642\u0628\u0644 \u0645\u062A\u0627\u0628\u0639\u0629 \u0627\u0644\u0637\u0644\u0628."
+      );
+    }
+
+    const businessLatitude = finiteOrNull(business.latitude);
+    const businessLongitude = finiteOrNull(business.longitude);
+    const deliveryZones = Array.isArray(business.deliveryZones)
+      ? business.deliveryZones
+          .filter((zone) => Number.isFinite(Number(zone?.maxKm)) && Number.isFinite(Number(zone?.fee)))
+          .map((zone) => ({ maxKm: Number(zone.maxKm), fee: Number(zone.fee) }))
+          .filter((zone) => zone.maxKm >= 0 && zone.fee >= 0)
+          .sort((a, b) => a.maxKm - b.maxKm)
+      : [];
+
+    if (businessLatitude !== null && businessLongitude !== null && deliveryZones.length > 0) {
+      const distanceKm = geoDistanceKm(
+        businessLatitude,
+        businessLongitude,
+        deliveryLatitude,
+        deliveryLongitude
+      );
+      const matchedZone = deliveryZones.find((zone) => distanceKm <= zone.maxKm);
+      if (!matchedZone) {
+        fail(
+          409,
+          "delivery-outside-range",
+          "\u0639\u0646\u0648\u0627\u0646\u0643 \u062E\u0627\u0631\u062C \u0646\u0637\u0627\u0642 \u062A\u0648\u0635\u064A\u0644 \u0647\u0630\u0627 \u0627\u0644\u0645\u062A\u062C\u0631. \u0627\u062E\u062A\u0631 \u0627\u0633\u062A\u0644\u0627\u0645\u064B\u0627 \u0634\u062E\u0635\u064A\u064B\u0627 \u0623\u0648 \u0639\u0646\u0648\u0627\u0646\u064B\u0627 \u0623\u0642\u0631\u0628."
+        );
+      }
+      deliveryFee = money(matchedZone.fee);
+    } else {
+      deliveryFee = money(Number(business.deliveryFee || 0));
+    }
+  }
+  const total = money(subtotal + Math.max(0, deliveryFee));
   const redemptionPoints = Math.max(
     1,
     Math.floor(Number(loyaltySettings?.redemptionPoints || 1e3))
@@ -2135,41 +3600,6 @@ async function createOrder(request, env, user) {
   const orderNumber = `BRK-${String(sequence).padStart(6, "0")}`;
   const orderId = crypto.randomUUID().replace(/-/g, "");
   const preparationMinutes = Math.max(1, Math.min(240, Number(business.preparationMinutes || 30)));
-  const customerPhone = String(
-    data.customerPhone || customer.phone || user.phone || ""
-  ).trim();
-  const deliveryAddress = String(
-    data.deliveryAddress || customer.address || ""
-  ).trim();
-  const deliveryLatitude = finiteOrNull(
-    data.deliveryLatitude ?? customer.agentLatitude
-  );
-  const deliveryLongitude = finiteOrNull(
-    data.deliveryLongitude ?? customer.agentLongitude
-  );
-  if (deliveryMethod === "delivery") {
-    if (!customerPhone) {
-      fail(
-        400,
-        "customer-phone-required",
-        "\u0623\u0636\u0641 \u0631\u0642\u0645 \u0627\u0644\u0647\u0627\u062A\u0641 \u0625\u0644\u0649 \u062D\u0633\u0627\u0628\u0643 \u0642\u0628\u0644 \u0637\u0644\u0628 \u0627\u0644\u062A\u0648\u0635\u064A\u0644."
-      );
-    }
-    if (!deliveryAddress) {
-      fail(
-        400,
-        "delivery-address-required",
-        "\u0623\u0636\u0641 \u0639\u0646\u0648\u0627\u0646 \u0627\u0644\u062A\u0648\u0635\u064A\u0644 \u0625\u0644\u0649 \u062D\u0633\u0627\u0628\u0643 \u0642\u0628\u0644 \u0645\u062A\u0627\u0628\u0639\u0629 \u0627\u0644\u0637\u0644\u0628."
-      );
-    }
-    if (deliveryLatitude === null || deliveryLongitude === null) {
-      fail(
-        400,
-        "delivery-location-required",
-        "\u062D\u062F\u062F \u0645\u0648\u0642\u0639 \u0627\u0644\u062A\u0648\u0635\u064A\u0644 \u0639\u0644\u0649 \u0627\u0644\u062E\u0631\u064A\u0637\u0629 \u0642\u0628\u0644 \u0645\u062A\u0627\u0628\u0639\u0629 \u0627\u0644\u0637\u0644\u0628."
-      );
-    }
-  }
   const orderRecord = {
     orderNumber,
     orderSequence: sequence,
@@ -2203,6 +3633,8 @@ async function createOrder(request, env, user) {
     estimatedReadyAt: new Date(Date.now() + preparationMinutes * 6e4),
     scheduledFor,
     rewardGranted: false,
+    inventoryManaged: false,
+    stockRestored: true,
     createdAt: /* @__PURE__ */ new Date(),
     updatedAt: /* @__PURE__ */ new Date()
   };
@@ -2213,23 +3645,6 @@ async function createOrder(request, env, user) {
       orderRecord
     )
   ];
-  products.forEach((product, index) => {
-    if (!Number.isInteger(Number(product.stock))) return;
-    const currentStock = Math.max(0, Math.floor(Number(product.stock)));
-    const nextStock = currentStock - requested[index].quantity;
-    writes.push(
-      updateWrite(
-        env,
-        `items/${encodeURIComponent(requested[index].productId)}`,
-        {
-          stock: nextStock,
-          soldOut: nextStock <= 0,
-          updatedAt: /* @__PURE__ */ new Date()
-        },
-        product.updateTime
-      )
-    );
-  });
   if (requestedBarakahPoints > 0) {
     writes.push(
       updateWrite(
@@ -2570,8 +3985,14 @@ async function updateOrderStatus(request, env, user, orderId) {
     firestoreGet(env, token, `orders/${encodeURIComponent(orderId)}`)
   ]);
   if (!order) fail(404, "order-not-found", "\u0627\u0644\u0637\u0644\u0628 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F.");
-  const isAdmin = actor?.role === "admin";
-  const isMerchant = actor?.role === "merchant" && order.businessId && (await firestoreGet(env, token, `items/${encodeURIComponent(order.businessId)}`))?.ownerId === user.uid;
+  const isAdmin = isPrimaryAdmin(user, actor) ||
+    (actor?.role === "order_supervisor" && actor?.adminPermissions?.manageOrders === true);
+  const orderBusiness = order.businessId
+    ? await firestoreGet(env, token, `items/${encodeURIComponent(order.businessId)}`)
+    : null;
+  const isMerchant = actor?.role === "merchant" &&
+    actor?.merchantEnabled === true &&
+    canManageBusiness(user.uid, orderBusiness);
   const isDriver = actor?.role === "driver" && order.driverId === user.uid;
   const isPickupMerchant = Boolean(isMerchant && order.deliveryMethod === "pickup");
   const merchantStates = /* @__PURE__ */ new Set(["accepted", "preparing", "ready", "rejected"]);
@@ -3309,6 +4730,17 @@ function finiteOrNull(value) {
   return Number.isFinite(number) ? number : null;
 }
 __name(finiteOrNull, "finiteOrNull");
+function geoDistanceKm(latitude1, longitude1, latitude2, longitude2) {
+  const radians = (value) => value * Math.PI / 180;
+  const latitudeDelta = radians(latitude2 - latitude1);
+  const longitudeDelta = radians(longitude2 - longitude1);
+  const haversine = Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(radians(latitude1)) *
+      Math.cos(radians(latitude2)) *
+      Math.sin(longitudeDelta / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+}
+__name(geoDistanceKm, "geoDistanceKm");
 export {
   canUploadMedia,
   canTransitionOrderStatus,

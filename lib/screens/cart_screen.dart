@@ -13,6 +13,22 @@ import '../widgets/barakah_brand.dart';
 import 'authentication_screen.dart';
 import 'restaurants_screen.dart';
 
+enum _ProductPurchaseAction { buyNow, openCart }
+
+class _ProductPurchaseResult {
+  const _ProductPurchaseResult({
+    required this.action,
+    required this.selectedOptions,
+    required this.specialNote,
+    required this.quantity,
+  });
+
+  final _ProductPurchaseAction action;
+  final List<CartSelectedOption> selectedOptions;
+  final String specialNote;
+  final int quantity;
+}
+
 /// يفتح خطوات إتمام الطلب من أي شاشة دون الحاجة للمرور بصفحة السلة.
 Future<void> showCheckout(BuildContext context) async {
   final cart = CartService.instance;
@@ -71,8 +87,11 @@ Future<void> showCheckout(BuildContext context) async {
 Future<void> buyProductNow(
   BuildContext context,
   String productId,
-  Map<String, dynamic> product,
-) async {
+  Map<String, dynamic> product, {
+  List<CartSelectedOption> selectedOptions = const [],
+  String specialNote = '',
+  int quantity = 1,
+}) async {
   final cart = CartService.instance;
   final productBusinessId = product['businessId']?.toString().trim() ?? '';
 
@@ -103,7 +122,14 @@ Future<void> buyProductNow(
   }
 
   try {
-    cart.addProduct(productId, product);
+    cart.addProduct(
+      productId,
+      product,
+      selectedOptions: selectedOptions,
+      specialNote: specialNote,
+      quantity: quantity,
+    );
+
     if (!context.mounted) return;
     await showCheckout(context);
   } on StateError catch (error) {
@@ -114,6 +140,433 @@ Future<void> buyProductNow(
         backgroundColor: Colors.orange,
       ),
     );
+  }
+}
+
+/// يعرض مساري الشراء عند الضغط على بطاقة المنتج نفسها.
+Future<void> showProductPurchaseOptions(
+  BuildContext context,
+  String productId,
+  Map<String, dynamic> product,
+) async {
+  final title = product['title']?.toString().trim() ?? '';
+  final basePrice = (product['price'] as num?) ?? 0;
+
+  final rawGroups = product['optionGroups'];
+  final groups = rawGroups is List
+      ? rawGroups
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList()
+      : <Map<String, dynamic>>[];
+
+  final selectedByGroup = <String, List<CartSelectedOption>>{};
+  final noteController = TextEditingController();
+  var quantity = 1;
+
+  try {
+    final result = await showModalBottomSheet<_ProductPurchaseResult>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            final selectedOptions =
+                selectedByGroup.values.expand((options) => options).toList();
+
+            final optionsTotal = selectedOptions.fold<num>(
+              0,
+              (sum, option) => sum + option.priceDelta,
+            );
+
+            final unitPrice = basePrice + optionsTotal;
+            final totalPrice = unitPrice * quantity;
+
+            bool validateRequiredGroups() {
+              for (final group in groups) {
+                if (group['required'] != true) continue;
+
+                final groupId = group['id']?.toString() ?? '';
+                if ((selectedByGroup[groupId] ?? const <CartSelectedOption>[])
+                    .isEmpty) {
+                  final groupName =
+                      group['name']?.toString().trim() ?? 'الإضافات';
+
+                  ScaffoldMessenger.of(sheetContext).showSnackBar(
+                    SnackBar(
+                      content: Text('اختَر خيارًا من "$groupName".'),
+                      backgroundColor: Colors.orange,
+                    ),
+                  );
+                  return false;
+                }
+              }
+              return true;
+            }
+
+            void finish(_ProductPurchaseAction action) {
+              if (!validateRequiredGroups()) return;
+
+              Navigator.pop(
+                sheetContext,
+                _ProductPurchaseResult(
+                  action: action,
+                  selectedOptions: selectedByGroup.values
+                      .expand((options) => options)
+                      .toList(),
+                  specialNote: noteController.text.trim(),
+                  quantity: quantity,
+                ),
+              );
+            }
+
+            return Padding(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                0,
+                16,
+                18 + MediaQuery.of(sheetContext).viewInsets.bottom,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      title.isEmpty ? 'تفاصيل الوجبة' : title,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 21,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'السعر الأساسي: $basePrice ₪',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.black54,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (groups.isNotEmpty) ...[
+                      const SizedBox(height: 18),
+                      const Text(
+                        'إضافات الوجبة',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
+                          color: AppTheme.navy,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ...groups.map((group) {
+                        final groupId = group['id']?.toString().trim() ?? '';
+                        final groupName =
+                            group['name']?.toString().trim() ?? 'خيارات';
+                        final required = group['required'] == true;
+                        final selectionType =
+                            group['selectionType']?.toString() == 'multiple'
+                                ? 'multiple'
+                                : 'single';
+
+                        final rawOptions = group['options'];
+                        final options = rawOptions is List
+                            ? rawOptions
+                                .whereType<Map>()
+                                .map(
+                                  (e) => Map<String, dynamic>.from(e),
+                                )
+                                .toList()
+                            : <Map<String, dynamic>>[];
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: Colors.black12,
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                required
+                                    ? '$groupName  • مطلوب'
+                                    : '$groupName  • اختياري',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              ...options.map((option) {
+                                final optionId =
+                                    option['id']?.toString().trim() ?? '';
+
+                                final optionName =
+                                    option['name']?.toString().trim() ?? 'خيار';
+
+                                final priceDelta =
+                                    (option['priceDelta'] as num?) ?? 0;
+
+                                final groupSelections =
+                                    selectedByGroup[groupId] ??
+                                        <CartSelectedOption>[];
+
+                                final selected = groupSelections.any(
+                                  (item) => item.optionId == optionId,
+                                );
+
+                                final selectedOption = CartSelectedOption(
+                                  groupId: groupId,
+                                  groupTitle: groupName,
+                                  optionId: optionId,
+                                  optionTitle: optionName,
+                                  priceDelta: priceDelta,
+                                );
+
+                                if (selectionType == 'multiple') {
+                                  return CheckboxListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    dense: true,
+                                    controlAffinity:
+                                        ListTileControlAffinity.leading,
+                                    value: selected,
+                                    title: Text(optionName),
+                                    subtitle: priceDelta > 0
+                                        ? Text('+$priceDelta ₪')
+                                        : const Text('بدون زيادة'),
+                                    onChanged: (checked) {
+                                      setState(() {
+                                        final updated =
+                                            List<CartSelectedOption>.from(
+                                          selectedByGroup[groupId] ??
+                                              const <CartSelectedOption>[],
+                                        );
+
+                                        if (checked == true) {
+                                          if (!updated.any(
+                                            (item) => item.optionId == optionId,
+                                          )) {
+                                            updated.add(selectedOption);
+                                          }
+                                        } else {
+                                          updated.removeWhere(
+                                            (item) => item.optionId == optionId,
+                                          );
+                                        }
+
+                                        selectedByGroup[groupId] = updated;
+                                      });
+                                    },
+                                  );
+                                }
+
+                                return RadioListTile<String>(
+                                  contentPadding: EdgeInsets.zero,
+                                  dense: true,
+                                  value: optionId,
+                                  groupValue: groupSelections.isEmpty
+                                      ? null
+                                      : groupSelections.first.optionId,
+                                  title: Text(optionName),
+                                  subtitle: priceDelta > 0
+                                      ? Text('+$priceDelta ₪')
+                                      : const Text('بدون زيادة'),
+                                  onChanged: (_) {
+                                    setState(() {
+                                      selectedByGroup[groupId] = [
+                                        selectedOption,
+                                      ];
+                                    });
+                                  },
+                                  selected: selected,
+                                );
+                              }),
+                            ],
+                          ),
+                        );
+                      }),
+                    ],
+                    const SizedBox(height: 6),
+                    const Text(
+                      'العدد',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        IconButton(
+                          onPressed: quantity > 1
+                              ? () => setState(() => quantity--)
+                              : null,
+                          icon: const Icon(
+                            Icons.remove_circle_outline,
+                          ),
+                        ),
+                        Container(
+                          constraints: const BoxConstraints(
+                            minWidth: 55,
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            '$quantity',
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: quantity < 99
+                              ? () => setState(() => quantity++)
+                              : null,
+                          icon: const Icon(
+                            Icons.add_circle_outline,
+                            color: AppTheme.deepYellow,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: noteController,
+                      maxLines: 3,
+                      maxLength: 250,
+                      decoration: InputDecoration(
+                        labelText: 'ملاحظات على الوجبة',
+                        hintText: 'مثال: بدون بصل، الصوص على الجانب...',
+                        prefixIcon: const Icon(Icons.edit_note_rounded),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: AppTheme.coolYellow.withOpacity(.18),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'الإجمالي',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            '$totalPrice ₪',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w900,
+                              color: AppTheme.navy,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppTheme.deepYellow,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      icon: const Icon(
+                        Icons.shopping_bag_rounded,
+                      ),
+                      label: const Text(
+                        'شراء الآن',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      onPressed: () => finish(_ProductPurchaseAction.buyNow),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.navy,
+                        side: const BorderSide(
+                          color: AppTheme.navy,
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      icon: const Icon(
+                        Icons.shopping_cart_checkout_rounded,
+                      ),
+                      label: const Text(
+                        'إضافة والانتقال إلى السلة',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      onPressed: () => finish(_ProductPurchaseAction.openCart),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (result == null || !context.mounted) return;
+
+    if (result.action == _ProductPurchaseAction.buyNow) {
+      await buyProductNow(
+        context,
+        productId,
+        product,
+        selectedOptions: result.selectedOptions,
+        specialNote: result.specialNote,
+        quantity: result.quantity,
+      );
+      return;
+    }
+
+    try {
+      CartService.instance.addProduct(
+        productId,
+        product,
+        selectedOptions: result.selectedOptions,
+        specialNote: result.specialNote,
+        quantity: result.quantity,
+      );
+
+      if (!context.mounted) return;
+
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const CartScreen(),
+        ),
+      );
+    } on StateError catch (error) {
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.message.toString()),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    }
+  } finally {
+    noteController.dispose();
   }
 }
 
@@ -349,6 +802,30 @@ class _CartLineTile extends StatelessWidget {
                       fontWeight: FontWeight.w900,
                     ),
                   ),
+                  if (item.selectedOptions.isNotEmpty) ...[
+                    const SizedBox(height: 5),
+                    Text(
+                      'الإضافات: ${item.selectedOptions.map((e) => e.optionTitle).join('، ')}',
+                      style: const TextStyle(
+                        color: Colors.black54,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                  if (item.specialNote.trim().isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'ملاحظات: ${item.specialNote}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.black54,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -957,6 +1434,11 @@ class _CheckoutSheetState extends State<_CheckoutSheet> {
           );
 
           if (!scheduledStatus.isAcceptingOrders) {
+            if (scheduledStatus.code == 'coming_soon') {
+              throw StateError(
+                'هذا المتجر قريبًا في بركة ولا يستقبل طلبات بعد.',
+              );
+            }
             if (scheduledStatus.code == 'temporarily_closed') {
               throw StateError(
                 'المحل مغلق مؤقتًا ولا يمكن جدولة طلب له الآن.',
@@ -979,6 +1461,8 @@ class _CheckoutSheetState extends State<_CheckoutSheet> {
 
             if (hoursStatus.code == 'temporarily_closed') {
               message = 'المحل مغلق مؤقتًا ولا يستقبل طلبات الآن.';
+            } else if (hoursStatus.code == 'coming_soon') {
+              message = 'هذا المتجر قريبًا في بركة ولا يستقبل طلبات بعد.';
             } else if (hoursStatus.code == 'opening_soon') {
               message = openingTime.isEmpty
                   ? 'المحل يفتح قريبًا.'
@@ -1041,6 +1525,8 @@ class _CheckoutSheetState extends State<_CheckoutSheet> {
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
+
+    final deliveryBlocked = _delivery == 'delivery' && _deliveryOutsideRange;
 
     return SafeArea(
       child: Container(
@@ -1650,15 +2136,19 @@ class _CheckoutSheetState extends State<_CheckoutSheet> {
               child: FilledButton(
                 style: FilledButton.styleFrom(
                   backgroundColor: AppTheme.deepYellow,
+                  disabledBackgroundColor: Colors.grey.shade300,
+                  disabledForegroundColor: Colors.grey.shade700,
                 ),
-                onPressed: _saving ? null : _placeOrder,
+                onPressed: _saving || deliveryBlocked ? null : _placeOrder,
                 child: _saving
                     ? const CircularProgressIndicator(
                         color: Colors.black,
                       )
-                    : const Text(
-                        'تأكيد الطلب',
-                        style: TextStyle(
+                    : Text(
+                        deliveryBlocked
+                            ? 'اختر الاستلام الشخصي للمتابعة'
+                            : 'تأكيد الطلب',
+                        style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w900,
                         ),

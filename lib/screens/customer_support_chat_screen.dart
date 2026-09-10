@@ -7,7 +7,12 @@ import '../theme/app_theme.dart';
 import 'authentication_screen.dart';
 
 class CustomerSupportChatScreen extends StatefulWidget {
-  const CustomerSupportChatScreen({super.key});
+  const CustomerSupportChatScreen({
+    super.key,
+    this.initialMessage,
+  });
+
+  final String? initialMessage;
 
   @override
   State<CustomerSupportChatScreen> createState() =>
@@ -17,6 +22,12 @@ class CustomerSupportChatScreen extends StatefulWidget {
 class _CustomerSupportChatScreenState extends State<CustomerSupportChatScreen> {
   final _message = TextEditingController();
   bool _sending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _message.text = widget.initialMessage?.trim() ?? '';
+  }
 
   @override
   void dispose() {

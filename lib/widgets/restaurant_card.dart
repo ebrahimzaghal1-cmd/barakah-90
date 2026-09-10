@@ -235,6 +235,12 @@ class _RestaurantStatusBadge extends StatelessWidget {
     final IconData icon;
 
     switch (status.code) {
+      case 'coming_soon':
+        background = const Color(0xFFEAF3FF);
+        foreground = const Color(0xFF173762);
+        icon = Icons.upcoming_rounded;
+        break;
+
       case 'open':
         background = const Color(0xFFE8F8EF);
         foreground = const Color(0xFF167A45);

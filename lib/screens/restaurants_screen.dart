@@ -17,6 +17,7 @@ import '../widgets/barakah_media_image.dart';
 import '../widgets/barakah_online_status_button.dart';
 import '../widgets/advertisement_banner.dart';
 import '../widgets/home_strip_card.dart';
+import '../widgets/new_in_barakah_strip.dart';
 import '../services/admin_notification_service.dart';
 import '../services/admin_submission_notification_service.dart';
 import '../services/firebase_state.dart';
@@ -114,6 +115,64 @@ class _RestaurantsScreenState extends State<RestaurantsScreen> {
   }
 
   Future<void> _chooseArea() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+          children: [
+            const ListTile(
+              title: Text(
+                'اختر المنطقة',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.public_rounded),
+              title: const Text('كل المناطق'),
+              onTap: () => Navigator.pop(sheetContext, '__all__'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.my_location_rounded),
+              title: const Text('استخدام موقعي الحالي'),
+              onTap: () => Navigator.pop(sheetContext, '__current__'),
+            ),
+            for (final area in _areas)
+              ListTile(
+                leading: const Icon(Icons.location_city_rounded),
+                title: Text(area),
+                trailing: _selectedArea == area
+                    ? const Icon(Icons.check_circle, color: _barakahGold)
+                    : null,
+                onTap: () => Navigator.pop(sheetContext, area),
+              ),
+            ListTile(
+              leading: const Icon(Icons.map_outlined),
+              title: const Text('تحديد مكان على الخريطة'),
+              onTap: () => Navigator.pop(sheetContext, '__map__'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (choice == null || !mounted) return;
+    if (choice == '__all__') {
+      setState(() => _selectedArea = 'كل المناطق');
+      return;
+    }
+    if (choice == '__current__') {
+      await _useCurrentLocation();
+      return;
+    }
+    if (choice != '__map__') {
+      setState(() => _selectedArea = choice);
+      return;
+    }
+
     final location = await Navigator.push<Map<String, double>>(
       context,
       MaterialPageRoute(
@@ -162,12 +221,6 @@ class _RestaurantsScreenState extends State<RestaurantsScreen> {
                             ),
                           ),
                           const SizedBox(height: 10),
-                          const AdvertisementBanner(
-                            placement: 'restaurants_top',
-                          ),
-                          const SizedBox(height: 10),
-                          const _OfferBanner(),
-                          const SizedBox(height: 12),
                           Row(children: [
                             Expanded(
                               child: Material(
@@ -257,6 +310,14 @@ class _RestaurantsScreenState extends State<RestaurantsScreen> {
                               ),
                             ),
                           ]),
+                          const SizedBox(height: 12),
+                          const AdvertisementBanner(
+                            placement: 'restaurants_top',
+                          ),
+                          const SizedBox(height: 10),
+                          const _OfferBanner(),
+                          const SizedBox(height: 18),
+                          const NewInBarakahStrip(itemType: 'restaurant'),
                           const SizedBox(height: 14),
                           const SponsoredAdsFeed(
                             placement: 'restaurants_gallery',
@@ -442,6 +503,17 @@ class _RestaurantsScreenState extends State<RestaurantsScreen> {
 
                           if (!isRestaurant) {
                             return false;
+                          }
+
+                          if (_areas.contains(_selectedArea)) {
+                            final businessArea = normalizeSearch(
+                              '${data['area'] ?? ''} ${data['address'] ?? ''} ${data['city'] ?? ''}',
+                            );
+                            if (!businessArea.contains(
+                              normalizeSearch(_selectedArea),
+                            )) {
+                              return false;
+                            }
                           }
 
                           if (normalizedQuery.isEmpty) {
@@ -684,37 +756,44 @@ class _TurquoiseQuickLinks extends StatelessWidget {
           ),
         );
 
-    return Row(
+    return Column(
       children: [
-        link(
-          'المطاعم',
-          Icons.restaurant_rounded,
-          () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const AllItemsScreen()),
-          ),
+        Row(
+          children: [
+            link(
+              'المطاعم',
+              Icons.restaurant_rounded,
+              () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AllItemsScreen()),
+              ),
+            ),          ],
         ),
-        const SizedBox(width: 8),
-        link(
-          'التصنيفات',
-          Icons.grid_view_rounded,
-          () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const _AllRestaurantCategoriesScreen(),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            link(
+              'التصنيفات',
+              Icons.grid_view_rounded,
+              () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const _AllRestaurantCategoriesScreen(),
+                ),
+              ),
             ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        link(
-          'عروض الماركت',
-          Icons.shopping_cart_outlined,
-          () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const AllItemsScreen(itemType: 'market'),
+            const SizedBox(width: 8),
+            link(
+              'عروض الماركت',
+              Icons.shopping_cart_outlined,
+              () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const AllItemsScreen(itemType: 'market'),
+                ),
+              ),
             ),
-          ),
+          ],
         ),
       ],
     );
@@ -1370,7 +1449,7 @@ class _CategoriesRow extends StatelessWidget {
         return;
       case 'nearby':
         await Navigator.push(context,
-            MaterialPageRoute(builder: (_) => const _NearbyPlacesScreen()));
+            MaterialPageRoute(builder: (_) => const NearbyPlacesScreen()));
         return;
       case 'market':
         await Navigator.push(
@@ -1479,7 +1558,7 @@ class _CategoriesRow extends StatelessWidget {
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => const _NearbyPlacesScreen(),
+              builder: (_) => const NearbyPlacesScreen(),
             ),
           ),
         ),
@@ -1873,7 +1952,7 @@ class _NearbyPlacesTile extends StatelessWidget {
           child: InkWell(
             onTap: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const _NearbyPlacesScreen()),
+              MaterialPageRoute(builder: (_) => const NearbyPlacesScreen()),
             ),
             child: Column(children: [
               Expanded(
@@ -1922,14 +2001,14 @@ class _NearbyPlacesTile extends StatelessWidget {
       );
 }
 
-class _NearbyPlacesScreen extends StatefulWidget {
-  const _NearbyPlacesScreen();
+class NearbyPlacesScreen extends StatefulWidget {
+  const NearbyPlacesScreen({super.key});
 
   @override
-  State<_NearbyPlacesScreen> createState() => _NearbyPlacesScreenState();
+  State<NearbyPlacesScreen> createState() => NearbyPlacesScreenState();
 }
 
-class _NearbyPlacesScreenState extends State<_NearbyPlacesScreen> {
+class NearbyPlacesScreenState extends State<NearbyPlacesScreen> {
   double? _latitude;
   double? _longitude;
   bool _loadingLocation = true;
@@ -2073,7 +2152,7 @@ class _NearbyPlacesScreenState extends State<_NearbyPlacesScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
-          title: const Text('أماكن قريبة منك'),
+          title: const Text('الوسيطات الأقرب إليك'),
           centerTitle: true,
           actions: [
             IconButton(
@@ -2141,14 +2220,7 @@ class _NearbyPlacesScreenState extends State<_NearbyPlacesScreen> {
 
                         final places = (snapshot.data?.docs ?? []).where((doc) {
                           final data = doc.data();
-                          final type = data['type']?.toString().toLowerCase();
-                          final isBusiness =
-                              data['kind']?.toString() != 'product';
-                          final isRestaurant = type == null ||
-                              type == 'restaurant' ||
-                              type == 'barber';
-                          return isBusiness &&
-                              isRestaurant &&
+                          return data['kind']?.toString() == 'agent' &&
                               _distanceFor(data) != null;
                         }).toList();
 
@@ -2175,7 +2247,7 @@ class _NearbyPlacesScreenState extends State<_NearbyPlacesScreen> {
                                           color: AppTheme.navy),
                                       const SizedBox(width: 7),
                                       Text(
-                                        '${places.length} مكان مسجل بالقرب منك',
+                                        '${places.length} وسيطة مرتبة من الأقرب إلى الأبعد',
                                         style: const TextStyle(
                                           color: AppTheme.navy,
                                           fontWeight: FontWeight.w900,
@@ -2190,7 +2262,7 @@ class _NearbyPlacesScreenState extends State<_NearbyPlacesScreen> {
                                           child: Padding(
                                             padding: EdgeInsets.all(30),
                                             child: Text(
-                                              'الخريطة جاهزة، لكن لا توجد أماكن بإحداثيات مسجلة حالياً.',
+                                              'لا توجد وسيطات بإحداثيات مسجلة حاليًا.',
                                               textAlign: TextAlign.center,
                                               style: TextStyle(
                                                 color: AppTheme.navy,
@@ -2473,17 +2545,24 @@ class _HomeCategoryTile extends StatelessWidget {
               ),
         onTap: () {
           AnalyticsService.instance.recordCategoryView(title);
+
+          final normalizedTitle =
+              title.replaceAll(RegExp(r"\s+"), "").toLowerCase();
+          final isAgentCategory = normalizedTitle.contains("وسيط");
+
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => CategoriesScreen(
-                title: title,
-                image: image.isEmpty
-                    ? 'assets/images/categories/restaurant.jpg'
-                    : image,
-                description: description,
-                itemType: 'restaurant',
-              ),
+              builder: (_) => isAgentCategory
+                  ? const NearbyPlacesScreen()
+                  : CategoriesScreen(
+                      title: title,
+                      image: image.isEmpty
+                          ? "assets/images/categories/restaurant.jpg"
+                          : image,
+                      description: description,
+                      itemType: "restaurant",
+                    ),
             ),
           );
         },

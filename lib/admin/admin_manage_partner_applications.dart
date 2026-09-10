@@ -535,7 +535,10 @@ class AdminManagePartnerApplications extends StatelessWidget {
           'commissionRate': commissionRate,
           'hasDeliveryOffer': false,
           'isTrending': false,
-          'businessStatus': 'open',
+          'businessStatus':
+              data['requestedBusinessStatus']?.toString() == 'coming_soon'
+                  ? 'coming_soon'
+                  : 'open',
           'openingTime': type == 'barber'
               ? (data['barberOpeningTime']?.toString().trim().isNotEmpty == true
                   ? data['barberOpeningTime'].toString().trim()

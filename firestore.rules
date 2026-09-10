@@ -8,6 +8,7 @@ service cloud.firestore {
 
     function isAdmin() {
       return signedIn() &&
+        request.auth.uid == 'Y3YeLin9gYTbqN4if72o3iTrUSn2' &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
@@ -30,7 +31,13 @@ service cloud.firestore {
 
     function ownsBusiness(businessId) {
       return isMerchant() && businessId is string &&
-        get(/databases/$(database)/documents/items/$(businessId)).data.ownerId == request.auth.uid;
+        (
+          get(/databases/$(database)/documents/items/$(businessId)).data.ownerId == request.auth.uid ||
+          (
+            get(/databases/$(database)/documents/items/$(businessId)).data.managerIds is list &&
+            get(/databases/$(database)/documents/items/$(businessId)).data.managerIds.hasAny([request.auth.uid])
+          )
+        );
     }
 
     match /items/{itemId} {
@@ -40,23 +47,25 @@ service cloud.firestore {
           request.resource.data.ownerId == request.auth.uid &&
           get(/databases/$(database)/documents/items/$(request.resource.data.businessId)).data.ownerId == request.auth.uid);
       allow update: if isAdmin() ||
-        (isMerchant() && resource.data.kind == 'product' &&
-          resource.data.ownerId == request.auth.uid &&
-          request.resource.data.ownerId == request.auth.uid &&
+        (ownsBusiness(resource.data.businessId) && resource.data.kind == 'product' &&
+          request.resource.data.ownerId == resource.data.ownerId &&
           request.resource.data.kind == 'product' &&
           request.resource.data.businessId == resource.data.businessId &&
-          get(/databases/$(database)/documents/items/$(request.resource.data.businessId)).data.ownerId == request.auth.uid) ||
-        (isMerchant() && resource.data.kind != 'product' &&
-          resource.data.ownerId == request.auth.uid &&
-          request.resource.data.ownerId == request.auth.uid &&
+          ownsBusiness(request.resource.data.businessId)) ||
+        (ownsBusiness(itemId) && resource.data.kind != 'product' &&
+          request.resource.data.ownerId == resource.data.ownerId &&
+          request.resource.data.commissionRate == resource.data.commissionRate &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            'ownerId', 'ownerEmail', 'managerIds', 'managerEmails',
+            'commissionRate'
+          ]) &&
           request.resource.data.kind == resource.data.kind &&
           request.resource.data.type == resource.data.type &&
           request.resource.data.category == resource.data.category &&
           request.resource.data.isTrending == resource.data.isTrending &&
           request.resource.data.rating == resource.data.rating);
       allow delete: if isAdmin() ||
-        (isMerchant() && resource.data.kind == 'product' &&
-          resource.data.ownerId == request.auth.uid);
+        (resource.data.kind == 'product' && ownsBusiness(resource.data.businessId));
     }
 
     match /categories/{categoryId} {
@@ -190,6 +199,43 @@ service cloud.firestore {
           'happy', 'love', 'excellent', 'excited', 'surprised', 'sad'
         ] &&
         request.resource.data.reactionUpdatedAt == request.time;
+      allow delete: if false;
+    }
+
+    
+    match /agent_order_secrets/{requestId} {
+      allow read, create, update, delete: if false;
+    }
+
+    match /agent_disputes/{disputeId} {
+      allow read: if signedIn() &&
+        (isAdmin() ||
+         resource.data.customerId == request.auth.uid ||
+         ownsBusiness(resource.data.agentId));
+      allow create, update, delete: if false;
+    }
+
+    match /agent_finance_transactions/{transactionId} {
+      allow read: if signedIn() &&
+        (isAdmin() ||
+         ownsBusiness(resource.data.agentId));
+      allow create, update, delete: if false;
+    }
+
+    match /agent_earnings/{earningId} {
+      allow read: if signedIn() &&
+        (isAdmin() ||
+         resource.data.agentId == request.auth.uid ||
+         ownsBusiness(resource.data.agentId));
+      allow create, update, delete: if false;
+    }
+
+match /agent_orders/{requestId} {
+      allow read: if signedIn() &&
+        (resource.data.customerId == request.auth.uid ||
+          isAdmin() || ownsBusiness(resource.data.agentId));
+      allow create: if false;
+      allow update: if false;
       allow delete: if false;
     }
 
@@ -376,6 +422,125 @@ service cloud.firestore {
         );
 
       allow delete: if isAdmin();
+    }
+
+    // طلبات الانضمام كوسيطة بركة
+    match /agent_applications/{userId} {
+      allow create: if signedIn() &&
+        request.auth.uid == userId &&
+        request.resource.data.keys().hasOnly([
+          'userId',
+          'fullName',
+          'email',
+          'phone',
+          'nationalId',
+          'area',
+          'locationLabel',
+          'latitude',
+          'longitude',
+          'location',
+          'payoutMethod',
+          'payoutAccount',
+          'acceptedAgentTerms',
+          'acceptedPrivacyPolicy',
+          'agreementVersion',
+          'agreementAcceptedAt',
+          'status',
+          'identityVerified',
+          'locationVerified',
+          'payoutVerified',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.fullName is string &&
+        request.resource.data.fullName.size() >= 2 &&
+        request.resource.data.fullName.size() <= 120 &&
+        request.resource.data.email is string &&
+        request.resource.data.email.size() >= 5 &&
+        request.resource.data.email.size() <= 180 &&
+        request.resource.data.phone is string &&
+        request.resource.data.phone.size() >= 6 &&
+        request.resource.data.phone.size() <= 30 &&
+        request.resource.data.nationalId is string &&
+        request.resource.data.nationalId.size() >= 5 &&
+        request.resource.data.nationalId.size() <= 30 &&
+        request.resource.data.area is string &&
+        request.resource.data.area.size() >= 2 &&
+        request.resource.data.area.size() <= 80 &&
+        request.resource.data.locationLabel is string &&
+        request.resource.data.locationLabel.size() <= 240 &&
+        request.resource.data.latitude is number &&
+        request.resource.data.latitude >= -90 &&
+        request.resource.data.latitude <= 90 &&
+        request.resource.data.longitude is number &&
+        request.resource.data.longitude >= -180 &&
+        request.resource.data.longitude <= 180 &&
+        request.resource.data.location is latlng &&
+        request.resource.data.payoutMethod is string &&
+        request.resource.data.payoutMethod.size() >= 2 &&
+        request.resource.data.payoutMethod.size() <= 120 &&
+        request.resource.data.payoutAccount is string &&
+        request.resource.data.payoutAccount.size() >= 2 &&
+        request.resource.data.payoutAccount.size() <= 240 &&
+        request.resource.data.acceptedAgentTerms == true &&
+        request.resource.data.acceptedPrivacyPolicy == true &&
+        request.resource.data.agreementVersion is string &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.identityVerified == false &&
+        request.resource.data.locationVerified == false &&
+        request.resource.data.payoutVerified == false;
+
+      allow read: if isAdmin() ||
+        (signedIn() && request.auth.uid == userId);
+
+      allow update: if isAdmin() ||
+        (
+          signedIn() &&
+          request.auth.uid == userId &&
+          resource.data.userId == request.auth.uid &&
+          request.resource.data.userId == resource.data.userId &&
+          resource.data.status == 'pending' &&
+          request.resource.data.status == 'pending' &&
+
+          request.resource.data.identityVerified ==
+            resource.data.identityVerified &&
+          request.resource.data.locationVerified ==
+            resource.data.locationVerified &&
+          request.resource.data.payoutVerified ==
+            resource.data.payoutVerified &&
+
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'fullName',
+            'email',
+            'phone',
+            'nationalId',
+            'area',
+            'locationLabel',
+            'latitude',
+            'longitude',
+            'location',
+            'payoutMethod',
+            'payoutAccount',
+            'acceptedAgentTerms',
+            'acceptedPrivacyPolicy',
+            'agreementVersion',
+            'agreementAcceptedAt',
+            'createdAt',
+            'updatedAt'
+          ])
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // الملف الداخلي للوسيطة بعد الاعتماد.
+    // يحتوي بيانات حساسة، لذلك لا تتم قراءته بشكل عام.
+    match /agents/{agentId} {
+      allow read: if isAdmin() ||
+        (signedIn() && request.auth.uid == agentId);
+
+      allow create, update, delete: if isAdmin();
     }
 
     match /business_ratings/{businessId}/votes/{userId} {

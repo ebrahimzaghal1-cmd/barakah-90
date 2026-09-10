@@ -64,7 +64,8 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
         }
       }
 
-      final isAdmin = user != null && await _profiles.isAdmin(user.uid);
+      final isAdmin =
+          user != null && (await _profiles.adminAccess(user.uid)).canOpenAdmin;
       if (!mounted) return;
       if (!isAdmin) {
         await FirebaseAuth.instance.signOut();

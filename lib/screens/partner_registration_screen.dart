@@ -49,6 +49,7 @@ class _PartnerRegistrationScreenState extends State<PartnerRegistrationScreen> {
 
   String _activityType = 'مطعم';
   String? _businessCategory;
+  String _requestedBusinessStatus = 'open';
 
   bool _acceptedPartnerAgreement = false;
   bool _acceptedPrivacyPolicy = false;
@@ -167,6 +168,7 @@ class _PartnerRegistrationScreenState extends State<PartnerRegistrationScreen> {
               'nationalId': _nationalId.text.trim(),
               'activityType': _activityType,
               'businessCategory': _businessCategory,
+              'requestedBusinessStatus': _requestedBusinessStatus,
               'area': _area.text.trim(),
               'description': _description.text.trim(),
               'locationUrl': _locationUrl.text.trim(),
@@ -384,6 +386,29 @@ class _PartnerRegistrationScreenState extends State<PartnerRegistrationScreen> {
                         : 'اسم المطعم / المحل',
                     prefixIcon: const Icon(Icons.storefront_rounded),
                   ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: _requestedBusinessStatus,
+                  decoration: const InputDecoration(
+                    labelText: 'موعد ظهور المتجر',
+                    prefixIcon: Icon(Icons.upcoming_rounded),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'open',
+                      child: Text('جاهز عند الموافقة — يستقبل الطلبات'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'coming_soon',
+                      child: Text('قريبًا — يظهر دون استقبال طلبات'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() => _requestedBusinessStatus = value);
+                    }
+                  },
                 ),
                 const SizedBox(height: 12),
                 if (_activityType == 'حلاق') ...[

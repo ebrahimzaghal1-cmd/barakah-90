@@ -32,6 +32,15 @@ class BusinessHoursService {
     final businessStatus =
         data['businessStatus']?.toString().trim().toLowerCase() ?? 'open';
 
+    if (businessStatus == 'coming_soon') {
+      return const BusinessHoursStatus(
+        code: 'coming_soon',
+        label: 'قريبًا',
+        isAcceptingOrders: false,
+        minutesUntilChange: null,
+      );
+    }
+
     if (businessStatus == 'closed') {
       return const BusinessHoursStatus(
         code: 'temporarily_closed',

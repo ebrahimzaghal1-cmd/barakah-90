@@ -48,10 +48,12 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
   final ImagePicker _imagePicker = ImagePicker();
 
   String selectedType = 'restaurant';
+  String selectedBusinessStatus = 'open';
   String? selectedCategory;
   bool isLoading = false;
   bool hasDeliveryOffer = false;
   bool isTrending = false;
+  bool isNewInBarakah = false;
   File? selectedImage;
   double? latitude;
   double? longitude;
@@ -126,6 +128,14 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
       return;
     }
 
+    if (_isAgentCategory && (latitude == null || longitude == null)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text("يجب اختيار موقع الوسيطة على الخريطة قبل الحفظ.")),
+      );
+      return;
+    }
+
     setState(() {
       isLoading = true;
     });
@@ -167,7 +177,8 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
         'discountPercent': num.tryParse(discountController.text.trim()) ?? 0,
         'hasDeliveryOffer': hasDeliveryOffer,
         'isTrending': isTrending,
-        'businessStatus': 'open',
+        'isNewInBarakah': isNewInBarakah,
+        'businessStatus': selectedBusinessStatus,
         'preparationMinutes':
             int.tryParse(preparationController.text.trim()) ?? 30,
         if (_isDoctor) ...{
@@ -236,12 +247,14 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
 
       setState(() {
         selectedType = 'restaurant';
+        selectedBusinessStatus = 'open';
         selectedCategory = null;
         selectedImage = null;
         latitude = null;
         longitude = null;
         hasDeliveryOffer = false;
         isTrending = false;
+        isNewInBarakah = false;
       });
     } catch (e) {
       if (!mounted) return;
@@ -357,6 +370,32 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
                         selectedType = value;
                         selectedCategory = null;
                       });
+                    }
+                  },
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: selectedBusinessStatus,
+                  decoration: InputDecoration(
+                    labelText: 'ظهور المحل',
+                    prefixIcon: const Icon(Icons.visibility_outlined),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'open',
+                      child: Text('جاهز — يظهر ويستقبل الطلبات'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'coming_soon',
+                      child: Text('قريبًا — يظهر دون استقبال طلبات'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() => selectedBusinessStatus = value);
                     }
                   },
                 ),
@@ -653,6 +692,16 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
                   onChanged: isLoading
                       ? null
                       : (value) => setState(() => isTrending = value),
+                ),
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('إضافة إلى شريط جديد في بركة'),
+                  subtitle: const Text('يظهر المحل في شريط المتاجر الجديدة'),
+                  secondary: const Icon(Icons.new_releases_rounded),
+                  value: isNewInBarakah,
+                  onChanged: isLoading
+                      ? null
+                      : (value) => setState(() => isNewInBarakah = value),
                 ),
                 const SizedBox(height: 12),
                 OutlinedButton.icon(

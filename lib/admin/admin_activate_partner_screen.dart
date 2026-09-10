@@ -269,7 +269,11 @@ class _AdminActivatePartnerScreenState
             'commissionRate': commission,
             'hasDeliveryOffer': false,
             'isTrending': false,
-            'businessStatus': 'open',
+            'businessStatus':
+                widget.application['requestedBusinessStatus']?.toString() ==
+                        'coming_soon'
+                    ? 'coming_soon'
+                    : 'open',
             'openingTime': _text('activityType') == 'حلاق'
                 ? (_text('barberOpeningTime').isEmpty
                     ? '09:00'

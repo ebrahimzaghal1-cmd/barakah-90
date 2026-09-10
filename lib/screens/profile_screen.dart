@@ -29,6 +29,7 @@ import 'merchant_dashboard.dart';
 import 'partner_registration_screen.dart';
 import 'driver_dashboard.dart';
 import 'driver_registration_screen.dart';
+import 'agent_registration_screen.dart';
 import 'customer_service_join_screen.dart';
 import 'customer_service_portal.dart';
 import 'customer_support_chat_screen.dart';
@@ -42,7 +43,8 @@ class ProfileScreen extends StatelessWidget {
     // حظر Firebase المؤقت بسبب محاولات تسجيل الدخول المتكررة.
     if (user != null) {
       try {
-        final isAdmin = await UserProfileService().isAdmin(user.uid);
+        final isAdmin =
+            (await UserProfileService().adminAccess(user.uid)).canOpenAdmin;
         if (!context.mounted) return;
         if (isAdmin) {
           await Navigator.push(context,
@@ -512,6 +514,18 @@ class _ProfileBody extends StatelessWidget {
                       context,
                       MaterialPageRoute(
                           builder: (_) => const DriverRegistrationScreen())),
+                ),
+              if (user != null && !isDriver && !isCustomerService)
+                _ProfileMenuTile(
+                  icon: Icons.support_agent_rounded,
+                  title: 'الانضمام كوسيطة',
+                  subtitle: 'أرسلي طلبك وسيقوم الأدمن بمراجعته واعتماده',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const AgentRegistrationScreen(),
+                    ),
+                  ),
                 ),
               if (!isCustomerService)
                 _ProfileMenuTile(

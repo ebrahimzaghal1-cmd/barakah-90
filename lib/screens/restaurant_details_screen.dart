@@ -13,6 +13,8 @@ import '../widgets/business_rating.dart';
 import '../widgets/favorite_button.dart';
 import '../widgets/barber_booking_section.dart';
 import 'cart_screen.dart';
+import 'agent_order_screen.dart';
+import 'customer_support_chat_screen.dart';
 
 class RestaurantDetailsScreen extends StatelessWidget {
   const RestaurantDetailsScreen({super.key, required this.restaurant});
@@ -51,8 +53,8 @@ class RestaurantDetailsScreen extends StatelessWidget {
         categoryValue.contains('barber') ||
         activityValue.contains('حلاق') ||
         activityValue.contains('barber');
-    final agentPhone = data['agentPhone']?.toString().trim() ?? '';
-    final agentLocation = data['agentLocation']?.toString().trim() ?? '';
+    final agentLocation =
+        (data['agentLocation'] ?? data['address'])?.toString().trim() ?? '';
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -108,13 +110,27 @@ class RestaurantDetailsScreen extends StatelessWidget {
                       const Text('بيانات الوسيط أو الوسيطة',
                           style: TextStyle(
                               fontSize: 21, fontWeight: FontWeight.w900)),
-                      if (agentPhone.isNotEmpty)
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.phone_rounded),
-                          title: Text(agentPhone),
-                          onTap: () => launchUrl(Uri.parse('tel:$agentPhone')),
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.support_agent_rounded),
+                        title: const Text(
+                          'تواصل مع الوسيطة عبر خدمة عملاء بركة',
+                          style: TextStyle(fontWeight: FontWeight.w900),
                         ),
+                        subtitle: const Text(
+                          'رقم الهاتف خاص ولا يظهر للمستخدمين',
+                        ),
+                        trailing: const Icon(Icons.chat_rounded),
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute<void>(
+                            builder: (_) => CustomerSupportChatScreen(
+                              initialMessage:
+                                  'أرغب بالتواصل مع الوسيطة $name (المعرّف: ${_businessId!}).',
+                            ),
+                          ),
+                        ),
+                      ),
                       if (agentLocation.isNotEmpty)
                         ListTile(
                           contentPadding: EdgeInsets.zero,
@@ -157,6 +173,29 @@ class RestaurantDetailsScreen extends StatelessWidget {
                                 _showAgentQr(context, _businessId!, name),
                           ),
                         ],
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton.icon(
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute<void>(
+                              builder: (_) => AgentOrderScreen(
+                                agentId: _businessId!,
+                                agent: data,
+                              ),
+                            ),
+                          ),
+                          icon: const Icon(Icons.shopping_bag_outlined),
+                          label: const Text(
+                            'اطلب الآن من الوسيطة',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                     if (latitude != null && longitude != null) ...[
@@ -307,115 +346,182 @@ class _BusinessProducts extends StatelessWidget {
             final title = data['title']?.toString() ?? 'منتج';
             final description = data['description']?.toString() ?? '';
             final price = data['price'] ?? 0;
-            return Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(.82),
-                  borderRadius: BorderRadius.circular(18),
-                  border:
-                      Border.all(color: AppTheme.coolYellow.withOpacity(.6))),
-              child: Row(children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: SizedBox(
-                    width: 72,
-                    height: 72,
-                    child: image.isEmpty
-                        ? const ColoredBox(
-                            color: AppTheme.coolYellow,
-                            child: Icon(Icons.fastfood_rounded))
-                        : Image.network(image,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => const ColoredBox(
-                                color: AppTheme.coolYellow,
-                                child: Icon(Icons.broken_image_outlined))),
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => showProductPurchaseOptions(
+                context,
+                product.id,
+                data,
+              ),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 14),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(.94),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: AppTheme.coolYellow.withOpacity(.6),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(title,
-                            style:
-                                const TextStyle(fontWeight: FontWeight.w900)),
-                        if (description.isNotEmpty)
-                          Text(description,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: Colors.black54)),
-                        const SizedBox(height: 5),
-                        Text('$price ₪',
-                            style: const TextStyle(
-                                color: AppTheme.deepYellow,
-                                fontWeight: FontWeight.w900)),
-                        const SizedBox(height: 4),
-                        BusinessRating(
-                          businessId: product.id,
-                          fallbackRating: data['rating'],
-                          compact: true,
-                        ),
-                      ]),
-                ),
-                IconButton(
-                  tooltip: 'قيّم الصنف',
-                  color: const Color(0xFFFFB800),
-                  icon: const Icon(Icons.star_rate_rounded),
-                  onPressed: () => showModalBottomSheet<void>(
-                    context: context,
-                    builder: (_) => SafeArea(
-                      child: Padding(
-                        padding: const EdgeInsets.all(18),
-                        child: RateBusinessButton(
-                          businessId: product.id,
-                          businessName: title,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                FavoriteButton(
-                  itemId: product.id,
-                  item: data,
-                  backgroundColor: AppTheme.navy,
-                ),
-                const SizedBox(width: 4),
-                Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton.filledTonal(
-                      tooltip: 'أضف للسلة',
-                      icon: const Icon(Icons.add_shopping_cart_rounded),
-                      onPressed: () {
-                        try {
-                          CartService.instance.addProduct(product.id, data);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                                content: Text('تمت الإضافة للسلة ✅')),
-                          );
-                        } on StateError catch (error) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(error.message.toString()),
-                              backgroundColor: Colors.orange,
-                            ),
-                          );
-                        }
-                      },
-                    ),
-                    IconButton.filled(
-                      style: IconButton.styleFrom(
-                        backgroundColor: AppTheme.deepYellow,
-                        foregroundColor: Colors.white,
-                      ),
-                      tooltip: 'شراء الآن',
-                      icon: const Icon(Icons.shopping_bag_rounded),
-                      onPressed: () => buyProductNow(context, product.id, data),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(.06),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
                     ),
                   ],
                 ),
-              ]),
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      height: 170,
+                      child: image.isEmpty
+                          ? const ColoredBox(
+                              color: AppTheme.coolYellow,
+                              child: Center(
+                                child: Icon(
+                                  Icons.fastfood_rounded,
+                                  size: 48,
+                                  color: AppTheme.navy,
+                                ),
+                              ),
+                            )
+                          : Image.network(
+                              image,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => const ColoredBox(
+                                color: AppTheme.coolYellow,
+                                child: Center(
+                                  child: Icon(
+                                    Icons.broken_image_outlined,
+                                    size: 44,
+                                    color: AppTheme.navy,
+                                  ),
+                                ),
+                              ),
+                            ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                      child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    title,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 21,
+                                      fontWeight: FontWeight.w900,
+                                      color: AppTheme.navy,
+                                      height: 1.15,
+                                    ),
+                                  ),
+                                  if (description.isNotEmpty) ...[
+                                    const SizedBox(height: 5),
+                                    Text(
+                                      description,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.black54,
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    '$price ₪',
+                                    style: const TextStyle(
+                                      color: AppTheme.deepYellow,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 5),
+                                  BusinessRating(
+                                    businessId: product.id,
+                                    fallbackRating: data['rating'],
+                                    compact: true,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'قيّم الصنف',
+                              color: const Color(0xFFFFB800),
+                              icon: const Icon(Icons.star_rate_rounded),
+                              onPressed: () => showModalBottomSheet<void>(
+                                context: context,
+                                builder: (_) => SafeArea(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(18),
+                                    child: RateBusinessButton(
+                                      businessId: product.id,
+                                      businessName: title,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            FavoriteButton(
+                              itemId: product.id,
+                              item: data,
+                              backgroundColor: AppTheme.navy,
+                            ),
+                            const SizedBox(width: 4),
+                            Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton.filledTonal(
+                                  tooltip: 'أضف للسلة',
+                                  icon: const Icon(
+                                      Icons.add_shopping_cart_rounded),
+                                  onPressed: () {
+                                    try {
+                                      CartService.instance
+                                          .addProduct(product.id, data);
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        const SnackBar(
+                                            content:
+                                                Text('تمت الإضافة للسلة ✅')),
+                                      );
+                                    } on StateError catch (error) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                          content:
+                                              Text(error.message.toString()),
+                                          backgroundColor: Colors.orange,
+                                        ),
+                                      );
+                                    }
+                                  },
+                                ),
+                                IconButton.filled(
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: AppTheme.deepYellow,
+                                    foregroundColor: Colors.white,
+                                  ),
+                                  tooltip: 'شراء الآن',
+                                  icon: const Icon(Icons.shopping_bag_rounded),
+                                  onPressed: () =>
+                                      buyProductNow(context, product.id, data),
+                                ),
+                              ],
+                            ),
+                          ]),
+                    ),
+                  ],
+                ),
+              ),
             );
           }).toList();
           if (horizontal) {

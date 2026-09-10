@@ -147,8 +147,9 @@ Future<void> buyProductNow(
 Future<void> showProductPurchaseOptions(
   BuildContext context,
   String productId,
-  Map<String, dynamic> product,
-) async {
+  Map<String, dynamic> product, {
+  bool isMarket = false,
+}) async {
   final title = product['title']?.toString().trim() ?? '';
   final basePrice = (product['price'] as num?) ?? 0;
 
@@ -235,7 +236,9 @@ Future<void> showProductPurchaseOptions(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      title.isEmpty ? 'تفاصيل الوجبة' : title,
+                      title.isEmpty
+                          ? (isMarket ? 'تفاصيل المنتج' : 'تفاصيل الوجبة')
+                          : title,
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         fontSize: 21,
@@ -253,9 +256,9 @@ Future<void> showProductPurchaseOptions(
                     ),
                     if (groups.isNotEmpty) ...[
                       const SizedBox(height: 18),
-                      const Text(
-                        'إضافات الوجبة',
-                        style: TextStyle(
+                      Text(
+                        isMarket ? 'إضافات المنتج' : 'إضافات الوجبة',
+                        style: const TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w900,
                           color: AppTheme.navy,
@@ -442,8 +445,12 @@ Future<void> showProductPurchaseOptions(
                       maxLines: 3,
                       maxLength: 250,
                       decoration: InputDecoration(
-                        labelText: 'ملاحظات على الوجبة',
-                        hintText: 'مثال: بدون بصل، الصوص على الجانب...',
+                        labelText: isMarket
+                            ? 'ملاحظات على المنتج'
+                            : 'ملاحظات على الوجبة',
+                        hintText: isMarket
+                            ? 'اكتب أي ملاحظات خاصة بالمنتج...'
+                            : 'مثال: بدون بصل، الصوص على الجانب...',
                         prefixIcon: const Icon(Icons.edit_note_rounded),
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(16),

@@ -14,7 +14,7 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val notificationChannelId = "barakah_orders"
-    private val urgentOrderChannelId = "barakah_urgent_orders_v2"
+    private val urgentOrderChannelId = "barakah_urgent_orders_v3"
     private val notificationMethodChannel = "com.barakah.market/notifications"
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -64,7 +64,8 @@ class MainActivity : FlutterActivity() {
 
             val alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
             val audioAttributes = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build()
             val urgentChannel = NotificationChannel(
                 urgentOrderChannelId,

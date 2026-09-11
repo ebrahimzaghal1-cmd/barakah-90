@@ -736,7 +736,7 @@ async function sendPushToTokens(env, token, deviceTokens, { title, body, data = 
                 priority: "HIGH",
                 notification: {
                   sound: "default",
-                  channel_id: isUrgentOrder ? "barakah_urgent_orders_v2" : "barakah_orders",
+                  channel_id: isUrgentOrder ? "barakah_urgent_orders_v3" : "barakah_orders",
                   notification_priority: isUrgentOrder ? "PRIORITY_MAX" : "PRIORITY_HIGH",
                   default_vibrate_timings: true,
                   visibility: "PUBLIC",

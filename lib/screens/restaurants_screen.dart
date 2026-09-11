@@ -312,6 +312,9 @@ class _RestaurantsScreenState extends State<RestaurantsScreen> {
                           ]),
                           const SizedBox(height: 12),
                           const AdvertisementBanner(
+                            placement: 'restaurant',
+                          ),
+                          const AdvertisementBanner(
                             placement: 'restaurants_top',
                           ),
                           const SizedBox(height: 10),

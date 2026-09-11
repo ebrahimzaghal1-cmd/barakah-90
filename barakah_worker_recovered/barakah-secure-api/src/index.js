@@ -673,6 +673,10 @@ function fieldEquals(fieldPath, value) {
   return { fieldFilter: { field: { fieldPath }, op: "EQUAL", value: encodeValue(value) } };
 }
 __name(fieldEquals, "fieldEquals");
+function fieldArrayContains(fieldPath, value) {
+  return { fieldFilter: { field: { fieldPath }, op: "ARRAY_CONTAINS", value: encodeValue(value) } };
+}
+__name(fieldArrayContains, "fieldArrayContains");
 async function listOrderSupervisorOrders(env, user) {
   const token = await serviceToken(env);
   const actor = await firestoreGet(
@@ -709,6 +713,7 @@ __name(listOrderSupervisorOrders, "listOrderSupervisorOrders");
 async function sendPushToTokens(env, token, deviceTokens, { title, body, data = {} }) {
   const uniqueTokens = [...new Set((deviceTokens || []).filter((value) => typeof value === "string" && value.length > 20))];
   if (!uniqueTokens.length) return;
+  const isUrgentOrder = data.type === "new_order" || data.type === "driver_order_available";
   await Promise.all(
     uniqueTokens.slice(0, 100).map(async (deviceToken) => {
       const response = await fetch(
@@ -731,14 +736,22 @@ async function sendPushToTokens(env, token, deviceTokens, { title, body, data = 
                 priority: "HIGH",
                 notification: {
                   sound: "default",
-                  channel_id: "barakah_orders"
+                  channel_id: isUrgentOrder ? "barakah_urgent_orders_v2" : "barakah_orders",
+                  notification_priority: isUrgentOrder ? "PRIORITY_MAX" : "PRIORITY_HIGH",
+                  default_vibrate_timings: true,
+                  visibility: "PUBLIC",
+                  sticky: isUrgentOrder
                 }
               },
               apns: {
+                headers: {
+                  "apns-priority": "10"
+                },
                 payload: {
                   aps: {
                     sound: "default",
-                    badge: 1
+                    badge: 1,
+                    "interruption-level": isUrgentOrder ? "time-sensitive" : "active"
                   }
                 }
               },
@@ -828,11 +841,19 @@ async function notifyAdminsAboutOrder(env, token, orderId, order) {
   ];
   let merchantTokens = [];
   if (order.businessId) {
-    const business = await firestoreGet(
-      env,
-      token,
-      `items/${encodeURIComponent(order.businessId)}`
-    );
+    const [business, directlyLinkedMerchants, managedBusinessMerchants] = await Promise.all([
+      firestoreGet(
+        env,
+        token,
+        `items/${encodeURIComponent(order.businessId)}`
+      ),
+      firestoreQuery(env, token, "users", [
+        fieldEquals("merchantBusinessId", order.businessId)
+      ]),
+      firestoreQuery(env, token, "users", [
+        fieldArrayContains("managedBusinessIds", order.businessId)
+      ])
+    ]);
     const merchantUserIds = [
       business?.ownerId,
       ...(Array.isArray(business?.managerIds) ? business.managerIds : [])
@@ -840,6 +861,14 @@ async function notifyAdminsAboutOrder(env, token, orderId, order) {
     merchantTokens = (await Promise.all(
       [...new Set(merchantUserIds)].map((uid) => userPushTokens(env, token, uid))
     )).flat();
+    merchantTokens.push(
+      ...directlyLinkedMerchants.flatMap((profile) =>
+        Array.isArray(profile.fcmTokens) ? profile.fcmTokens : []
+      ),
+      ...managedBusinessMerchants.flatMap((profile) =>
+        Array.isArray(profile.fcmTokens) ? profile.fcmTokens : []
+      )
+    );
   }
   const orderLabel = String(
     order.orderNumber || orderId.substring(0, 6).toUpperCase()
@@ -3990,9 +4019,14 @@ async function updateOrderStatus(request, env, user, orderId) {
   const orderBusiness = order.businessId
     ? await firestoreGet(env, token, `items/${encodeURIComponent(order.businessId)}`)
     : null;
-  const isMerchant = actor?.role === "merchant" &&
-    actor?.merchantEnabled === true &&
-    canManageBusiness(user.uid, orderBusiness);
+  const isMerchant = Boolean(
+    actor &&
+      orderBusiness &&
+      (canManageBusiness(user.uid, orderBusiness) ||
+        actor.merchantBusinessId === order.businessId ||
+        (Array.isArray(actor.managedBusinessIds) &&
+          actor.managedBusinessIds.includes(order.businessId)))
+  );
   const isDriver = actor?.role === "driver" && order.driverId === user.uid;
   const isPickupMerchant = Boolean(isMerchant && order.deliveryMethod === "pickup");
   const merchantStates = /* @__PURE__ */ new Set(["accepted", "preparing", "ready", "rejected"]);

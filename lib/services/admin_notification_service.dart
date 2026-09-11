@@ -83,6 +83,8 @@ class AdminNotificationService {
           body: body,
           tag:
               message.data['orderId']?.toString() ?? message.messageId ?? title,
+          urgent: message.data['type'] == 'new_order' ||
+              message.data['type'] == 'driver_order_available',
         );
       });
       _initialized = true;

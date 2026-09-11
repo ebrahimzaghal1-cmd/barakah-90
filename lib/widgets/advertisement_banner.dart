@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
 import '../screens/restaurant_offers_screen.dart';
+import '../screens/restaurant_details_screen.dart';
 import '../services/firebase_state.dart';
 import '../theme/app_theme.dart';
 import 'barakah_brand.dart';
@@ -17,6 +18,50 @@ Future<void> _openAdvertisement(
   final action = data['actionType']?.toString().trim() ?? 'automatic';
   final destinationUrl = data['destinationUrl']?.toString().trim() ?? '';
   final placement = data['placement']?.toString().trim() ?? '';
+
+  if (action == 'business') {
+    final businessId = data['targetBusinessId']?.toString().trim() ?? '';
+
+    if (businessId.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('هذا المحل غير متاح حاليًا.')),
+        );
+      }
+      return;
+    }
+
+    try {
+      final business = await FirebaseFirestore.instance
+          .collection('items')
+          .doc(businessId)
+          .get();
+
+      if (!business.exists) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('هذا المحل غير متاح حاليًا.')),
+          );
+        }
+        return;
+      }
+
+      if (context.mounted) {
+        await Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => RestaurantDetailsScreen(restaurant: business),
+          ),
+        );
+      }
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('هذا المحل غير متاح حاليًا.')),
+        );
+      }
+    }
+    return;
+  }
 
   // إذا كان للإعلان رابط خاص، تكون له الأولوية عند الضغط.
   if (destinationUrl.isNotEmpty) {

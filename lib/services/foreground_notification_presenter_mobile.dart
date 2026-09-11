@@ -7,6 +7,7 @@ void showForegroundNotification({
   required String title,
   required String body,
   required String tag,
+  bool urgent = false,
 }) {
   if (defaultTargetPlatform != TargetPlatform.android) return;
 
@@ -14,6 +15,7 @@ void showForegroundNotification({
     'title': title,
     'body': body,
     'tag': tag,
+    'urgent': urgent,
   }).catchError((Object error) {
     debugPrint('تعذر عرض إشعار بركة أثناء فتح التطبيق: $error');
   });

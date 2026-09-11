@@ -1720,6 +1720,7 @@ class _MerchantOrders extends StatelessWidget {
     'accepted': 'تم القبول',
     'preparing': 'قيد التحضير',
     'ready': 'جاهز للسائق',
+    'awaiting_driver': 'بانتظار سائق',
     'driver_assigned': 'تم تعيين سائق',
     'picked_up': 'مع السائق',
     'delivered': 'تم التسليم',

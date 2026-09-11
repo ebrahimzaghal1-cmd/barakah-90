@@ -124,7 +124,7 @@ class _PlayHubScreenState extends State<PlayHubScreen> {
     };
 
     final modeText = rewardMode
-        ? 'هذه مهمة مرافقة للطلب. لديك حتى 30 دقيقة من وقت إنشاء الطلب. عند إكمال 5 جولات ناجحة في المهمة تحصل على نقطتين، وتُحتسب المكافأة مرة واحدة فقط للطلب.'
+        ? 'هذه مهمة مرافقة للطلب. لديك حتى 30 دقيقة بعد إكمال أو تسليم الطلب. عند إكمال 5 جولات ناجحة في المهمة تحصل على نقطتين، وتُحتسب المكافأة مرة واحدة فقط للطلب.'
         : 'أنت الآن في اللعب الحر. يمكنك اللعب بلا حدود، لكن لا تُحتسب نقاط. عند إنشاء طلب تتفعّل مهمة بركة لمدة 30 دقيقة.';
 
     final result = await showDialog<bool>(
@@ -306,9 +306,6 @@ class _PlayHubScreenState extends State<PlayHubScreen> {
                     'rejected',
                     'cancelled',
                     'canceled',
-                    'delivered',
-                    'completed',
-                    'finished',
                   };
                   final eligibleOrders = snapshot.data!.docs
                       .where((doc) => !excludedStatuses
@@ -329,10 +326,15 @@ class _PlayHubScreenState extends State<PlayHubScreen> {
                   final completed = _completedTasks(activeOrder.data());
                   final completedCount =
                       _taskIds.where((task) => completed[task] == true).length;
-                  final createdAt =
-                      activeOrder.data()['createdAt'] as Timestamp?;
+                  final orderData = activeOrder.data();
+                  final rewardStartedAt =
+                      (orderData['completedAt'] as Timestamp?) ??
+                          (orderData['deliveredAt'] as Timestamp?) ??
+                          (orderData['finishedAt'] as Timestamp?) ??
+                          (orderData['updatedAt'] as Timestamp?) ??
+                          (orderData['createdAt'] as Timestamp?);
                   final rewardExpiresAt =
-                      createdAt?.toDate().add(_rewardWindow);
+                      rewardStartedAt?.toDate().add(_rewardWindow);
                   final rewardWindowOpen = rewardExpiresAt != null &&
                       rewardExpiresAt.isAfter(DateTime.now());
                   if (completedCount < _taskIds.length && !rewardWindowOpen) {
@@ -465,7 +467,7 @@ class _PlayHubContent extends StatelessWidget {
                     Text(
                       rewardMode
                           ? 'أنهِ المهام الثلاث خلال 10 دقائق لكل مهمة واجمع 6 نقاط.'
-                          : 'الألعاب متاحة للجميع، والنقاط تتفعّل تلقائيًا عند إنشاء طلب.',
+                          : 'الألعاب متاحة للجميع، والنقاط تتفعّل بعد إكمال أو تسليم طلب.',
                       style: TextStyle(
                         color: Colors.white.withOpacity(.78),
                         height: 1.5,

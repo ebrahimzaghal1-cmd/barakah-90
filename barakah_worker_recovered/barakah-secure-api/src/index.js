@@ -4524,21 +4524,26 @@ function assertRewardOrder(order, user) {
   if ((/* @__PURE__ */ new Set([
     "rejected",
     "cancelled",
-    "canceled",
-    "delivered",
-    "completed",
-    "finished"
+    "canceled"
   ])).has(order.status)) {
     fail(409, "order-inactive", "\u064A\u062C\u0628 \u0625\u0643\u0645\u0627\u0644 \u0627\u0644\u0645\u0647\u0645\u0629 \u0642\u0628\u0644 \u0627\u0646\u062A\u0647\u0627\u0621 \u0627\u0644\u0637\u0644\u0628.");
   }
 }
 __name(assertRewardOrder, "assertRewardOrder");
 function orderRewardDeadline(order) {
-  const orderCreatedAt = Date.parse(order.createdAt || order.createTime || "");
-  if (!Number.isFinite(orderCreatedAt)) {
-    fail(409, "order-time-missing", "\u062A\u0639\u0630\u0631 \u062A\u062B\u0628\u064A\u062A \u0648\u0642\u062A \u0627\u0644\u0637\u0644\u0628.");
+  const rewardStartedAt = Date.parse(
+    order.completedAt ||
+    order.deliveredAt ||
+    order.finishedAt ||
+    order.updatedAt ||
+    order.createdAt ||
+    order.createTime ||
+    ""
+  );
+  if (!Number.isFinite(rewardStartedAt)) {
+    fail(409, "order-time-missing", "تعذر تثبيت وقت بدء مهلة اللعب.");
   }
-  return orderCreatedAt + 30 * 60 * 1e3;
+  return rewardStartedAt + 30 * 60 * 1e3;
 }
 __name(orderRewardDeadline, "orderRewardDeadline");
 async function startPlayTask(request, env, user, orderId, taskId) {

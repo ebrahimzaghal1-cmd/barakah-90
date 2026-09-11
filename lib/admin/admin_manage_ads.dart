@@ -251,7 +251,8 @@ class _AdEditorState extends State<_AdEditor> {
   String _placement = 'restaurant';
   String _displaySize = 'large';
   String _adFormat = 'banner';
-  String _actionType = 'automatic';
+  String _actionType = 'business';
+  String? _selectedBusinessId;
   bool _active = true;
   bool _saving = false;
   String _uploadProgress = '';
@@ -270,7 +271,9 @@ class _AdEditorState extends State<_AdEditor> {
     _displaySize = _existing['displaySize']?.toString() ?? 'large';
     _adFormat = _existing['adFormat']?.toString() ??
         (_existingGallery.isNotEmpty ? 'gallery' : 'banner');
-    _actionType = _existing['actionType']?.toString() ?? 'automatic';
+    _actionType = _existing['actionType']?.toString() ??
+        (widget.existing == null ? 'business' : 'automatic');
+    _selectedBusinessId = _existing['targetBusinessId']?.toString();
     _active = _existing['isActive'] != false;
   }
 
@@ -344,6 +347,15 @@ class _AdEditorState extends State<_AdEditor> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_actionType == 'business' &&
+        (_selectedBusinessId == null || _selectedBusinessId!.trim().isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('اختاري المحل الذي سيفتح عند الضغط على الإعلان.'),
+        ),
+      );
+      return;
+    }
     final hasExistingMedia =
         (_existing['image']?.toString() ?? '').isNotEmpty ||
             (_existing['video']?.toString() ?? '').isNotEmpty ||
@@ -410,7 +422,10 @@ class _AdEditorState extends State<_AdEditor> {
         'displaySize': _displaySize,
         'adFormat': _adFormat,
         'actionType': _actionType,
-        'destinationUrl': _destinationUrl.text.trim(),
+        'targetBusinessId':
+            _actionType == 'business' ? _selectedBusinessId : null,
+        'destinationUrl':
+            _actionType == 'business' ? '' : _destinationUrl.text.trim(),
         'isActive': _active,
         'image': image,
         'gallery': gallery,
@@ -501,20 +516,91 @@ class _AdEditorState extends State<_AdEditor> {
                 DropdownMenuItem(
                     value: 'restaurantOffers', child: Text('فتح عروض المطاعم')),
                 DropdownMenuItem(
+                    value: 'business',
+                    child: Text('فتح صفحة المحل المعلن عنه')),
+                DropdownMenuItem(
                     value: 'details', child: Text('عرض تفاصيل الإعلان')),
               ],
-              onChanged: (value) =>
-                  setState(() => _actionType = value ?? 'automatic'),
+              onChanged: (value) => setState(() {
+                _actionType = value ?? 'automatic';
+                if (_actionType != 'business') {
+                  _selectedBusinessId = null;
+                }
+              }),
             ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: _destinationUrl,
-              keyboardType: TextInputType.url,
-              decoration: const InputDecoration(
-                labelText: 'رابط خارجي عند الضغط (اختياري)',
-                hintText: 'https://example.com',
+            if (_actionType == 'business') ...[
+              const SizedBox(height: 14),
+              StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream:
+                    FirebaseFirestore.instance.collection('items').snapshots(),
+                builder: (context, snapshot) {
+                  final businesses = (snapshot.data?.docs ?? []).where((doc) {
+                    final data = doc.data();
+                    final kind = data['kind']?.toString().trim().toLowerCase();
+                    final type = data['type']?.toString().trim().toLowerCase();
+                    return kind != 'product' &&
+                        type != 'product' &&
+                        kind != 'agent';
+                  }).toList()
+                    ..sort((a, b) {
+                      final aTitle =
+                          (a.data()['title'] ?? a.data()['name'] ?? '')
+                              .toString()
+                              .toLowerCase();
+                      final bTitle =
+                          (b.data()['title'] ?? b.data()['name'] ?? '')
+                              .toString()
+                              .toLowerCase();
+                      return aTitle.compareTo(bTitle);
+                    });
+
+                  final selectedExists = businesses.any(
+                    (doc) => doc.id == _selectedBusinessId,
+                  );
+
+                  return DropdownButtonFormField<String>(
+                    value: selectedExists ? _selectedBusinessId : null,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'المحل المعلن عنه',
+                      helperText:
+                          'عند الضغط على الإعلان سيفتح هذا المحل داخل بركة.',
+                    ),
+                    items: businesses.map((doc) {
+                      final data = doc.data();
+                      final title = (data['title'] ?? data['name'] ?? '')
+                          .toString()
+                          .trim();
+                      return DropdownMenuItem<String>(
+                        value: doc.id,
+                        child: Text(
+                          title.isEmpty ? 'محل بدون اسم' : title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      );
+                    }).toList(),
+                    validator: (value) => value == null || value.isEmpty
+                        ? 'اختاري المحل المعلن عنه قبل حفظ الإعلان.'
+                        : null,
+                    onChanged: (value) {
+                      setState(() => _selectedBusinessId = value);
+                    },
+                  );
+                },
               ),
-            ),
+            ],
+            if (_actionType != 'business') ...[
+              const SizedBox(height: 14),
+              TextField(
+                controller: _destinationUrl,
+                keyboardType: TextInputType.url,
+                decoration: const InputDecoration(
+                  labelText: 'رابط خارجي عند الضغط (اختياري)',
+                  hintText: 'https://example.com',
+                ),
+              ),
+            ],
             const SizedBox(height: 20),
             DropdownButtonFormField<String>(
               value: _placement,

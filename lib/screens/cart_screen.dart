@@ -150,6 +150,7 @@ Future<void> showProductPurchaseOptions(
   Map<String, dynamic> product, {
   bool isMarket = false,
 }) async {
+  isMarket = isMarket || product['type']?.toString().toLowerCase() == 'market';
   final title = product['title']?.toString().trim() ?? '';
   final basePrice = (product['price'] as num?) ?? 0;
 
@@ -449,7 +450,7 @@ Future<void> showProductPurchaseOptions(
                             ? 'ملاحظات على المنتج'
                             : 'ملاحظات على الوجبة',
                         hintText: isMarket
-                            ? 'اكتب أي ملاحظات خاصة بالمنتج...'
+                            ? 'مثال: اللون المطلوب، المقاس، أو تفاصيل التغليف...'
                             : 'مثال: بدون بصل، الصوص على الجانب...',
                         prefixIcon: const Icon(Icons.edit_note_rounded),
                         border: OutlineInputBorder(

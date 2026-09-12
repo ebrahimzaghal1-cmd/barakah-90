@@ -322,6 +322,32 @@ class _AdminManageUsersState extends State<AdminManageUsers> {
     }
     if (document.id == UserProfileService.primaryAdminUid) return;
 
+    if (!enabled) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('سحب صلاحية مشرف الطلبات؟'),
+          content: const Text(
+            'سيعود الحساب إلى دوره السابق، ولن يتمكن من إدارة الطلبات. '
+            'سيبقى الحساب وسجل العمليات محفوظين.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('تراجع'),
+            ),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              icon: const Icon(Icons.person_off_rounded),
+              label: const Text('تأكيد سحب الصلاحية'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+
     final reference =
         FirebaseFirestore.instance.collection('users').doc(document.id);
     await FirebaseFirestore.instance.runTransaction((transaction) async {
@@ -354,6 +380,8 @@ class _AdminManageUsersState extends State<AdminManageUsers> {
             'adminPermissions': FieldValue.delete(),
             'supervisorAssignedBy': FieldValue.delete(),
             'supervisorAssignedAt': FieldValue.delete(),
+            'supervisorRevokedBy': currentUid,
+            'supervisorRevokedAt': FieldValue.serverTimestamp(),
             'updatedAt': FieldValue.serverTimestamp(),
           },
           SetOptions(merge: true),

@@ -32,6 +32,7 @@ class _AdminCustomerServiceState extends State<AdminCustomerService> {
   bool _saving = false;
   bool _contactSaving = false;
   bool? _hiringOpen;
+  final Set<String> _revokingUserIds = <String>{};
 
   DocumentReference<Map<String, dynamic>> get _settings =>
       _firestore.collection('app_settings').doc('customer_service_recruitment');
@@ -176,6 +177,126 @@ class _AdminCustomerServiceState extends State<AdminCustomerService> {
               : 'تم رفض الطلب.'),
         ),
       );
+    }
+  }
+
+  String _statusLabel(String status) => switch (status) {
+        'approved' => 'مقبول',
+        'rejected' => 'مرفوض',
+        'revoked' => 'تم إلغاء الصلاحية',
+        _ => 'قيد المراجعة',
+      };
+
+  Future<void> _revokeEmployee(
+    DocumentSnapshot<Map<String, dynamic>> application,
+  ) async {
+    final data = application.data() ?? const <String, dynamic>{};
+    final userId = data['userId']?.toString().trim().isNotEmpty == true
+        ? data['userId'].toString().trim()
+        : application.id;
+    final employeeName = data['fullName']?.toString().trim().isNotEmpty == true
+        ? data['fullName'].toString().trim()
+        : 'هذا الموظف';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('إلغاء صلاحية موظف خدمة العملاء؟'),
+        content: Text(
+          'سيتم إيقاف دخول $employeeName إلى بوابة خدمة العملاء وإعادة حسابه '
+          'إلى حساب مستخدم عادي. سيبقى الحساب وسجل المحادثات محفوظين.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('تراجع'),
+          ),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            icon: const Icon(Icons.person_off_rounded),
+            label: const Text('تأكيد إلغاء الصلاحية'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _revokingUserIds.add(userId));
+    try {
+      final adminId = FirebaseAuth.instance.currentUser?.uid ?? '';
+      final assignedThreads = await _firestore
+          .collection('support_threads')
+          .where('assignedAgentId', isEqualTo: userId)
+          .limit(400)
+          .get();
+      final batch = _firestore.batch();
+
+      batch.update(application.reference, {
+        'status': 'revoked',
+        'revokedAt': FieldValue.serverTimestamp(),
+        'revokedBy': adminId,
+        'reviewedAt': FieldValue.serverTimestamp(),
+        'reviewedBy': adminId,
+      });
+      batch.set(
+        _firestore.collection('users').doc(userId),
+        {
+          'role': 'customer',
+          'customerServiceEnabled': false,
+          'customerServiceRevokedAt': FieldValue.serverTimestamp(),
+          'customerServiceRevokedBy': adminId,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+      batch.set(
+        _firestore.collection('employment_contracts').doc(userId),
+        {
+          'status': 'terminated',
+          'terminatedAt': FieldValue.serverTimestamp(),
+          'terminatedBy': adminId,
+        },
+        SetOptions(merge: true),
+      );
+      batch.set(
+        _firestore.collection('customer_service_presence').doc(userId),
+        {
+          'isAvailable': false,
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+
+      for (final thread in assignedThreads.docs) {
+        final status = thread.data()['status']?.toString() ?? 'open';
+        if (status == 'closed' || status == 'resolved') continue;
+        batch.update(thread.reference, {
+          'assignedAgentId': '',
+          'assignedAgentName': '',
+          'status': 'open',
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      await batch.commit();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تم إلغاء صلاحية $employeeName بأمان.'),
+          backgroundColor: Colors.green.shade700,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تعذر إلغاء صلاحية الموظف: $error'),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _revokingUserIds.remove(userId));
     }
   }
 
@@ -354,6 +475,11 @@ class _AdminCustomerServiceState extends State<AdminCustomerService> {
                   children: applications.map((application) {
                     final data = application.data();
                     final status = data['status']?.toString() ?? 'pending';
+                    final userId =
+                        data['userId']?.toString().trim().isNotEmpty == true
+                            ? data['userId'].toString().trim()
+                            : application.id;
+                    final revoking = _revokingUserIds.contains(userId);
                     return Card(
                       child: ExpansionTile(
                         leading: const CircleAvatar(
@@ -365,7 +491,7 @@ class _AdminCustomerServiceState extends State<AdminCustomerService> {
                             style:
                                 const TextStyle(fontWeight: FontWeight.w900)),
                         subtitle: Text(
-                            '${data['phone'] ?? ''} • ${data['city'] ?? ''} • $status'),
+                            '${data['phone'] ?? ''} • ${data['city'] ?? ''} • ${_statusLabel(status)}'),
                         childrenPadding: const EdgeInsets.all(16),
                         children: [
                           _row('الخبرة', data['experience']),
@@ -423,6 +549,59 @@ class _AdminCustomerServiceState extends State<AdminCustomerService> {
                                 icon: const Icon(Icons.description_rounded),
                                 label: const Text(
                                     'إصدار وثيقة التوظيف وتفعيل الحساب'),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              width: double.infinity,
+                              child: OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.red.shade700,
+                                  side: BorderSide(color: Colors.red.shade300),
+                                ),
+                                onPressed: revoking
+                                    ? null
+                                    : () => _revokeEmployee(application),
+                                icon: revoking
+                                    ? const SizedBox.square(
+                                        dimension: 18,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2),
+                                      )
+                                    : const Icon(Icons.person_off_rounded),
+                                label: Text(revoking
+                                    ? 'جارٍ إلغاء الصلاحية...'
+                                    : 'إلغاء صلاحية موظف خدمة العملاء'),
+                              ),
+                            ),
+                          ] else if (status == 'revoked') ...[
+                            const SizedBox(height: 12),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.red.shade50,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.red.shade200),
+                              ),
+                              child: Text(
+                                'تم إلغاء صلاحية خدمة العملاء، والحساب ما زال محفوظًا كمستخدم عادي.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.red.shade800,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              width: double.infinity,
+                              child: FilledButton.icon(
+                                onPressed: () =>
+                                    _review(application, 'approved'),
+                                icon:
+                                    const Icon(Icons.person_add_alt_1_rounded),
+                                label: const Text('إعادة تفعيل الموظف'),
                               ),
                             ),
                           ],

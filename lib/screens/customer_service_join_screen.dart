@@ -129,12 +129,15 @@ class _CustomerServiceJoinScreenState extends State<CustomerServiceJoinScreen> {
     final title = switch (status) {
       'approved' => 'تم قبول طلبك وإصدار الوثيقة ✅',
       'rejected' => 'تمت مراجعة الطلب',
+      'revoked' => 'تم إنهاء صلاحية خدمة العملاء',
       _ => 'طلبك قيد المراجعة',
     };
     final subtitle = switch (status) {
       'approved' =>
         'ادخل من صفحتي إلى بوابة موظف خدمة العملاء لقراءة وثيقة التوظيف وتوقيعها.',
       'rejected' => 'يمكنك التواصل مع فريق التوظيف للاستفسار عن النتيجة.',
+      'revoked' =>
+        'تم إيقاف دخولك إلى بوابة خدمة العملاء، وبقي حسابك العادي وبياناته محفوظين.',
       _ => 'يمكنك التواصل مع فريق التوظيف من داخل بركة ومتابعة طلبك.',
     };
     return ListView(

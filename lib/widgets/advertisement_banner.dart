@@ -11,6 +11,16 @@ import '../services/firebase_state.dart';
 import '../theme/app_theme.dart';
 import 'barakah_brand.dart';
 
+int _adSortTimestamp(Map<String, dynamic> data) {
+  for (final key in const ['updatedAt', 'createdAt']) {
+    final value = data[key];
+    if (value is Timestamp) return value.millisecondsSinceEpoch;
+    if (value is DateTime) return value.millisecondsSinceEpoch;
+    if (value is int) return value;
+  }
+  return 0;
+}
+
 Future<void> _openAdvertisement(
   BuildContext context,
   Map<String, dynamic> data,
@@ -172,13 +182,9 @@ class AdvertisementBanner extends StatelessWidget {
         }).toList();
         if (ads.isEmpty) return const SizedBox.shrink();
         ads.sort((a, b) {
-          final right =
-              (b.data()['createdAt'] as Timestamp?)?.millisecondsSinceEpoch ??
-                  0;
-          final left =
-              (a.data()['createdAt'] as Timestamp?)?.millisecondsSinceEpoch ??
-                  0;
-          return right.compareTo(left);
+          final byUpdated =
+              _adSortTimestamp(b.data()).compareTo(_adSortTimestamp(a.data()));
+          return byUpdated == 0 ? b.id.compareTo(a.id) : byUpdated;
         });
         return _AdCarousel(ads: ads.take(7).toList());
       },
@@ -220,13 +226,9 @@ class SponsoredAdsFeed extends StatelessWidget {
               (image.isNotEmpty || gallery?.isNotEmpty == true);
         }).toList()
           ..sort((a, b) {
-            final right =
-                (b.data()['createdAt'] as Timestamp?)?.millisecondsSinceEpoch ??
-                    0;
-            final left =
-                (a.data()['createdAt'] as Timestamp?)?.millisecondsSinceEpoch ??
-                    0;
-            return right.compareTo(left);
+            final byUpdated = _adSortTimestamp(b.data())
+                .compareTo(_adSortTimestamp(a.data()));
+            return byUpdated == 0 ? b.id.compareTo(a.id) : byUpdated;
           });
         if (ads.isEmpty) {
           final message = emptyMessage;

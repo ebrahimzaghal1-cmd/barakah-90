@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'admin_manage_partner_applications.dart';
+import 'admin_live_dashboard.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -29,7 +30,9 @@ import '../services/user_profile_service.dart';
 import '../services/admin_submission_notification_service.dart';
 
 class AdminDashboard extends StatelessWidget {
-  const AdminDashboard({super.key});
+  const AdminDashboard({super.key, this.showTools = false});
+
+  final bool showTools;
 
   @override
   Widget build(BuildContext context) {
@@ -78,7 +81,14 @@ class AdminDashboard extends StatelessWidget {
           return const OrderSupervisorScreen();
         }
 
-        return _buildDashboard(context);
+        if (showTools) return _buildDashboard(context);
+        return AdminLiveDashboard(
+          onTools: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const AdminDashboard(showTools: true),
+              )),
+        );
       },
     );
   }

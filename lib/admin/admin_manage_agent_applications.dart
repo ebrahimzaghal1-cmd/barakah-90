@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
@@ -233,6 +234,89 @@ class AdminManageAgentApplications extends StatelessWidget {
     );
   }
 
+  Future<void> _revoke(
+    BuildContext context,
+    DocumentSnapshot<Map<String, dynamic>> application,
+  ) async {
+    final data = application.data() ?? const <String, dynamic>{};
+    final name = _value(data, 'fullName');
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('إلغاء صلاحية الوسيطة؟'),
+        content: Text(
+          'سيتم إيقاف $name وإخفاؤها من الوسيطات المتاحات. سيبقى حسابها '
+          'وسجل الطلبات والمستحقات السابقة محفوظًا.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('تراجع'),
+          ),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            icon: const Icon(Icons.person_off_rounded),
+            label: const Text('تأكيد إلغاء الصلاحية'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final firestore = FirebaseFirestore.instance;
+    final adminId = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final batch = firestore.batch();
+    batch.set(
+      firestore.collection('users').doc(application.id),
+      {
+        'isAgent': false,
+        'agentActive': false,
+        'agentRevokedAt': FieldValue.serverTimestamp(),
+        'agentRevokedBy': adminId,
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+    batch.set(
+      firestore.collection('agents').doc(application.id),
+      {
+        'active': false,
+        'approved': false,
+        'revokedAt': FieldValue.serverTimestamp(),
+        'revokedBy': adminId,
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+    batch.set(
+      firestore.collection('items').doc('agent_${application.id}'),
+      {
+        'active': false,
+        'approved': false,
+        'agentVerified': false,
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+    batch.set(
+      application.reference,
+      {
+        'status': 'revoked',
+        'revokedAt': FieldValue.serverTimestamp(),
+        'revokedBy': adminId,
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+    await batch.commit();
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('تم إلغاء صلاحية الوسيطة بأمان.')),
+    );
+  }
+
   Future<void> _delete(
     BuildContext context,
     DocumentSnapshot<Map<String, dynamic>> application,
@@ -431,6 +515,7 @@ class AdminManageAgentApplications extends StatelessWidget {
               final status = data['status']?.toString() ?? 'pending';
               final approved = status == 'approved';
               final rejected = status == 'rejected';
+              final revoked = status == 'revoked';
 
               final identityVerified = data['identityVerified'] == true;
               final locationVerified = data['locationVerified'] == true;
@@ -464,7 +549,7 @@ class AdminManageAgentApplications extends StatelessWidget {
                             decoration: BoxDecoration(
                               color: approved
                                   ? const Color(0xFFE0F6EA)
-                                  : rejected
+                                  : rejected || revoked
                                       ? const Color(0xFFFFE8E8)
                                       : AppTheme.coolYellow.withOpacity(.25),
                               shape: BoxShape.circle,
@@ -472,12 +557,12 @@ class AdminManageAgentApplications extends StatelessWidget {
                             child: Icon(
                               approved
                                   ? Icons.verified_rounded
-                                  : rejected
+                                  : rejected || revoked
                                       ? Icons.close_rounded
                                       : Icons.support_agent_rounded,
                               color: approved
                                   ? const Color(0xFF1B8A5A)
-                                  : rejected
+                                  : rejected || revoked
                                       ? Colors.red
                                       : AppTheme.navy,
                             ),
@@ -498,15 +583,17 @@ class AdminManageAgentApplications extends StatelessWidget {
                                 Text(
                                   approved
                                       ? 'وسيطة معتمدة'
-                                      : rejected
-                                          ? 'الطلب مرفوض'
-                                          : readyToApprove
-                                              ? 'جاهزة للاعتماد'
-                                              : 'بانتظار التحقق',
+                                      : revoked
+                                          ? 'تم إلغاء صلاحية الوسيطة'
+                                          : rejected
+                                              ? 'الطلب مرفوض'
+                                              : readyToApprove
+                                                  ? 'جاهزة للاعتماد'
+                                                  : 'بانتظار التحقق',
                                   style: TextStyle(
                                     color: approved
                                         ? const Color(0xFF1B8A5A)
-                                        : rejected
+                                        : rejected || revoked
                                             ? Colors.red
                                             : const Color(0xFF9A6A00),
                                     fontWeight: FontWeight.w800,
@@ -558,7 +645,7 @@ class AdminManageAgentApplications extends StatelessWidget {
                         'بيانات الحساب',
                         _value(data, 'payoutAccount'),
                       ),
-                      if (!approved && !rejected) ...[
+                      if (!approved && !rejected && !revoked) ...[
                         const Divider(height: 28),
                         _verificationTile(
                           reference: application.reference,
@@ -613,6 +700,35 @@ class AdminManageAgentApplications extends StatelessWidget {
                               fontWeight: FontWeight.w900,
                             ),
                           ),
+                        ),
+                      ],
+                      if (approved) ...[
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: () => _revoke(context, application),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red.shade700,
+                            side: BorderSide(color: Colors.red.shade300),
+                          ),
+                          icon: const Icon(Icons.person_off_rounded),
+                          label: const Text('إلغاء صلاحية الوسيطة'),
+                        ),
+                      ],
+                      if (revoked) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          'الصلاحية متوقفة والظهور العام معطّل، مع حفظ السجلات.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.red.shade700,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        FilledButton.icon(
+                          onPressed: () => _approve(context, application),
+                          icon: const Icon(Icons.person_add_alt_1_rounded),
+                          label: const Text('إعادة تفعيل الوسيطة'),
                         ),
                       ],
                       const SizedBox(height: 8),

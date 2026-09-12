@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
@@ -161,6 +162,70 @@ class AdminManageDrivers extends StatelessWidget {
       const SnackBar(
         content: Text('تم رفض طلب السائق'),
       ),
+    );
+  }
+
+  Future<void> _revoke(
+    BuildContext context,
+    DocumentSnapshot<Map<String, dynamic>> application,
+  ) async {
+    final data = application.data() ?? const <String, dynamic>{};
+    final name = _value(data, 'fullName');
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('إلغاء صلاحية السائق؟'),
+        content: Text(
+          'سيتم إيقاف $name عن استقبال طلبات التوصيل وإعادة حسابه إلى مستخدم '
+          'عادي. سيبقى الحساب وسجل الطلبات محفوظين.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('تراجع'),
+          ),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            icon: const Icon(Icons.person_off_rounded),
+            label: const Text('تأكيد إلغاء الصلاحية'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final firestore = FirebaseFirestore.instance;
+    final adminId = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final batch = firestore.batch();
+    batch.set(
+      firestore.collection('users').doc(application.id),
+      {
+        if (application.id != 'Y3YeLin9gYTbqN4if72o3iTrUSn2')
+          'role': 'customer',
+        'driverAvailable': false,
+        'driverBusy': false,
+        'driverRevokedAt': FieldValue.serverTimestamp(),
+        'driverRevokedBy': adminId,
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+    batch.set(
+      application.reference,
+      {
+        'status': 'revoked',
+        'revokedAt': FieldValue.serverTimestamp(),
+        'revokedBy': adminId,
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+    await batch.commit();
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('تم إلغاء صلاحية السائق بأمان.')),
     );
   }
 
@@ -363,6 +428,7 @@ class AdminManageDrivers extends StatelessWidget {
 
               final approved = status == 'approved';
               final rejected = status == 'rejected';
+              final revoked = status == 'revoked';
 
               final identityVerified = data['identityVerified'] == true;
               final licenseVerified = data['driverLicenseVerified'] == true;
@@ -398,7 +464,7 @@ class AdminManageDrivers extends StatelessWidget {
                             decoration: BoxDecoration(
                               color: approved
                                   ? const Color(0xFFE0F6EA)
-                                  : rejected
+                                  : rejected || revoked
                                       ? const Color(0xFFFFE8E8)
                                       : AppTheme.coolYellow.withOpacity(.25),
                               shape: BoxShape.circle,
@@ -406,12 +472,12 @@ class AdminManageDrivers extends StatelessWidget {
                             child: Icon(
                               approved
                                   ? Icons.verified_rounded
-                                  : rejected
+                                  : rejected || revoked
                                       ? Icons.close_rounded
                                       : Icons.delivery_dining_rounded,
                               color: approved
                                   ? const Color(0xFF1B8A5A)
-                                  : rejected
+                                  : rejected || revoked
                                       ? Colors.red
                                       : AppTheme.navy,
                             ),
@@ -435,17 +501,19 @@ class AdminManageDrivers extends StatelessWidget {
                                 Text(
                                   approved
                                       ? 'سائق معتمد'
-                                      : rejected
-                                          ? 'الطلب مرفوض'
-                                          : readyToApprove
-                                              ? 'جاهز للاعتماد'
-                                              : 'بانتظار التحقق',
+                                      : revoked
+                                          ? 'تم إلغاء صلاحية السائق'
+                                          : rejected
+                                              ? 'الطلب مرفوض'
+                                              : readyToApprove
+                                                  ? 'جاهز للاعتماد'
+                                                  : 'بانتظار التحقق',
                                   style: TextStyle(
                                     color: approved
                                         ? const Color(
                                             0xFF1B8A5A,
                                           )
-                                        : rejected
+                                        : rejected || revoked
                                             ? Colors.red
                                             : const Color(
                                                 0xFF9A6A00,
@@ -613,7 +681,7 @@ class AdminManageDrivers extends StatelessWidget {
                           ),
                         ],
                       ),
-                      if (!approved && !rejected) ...[
+                      if (!approved && !rejected && !revoked) ...[
                         const SizedBox(height: 16),
                         SizedBox(
                           height: 50,
@@ -662,6 +730,35 @@ class AdminManageDrivers extends StatelessWidget {
                             Icons.close_rounded,
                           ),
                           label: const Text('رفض الطلب'),
+                        ),
+                      ],
+                      if (approved) ...[
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: () => _revoke(context, application),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red.shade700,
+                            side: BorderSide(color: Colors.red.shade300),
+                          ),
+                          icon: const Icon(Icons.person_off_rounded),
+                          label: const Text('إلغاء صلاحية السائق'),
+                        ),
+                      ],
+                      if (revoked) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          'الصلاحية متوقفة، والحساب وسجل التوصيلات محفوظان.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.red.shade700,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        FilledButton.icon(
+                          onPressed: () => _approve(context, application),
+                          icon: const Icon(Icons.person_add_alt_1_rounded),
+                          label: const Text('إعادة تفعيل السائق'),
                         ),
                       ],
                       const SizedBox(height: 8),

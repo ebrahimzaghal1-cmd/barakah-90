@@ -258,7 +258,9 @@ class RestaurantDetailsScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 12),
-                        _BusinessProducts(businessId: _businessId!),
+                        _BusinessProducts(
+                            businessId: _businessId!,
+                            isMarket: typeValue == 'market'),
                       ],
                     ],
                   ],
@@ -309,7 +311,11 @@ class RestaurantDetailsScreen extends StatelessWidget {
 }
 
 class _BusinessProducts extends StatelessWidget {
-  const _BusinessProducts({required this.businessId, this.horizontal = false});
+  const _BusinessProducts(
+      {required this.businessId,
+      this.horizontal = false,
+      this.isMarket = false});
+  final bool isMarket;
   final String businessId;
   final bool horizontal;
 
@@ -352,6 +358,7 @@ class _BusinessProducts extends StatelessWidget {
                 context,
                 product.id,
                 data,
+                isMarket: isMarket,
               ),
               child: Container(
                 margin: const EdgeInsets.only(bottom: 14),

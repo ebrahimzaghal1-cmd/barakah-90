@@ -9,8 +9,10 @@ class AdminManageOrders extends StatelessWidget {
     super.key,
     this.embedded = false,
     this.supervisorMode = false,
+    this.orderId,
   });
 
+  final String? orderId;
   final bool embedded;
   final bool supervisorMode;
 
@@ -310,7 +312,9 @@ class AdminManageOrders extends StatelessWidget {
           );
         }
 
-        final orders = snapshot.data!.docs.toList()
+        final orders = snapshot.data!.docs
+            .where((doc) => orderId == null || doc.id == orderId)
+            .toList()
           ..sort((a, b) {
             final right = b.data()['createdAt'] as Timestamp?;
             final left = a.data()['createdAt'] as Timestamp?;
@@ -357,6 +361,7 @@ class AdminManageOrders extends StatelessWidget {
             return Card(
               clipBehavior: Clip.antiAlias,
               child: ExpansionTile(
+                initiallyExpanded: orderId != null,
                 leading: const CircleAvatar(
                   child: Icon(Icons.receipt_long_rounded),
                 ),

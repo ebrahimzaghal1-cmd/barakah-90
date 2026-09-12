@@ -10,6 +10,7 @@ import '../services/firebase_state.dart';
 import '../services/analytics_service.dart';
 import '../services/cart_service.dart';
 import '../theme/app_theme.dart';
+
 import '../widgets/responsive_page.dart';
 import '../widgets/advertisement_banner.dart';
 import '../widgets/barakah_online_status_button.dart';

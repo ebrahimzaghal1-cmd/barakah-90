@@ -402,6 +402,39 @@ class AdminManageOrders extends StatelessWidget {
                         ? Map<String, dynamic>.from(line)
                         : <String, dynamic>{};
 
+                    final selectedOptions = (item['selectedOptions'] as List?)
+                            ?.whereType<Map>()
+                            .map((option) => Map<String, dynamic>.from(option))
+                            .toList() ??
+                        const <Map<String, dynamic>>[];
+
+                    final specialNote =
+                        item['specialNote']?.toString().trim() ?? '';
+
+                    final details = <String>[
+                      'الكمية: ${item['quantity'] ?? 1}',
+                      ...selectedOptions.map((option) {
+                        final groupName =
+                            option['groupName']?.toString().trim() ?? '';
+                        final optionName =
+                            option['optionName']?.toString().trim() ?? '';
+                        final priceDelta = option['priceDelta'];
+
+                        final label = groupName.isNotEmpty
+                            ? '$groupName: $optionName'
+                            : optionName;
+
+                        if (label.isEmpty) return '';
+
+                        if (priceDelta is num && priceDelta > 0) {
+                          return '$label (+$priceDelta ₪)';
+                        }
+
+                        return label;
+                      }).where((text) => text.isNotEmpty),
+                      if (specialNote.isNotEmpty) 'ملاحظة: $specialNote',
+                    ];
+
                     return ListTile(
                       dense: true,
                       contentPadding: EdgeInsets.zero,
@@ -411,9 +444,7 @@ class AdminManageOrders extends StatelessWidget {
                       title: Text(
                         item['title']?.toString() ?? 'صنف',
                       ),
-                      subtitle: Text(
-                        'الكمية: ${item['quantity'] ?? 1}',
-                      ),
+                      subtitle: Text(details.join('\n')),
                       trailing: supervisorMode
                           ? null
                           : Text('${item['price'] ?? 0} ₪'),

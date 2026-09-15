@@ -3633,6 +3633,13 @@ async function createOrder(request, env, user) {
     orderNumber,
     orderSequence: sequence,
     customerId: user.uid,
+    customerName: String(
+      customer.fullName ||
+      customer.name ||
+      customer.displayName ||
+      user.name ||
+      ""
+    ).trim() || null,
     customerEmail: user.email,
     customerPhone: customerPhone || null,
     deliveryAddress: deliveryAddress || null,

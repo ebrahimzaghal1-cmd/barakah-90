@@ -10,6 +10,7 @@ import 'location_picker_screen.dart';
 import 'restaurant_details_screen.dart';
 import '../services/order_service.dart';
 import '../services/barber_booking_service.dart';
+import '../services/taxi_order_service.dart';
 import '../services/media_upload_service.dart';
 import '../services/business_manager_service.dart';
 import '../theme/app_theme.dart';
@@ -1025,6 +1026,10 @@ class MerchantDashboard extends StatelessWidget {
                           AgentEarningsPanel(agentId: business.id),
                           const SizedBox(height: 8),
                         ],
+                        if (_isTaxiBusiness(data)) ...[
+                          _MerchantTaxiOrders(businessId: business.id),
+                          const SizedBox(height: 8),
+                        ],
                         _MerchantCoupons(businessId: business.id),
                         const SizedBox(height: 8),
                         _MerchantOrders(businessId: business.id),
@@ -1049,6 +1054,507 @@ class MerchantDashboard extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+}
+
+bool _isTaxiBusiness(Map<String, dynamic> data) {
+  final type = data['type']?.toString().toLowerCase().trim() ?? '';
+  final merchantType =
+      data['merchantType']?.toString().toLowerCase().trim() ?? '';
+  final category = data['category']?.toString().toLowerCase().trim() ?? '';
+  final activity = data['activityType']?.toString().toLowerCase().trim() ?? '';
+  final title =
+      (data['title'] ?? data['name'])?.toString().toLowerCase().trim() ?? '';
+
+  return type == 'taxi' ||
+      merchantType == 'taxi' ||
+      category.contains('تكسي') ||
+      category.contains('تاكسي') ||
+      category.contains('taxi') ||
+      activity.contains('تكسي') ||
+      activity.contains('تاكسي') ||
+      activity.contains('taxi') ||
+      title.contains('تكسي') ||
+      title.contains('تاكسي');
+}
+
+class _MerchantTaxiOrders extends StatelessWidget {
+  const _MerchantTaxiOrders({required this.businessId});
+
+  final String businessId;
+
+  String _statusLabel(String status) => switch (status) {
+        'pending' => 'بانتظار إرسال سيارة',
+        'dispatched' => 'تم إرسال السيارة',
+        'awaiting_customer_confirmation' => 'بانتظار تأكيد العميل',
+        'completed' => 'رحلة مكتملة',
+        'cancelled' => 'ملغي',
+        _ => status,
+      };
+
+  Future<void> _dispatch(
+    BuildContext context,
+    String orderId,
+  ) async {
+    final vehicleController = TextEditingController();
+    final etaController = TextEditingController(text: '5');
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('إرسال سيارة للعميل'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: vehicleController,
+              decoration: const InputDecoration(
+                labelText: 'بيانات السيارة',
+                hintText: 'مثال: سكودا أبيض - رقم 1234',
+                prefixIcon: Icon(Icons.local_taxi_rounded),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: etaController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'وقت الوصول المتوقع بالدقائق',
+                prefixIcon: Icon(Icons.timer_outlined),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('تراجع'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final vehicle = vehicleController.text.trim();
+              final eta = int.tryParse(etaController.text.trim());
+
+              if (vehicle.isEmpty || eta == null || eta < 1 || eta > 240) {
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'أدخل بيانات السيارة ووقت وصول صحيحًا.',
+                    ),
+                  ),
+                );
+                return;
+              }
+
+              Navigator.pop(dialogContext, {
+                'vehicle': vehicle,
+                'eta': eta,
+              });
+            },
+            child: const Text('إرسال السيارة'),
+          ),
+        ],
+      ),
+    );
+
+    vehicleController.dispose();
+    etaController.dispose();
+
+    if (result == null || !context.mounted) return;
+
+    try {
+      await TaxiOrderService.instance.dispatchTaxi(
+        orderId: orderId,
+        vehicleInfo: result['vehicle'].toString(),
+        etaMinutes: result['eta'] as int,
+      );
+
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('تم إرسال بيانات السيارة للعميل ✅'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تعذر إرسال السيارة: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _complete(
+    BuildContext context,
+    String orderId,
+  ) async {
+    final fareController = TextEditingController();
+
+    final fareAmount = await showDialog<double>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('إنهاء رحلة التكسي'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'أدخل أجرة الرحلة الفعلية. سيحسب خادم بركة العمولة تلقائيًا حسب نسبة المكتب.',
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: fareController,
+              autofocus: true,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: const InputDecoration(
+                labelText: 'أجرة الرحلة',
+                hintText: 'مثال: 30',
+                prefixIcon: Icon(Icons.payments_outlined),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('تراجع'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final normalized =
+                  fareController.text.trim().replaceAll(',', '.');
+              final value = double.tryParse(normalized);
+
+              if (value == null || value <= 0 || value > 100000) {
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  const SnackBar(
+                    content: Text('أدخل أجرة رحلة صحيحة.'),
+                  ),
+                );
+                return;
+              }
+
+              Navigator.pop(dialogContext, value);
+            },
+            child: const Text('تسجيل انتهاء الرحلة'),
+          ),
+        ],
+      ),
+    );
+
+    fareController.dispose();
+
+    if (fareAmount == null || !context.mounted) return;
+
+    try {
+      await TaxiOrderService.instance.completeTrip(
+        orderId: orderId,
+        fareAmount: fareAmount,
+      );
+
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'تم تسجيل انتهاء المشوار، وبانتظار تأكيد العميل ✅',
+          ),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تعذر إنهاء الرحلة: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _cancel(
+    BuildContext context,
+    String orderId,
+  ) async {
+    final reasonController = TextEditingController();
+
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('إلغاء طلب التكسي'),
+        content: TextField(
+          controller: reasonController,
+          maxLines: 2,
+          decoration: const InputDecoration(
+            labelText: 'سبب الإلغاء',
+            hintText: 'مثال: لا توجد سيارة متاحة حاليًا',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('تراجع'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(
+              dialogContext,
+              reasonController.text.trim(),
+            ),
+            child: const Text('تأكيد الإلغاء'),
+          ),
+        ],
+      ),
+    );
+
+    reasonController.dispose();
+
+    if (reason == null || !context.mounted) return;
+
+    try {
+      await TaxiOrderService.instance.cancelTrip(
+        orderId: orderId,
+        reason: reason,
+      );
+
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تم إلغاء الطلب.')),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تعذر إلغاء الطلب: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ExpansionTile(
+      leading: const Icon(Icons.local_taxi_rounded),
+      title: const Text(
+        'طلبات تكسي بركة',
+        style: TextStyle(fontWeight: FontWeight.w900),
+      ),
+      subtitle: const Text(
+        'استقبال الطلبات وإرسال السيارة وتوثيق الرحلات',
+      ),
+      children: [
+        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+          stream: TaxiOrderService.instance.watchBusinessOrders(businessId),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  'تعذر تحميل طلبات التكسي: ${snapshot.error}',
+                ),
+              );
+            }
+
+            if (!snapshot.hasData) {
+              return const Padding(
+                padding: EdgeInsets.all(20),
+                child: CircularProgressIndicator(),
+              );
+            }
+
+            final orders = snapshot.data!.docs.toList()
+              ..sort((a, b) {
+                final aTime = a.data()['createdAt'];
+                final bTime = b.data()['createdAt'];
+
+                final aDate =
+                    aTime is Timestamp ? aTime.toDate() : DateTime(1970);
+                final bDate =
+                    bTime is Timestamp ? bTime.toDate() : DateTime(1970);
+
+                return bDate.compareTo(aDate);
+              });
+
+            if (orders.isEmpty) {
+              return const Padding(
+                padding: EdgeInsets.all(18),
+                child: Text(
+                  'لا توجد طلبات تكسي حتى الآن.',
+                  textAlign: TextAlign.center,
+                ),
+              );
+            }
+
+            return Column(
+              children: orders.map((doc) {
+                final data = doc.data();
+                final status = data['status']?.toString() ?? 'pending';
+                final customer = data['customerName']?.toString().trim() ?? '';
+                final phone = data['customerPhone']?.toString().trim() ?? '';
+                final pickup = data['pickupAddress']?.toString().trim() ?? '';
+                final destination =
+                    data['destination']?.toString().trim() ?? '';
+                final notes = data['notes']?.toString().trim() ?? '';
+                final vehicle =
+                    data['dispatchedVehicle']?.toString().trim() ?? '';
+                final eta = data['dispatchedEtaMinutes'];
+                final fareAmount = data['fareAmount'];
+                final commissionRate = data['commissionRate'];
+                final commissionAmount = data['commissionAmount'];
+
+                return Card(
+                  margin: const EdgeInsets.fromLTRB(8, 6, 8, 10),
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                data['orderNumber']?.toString() ?? 'طلب تكسي',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ),
+                            Chip(label: Text(_statusLabel(status))),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          customer.isEmpty
+                              ? 'العميل: عميل بركة'
+                              : 'العميل: $customer',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        if (phone.isNotEmpty) Text('الهاتف: $phone'),
+                        const SizedBox(height: 8),
+                        Text(
+                          'موقع الركوب: ${pickup.isEmpty ? "غير محدد" : pickup}',
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'الوجهة: ${destination.isEmpty ? "غير محددة" : destination}',
+                        ),
+                        if (notes.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text('ملاحظات: $notes'),
+                        ],
+                        if (vehicle.isNotEmpty) ...[
+                          const Divider(height: 22),
+                          Text(
+                            'السيارة: $vehicle',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          if (eta != null)
+                            Text('وقت الوصول المتوقع: $eta دقائق'),
+                        ],
+                        if ((status == 'awaiting_customer_confirmation' ||
+                                status == 'completed') &&
+                            fareAmount != null &&
+                            commissionRate != null &&
+                            commissionAmount != null) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'أجرة الرحلة: $fareAmount ₪',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                Text(
+                                  'نسبة عمولة بركة: $commissionRate%',
+                                ),
+                                Text(
+                                  'عمولة بركة: $commissionAmount ₪',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                if (status == 'awaiting_customer_confirmation')
+                                  const Padding(
+                                    padding: EdgeInsets.only(top: 6),
+                                    child: Text(
+                                      'العمولة بانتظار تأكيد وصول العميل.',
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        if (status == 'pending')
+                          FilledButton.icon(
+                            onPressed: () => _dispatch(
+                              context,
+                              doc.id,
+                            ),
+                            icon: const Icon(
+                              Icons.local_taxi_rounded,
+                            ),
+                            label: const Text('إرسال سيارة'),
+                          ),
+                        if (status == 'dispatched')
+                          FilledButton.icon(
+                            onPressed: () => _complete(
+                              context,
+                              doc.id,
+                            ),
+                            icon: const Icon(
+                              Icons.check_circle_outline,
+                            ),
+                            label: const Text(
+                              'إنهاء المشوار وإدخال الأجرة',
+                            ),
+                          ),
+                        if (status == 'pending' || status == 'dispatched') ...[
+                          const SizedBox(height: 6),
+                          OutlinedButton.icon(
+                            onPressed: () => _cancel(
+                              context,
+                              doc.id,
+                            ),
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              color: Colors.red,
+                            ),
+                            label: const Text(
+                              'إلغاء الطلب',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            );
+          },
+        ),
+      ],
     );
   }
 }

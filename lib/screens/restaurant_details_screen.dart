@@ -12,6 +12,7 @@ import '../widgets/barakah_brand.dart';
 import '../widgets/business_rating.dart';
 import '../widgets/favorite_button.dart';
 import '../widgets/barber_booking_section.dart';
+import '../widgets/taxi_booking_section.dart';
 import 'cart_screen.dart';
 import 'agent_order_screen.dart';
 import 'customer_support_chat_screen.dart';
@@ -53,8 +54,23 @@ class RestaurantDetailsScreen extends StatelessWidget {
         categoryValue.contains('barber') ||
         activityValue.contains('حلاق') ||
         activityValue.contains('barber');
+    final isTaxi = typeValue == 'taxi' ||
+        merchantType == 'taxi' ||
+        categoryValue.contains('تكسي') ||
+        categoryValue.contains('تاكسي') ||
+        categoryValue.contains('taxi') ||
+        activityValue.contains('تكسي') ||
+        activityValue.contains('تاكسي') ||
+        name.contains('تكسي') ||
+        name.contains('تاكسي');
     final agentLocation =
         (data['agentLocation'] ?? data['address'])?.toString().trim() ?? '';
+
+    final isPhoneLikeDesc = description != null &&
+        RegExp(r'^[0-9+\s\-()]{5,}$').hasMatch(description.trim());
+    final displayDescription = isTaxi && (isPhoneLikeDesc || description == null || description.isEmpty)
+        ? 'خدمة التاكسي السريع والمباشر بكبسة زر في طولكرم وضواحيها. طلب التاكسي يتم مباشرة عبر التطبيق لحفظ حقوقك وتوثيق الرحلة بأمان.'
+        : (description?.isNotEmpty == true ? description! : 'لا يوجد وصف متوفر حالياً.');
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -96,9 +112,7 @@ class RestaurantDetailsScreen extends StatelessWidget {
                             fontWeight: FontWeight.w700)),
                     const SizedBox(height: 18),
                     Text(
-                      description?.isNotEmpty == true
-                          ? description!
-                          : 'لا يوجد وصف متوفر حالياً.',
+                      displayDescription,
                       style: const TextStyle(
                         color: AppTheme.ink,
                         fontSize: 17,
@@ -246,6 +260,12 @@ class RestaurantDetailsScreen extends StatelessWidget {
                         const SizedBox(height: 28),
                         BarberBookingSection(
                           businessId: _businessId!,
+                          business: data,
+                        ),
+                      ] else if (isTaxi) ...[
+                        TaxiBookingSection(
+                          businessId: _businessId!,
+                          businessName: name,
                           business: data,
                         ),
                       ] else ...[

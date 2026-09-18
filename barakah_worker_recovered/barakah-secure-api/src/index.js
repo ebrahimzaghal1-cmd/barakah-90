@@ -1,3 +1,6 @@
+import { createFirestoreStore } from './security/store.js';
+import { createAppointment, updateAppointment } from './security/appointments.js';
+import { createTaxiOrder, updateTaxiOrder } from './security/taxi.js';
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
@@ -28,6 +31,49 @@ var index_default = {
         );
       }
       const user = await authenticate(request, env);
+      if (request.method === "POST" && url.pathname === "/v1/barber-bookings") {
+        const store = createFirestoreStore({ baseUrl: firestoreBase(env), token: await serviceToken(env) });
+        return json(await createAppointment(store, user, await readJson(request), { primaryAdminUid: PRIMARY_ADMIN_UID }), 201, cors);
+      }
+      const appointmentStatusMatch = url.pathname.match(/^\/v1\/barber-bookings\/([^/]+)\/status$/);
+      if (request.method === "POST" && appointmentStatusMatch) {
+        const store = createFirestoreStore({ baseUrl: firestoreBase(env), token: await serviceToken(env) });
+        const input = await readJson(request);
+        return json(await updateAppointment(store, user, decodeURIComponent(appointmentStatusMatch[1]), input.status, { primaryAdminUid: PRIMARY_ADMIN_UID }), 200, cors);
+      }
+
+      if (request.method === "POST" && url.pathname === "/v1/taxi-orders") {
+        const store = createFirestoreStore({ baseUrl: firestoreBase(env), token: await serviceToken(env) });
+        return json(
+          await createTaxiOrder(
+            store,
+            user,
+            await readJson(request),
+            { primaryAdminUid: PRIMARY_ADMIN_UID }
+          ),
+          201,
+          cors
+        );
+      }
+
+      const taxiOrderActionMatch = url.pathname.match(
+        /^\/v1\/taxi-orders\/([^/]+)\/action$/
+      );
+      if (request.method === "POST" && taxiOrderActionMatch) {
+        const store = createFirestoreStore({ baseUrl: firestoreBase(env), token: await serviceToken(env) });
+        return json(
+          await updateTaxiOrder(
+            store,
+            user,
+            decodeURIComponent(taxiOrderActionMatch[1]),
+            await readJson(request),
+            { primaryAdminUid: PRIMARY_ADMIN_UID }
+          ),
+          200,
+          cors
+        );
+      }
+
       if (request.method === "POST" && url.pathname === "/v1/support/messages") {
         return json(await sendSupportMessage(request, env, user), 201, cors);
       }
@@ -449,12 +495,37 @@ function fail(status, code, message) {
 }
 __name(fail, "fail");
 async function readJson(request) {
+  const maxBytes = 128e3;
   const length = Number(request.headers.get("content-length") || 0);
-  if (length > 128e3) fail(413, "payload-too-large", "\u0627\u0644\u0637\u0644\u0628 \u0643\u0628\u064A\u0631 \u062C\u062F\u064B\u0627.");
+  if (length > maxBytes) fail(413, "payload-too-large", "الطلب كبير جدًا.");
+  const reader = request.body?.getReader();
+  if (!reader) fail(400, "invalid-json", "بيانات الطلب غير صحيحة.");
+  const chunks = [];
+  let totalBytes = 0;
   try {
-    return await request.json();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel().catch(() => {});
+        fail(413, "payload-too-large", "الطلب كبير جدًا.");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return JSON.parse(new TextDecoder().decode(bytes));
   } catch (_) {
-    fail(400, "invalid-json", "\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0637\u0644\u0628 \u063A\u064A\u0631 \u0635\u062D\u064A\u062D\u0629.");
+    fail(400, "invalid-json", "بيانات الطلب غير صحيحة.");
   }
 }
 __name(readJson, "readJson");
@@ -630,17 +701,14 @@ async function firestoreCommit(env, token, writes) {
   if (response.status === 409 || response.status === 412) {
     console.error(
       "firestore_commit_conflict",
-      response.status,
-      responseText
+      response.status
     );
     return null;
   }
   if (!response.ok) {
     console.error(
       "firestore_commit_failed",
-      response.status,
-      responseText,
-      JSON.stringify(writes)
+      response.status
     );
     fail(
       502,
@@ -704,7 +772,8 @@ async function listOrderSupervisorOrders(env, user) {
       createdAt: order.createdAt || null,
       items: (Array.isArray(order.items) ? order.items : []).map((item) => ({
         title: item?.title || "صنف",
-        quantity: Number(item?.quantity || 1)
+        quantity: Number(item?.quantity || 1),
+        specialNote: String(item?.specialNote || "").trim()
       }))
     }))
   };
@@ -912,7 +981,12 @@ async function createPartnerApplication(request, env) {
   }
   const latitude = Number(data.latitude);
   const longitude = Number(data.longitude);
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+  if (data.latitude === null || data.longitude === null ||
+      data.latitude === "" || data.longitude === "" ||
+      !["number", "string"].includes(typeof data.latitude) ||
+      !["number", "string"].includes(typeof data.longitude) ||
+      !Number.isFinite(latitude) || !Number.isFinite(longitude) ||
+      latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
     fail(400, "invalid-location", "موقع المحل غير صالح.");
   }
   if (data.acceptedPartnerAgreement !== true || data.acceptedPrivacyPolicy !== true) {
@@ -1177,6 +1251,15 @@ async function sendSupportMessage(request, env, user) {
     actor.customerServiceEnabled === true &&
     thread.assignedAgentId === user.uid
   ) {
+    // Match Firestore's isCustomerService gate. Server writes bypass rules.
+    const contract = await firestoreGet(
+      env,
+      token,
+      `employment_contracts/${encodeURIComponent(user.uid)}`
+    );
+    if (contract?.status !== "accepted") {
+      fail(403, "support-contract-required", "يجب قبول عقد العمل قبل إرسال رسائل خدمة العملاء.");
+    }
     senderRole = "customer_service";
     senderName = String(actor.displayName || "خدمة عملاء بركة");
     notificationTitle = "رد جديد من خدمة عملاء بركة 💬";

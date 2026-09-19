@@ -230,6 +230,13 @@ var index_default = {
           cors
         );
       }
+      if (request.method === "POST" && url.pathname === "/v1/admin/taxi/drivers/assign") {
+        return json(
+          await assignTaxiDriver(request, env, user),
+          200,
+          cors
+        );
+      }
       const merchantProductUpdateMatch = url.pathname.match(
         /^\/v1\/merchant\/products\/([^/]+)\/update$/
       );
@@ -2013,6 +2020,209 @@ function canManageBusiness(userId, business) {
   );
 }
 __name(canManageBusiness, "canManageBusiness");
+
+async function assignTaxiDriver(request, env, user) {
+  const data = await readJson(request);
+  const driverUid = String(data.driverUid || "").trim();
+  const businessId = String(data.businessId || "").trim();
+  const action = data.action === "remove" ? "remove" : "assign";
+
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(driverUid)) {
+    fail(400, "invalid-driver", "رقم السائق غير صالح.");
+  }
+
+  if (
+    action === "assign" &&
+    !/^[A-Za-z0-9_-]{1,128}$/.test(businessId)
+  ) {
+    fail(400, "invalid-business", "رقم مكتب التكسي غير صالح.");
+  }
+
+  const token = await serviceToken(env);
+
+  const actor = await firestoreGet(
+    env,
+    token,
+    `users/${encodeURIComponent(user.uid)}`
+  );
+
+  if (!isPrimaryAdmin(user, actor)) {
+    fail(
+      403,
+      "permission-denied",
+      "أدمن بركة فقط يستطيع ربط السائق بمكتب تكسي."
+    );
+  }
+
+  const driver = await firestoreGet(
+    env,
+    token,
+    `users/${encodeURIComponent(driverUid)}`
+  );
+
+  if (!driver || driver.role !== "driver") {
+    fail(
+      404,
+      "driver-not-found",
+      "الحساب غير موجود أو ليس سائقًا معتمدًا."
+    );
+  }
+
+  // ربط السيارة بمكتب تكسي لا يتم إلا بعد وجود وثيقة طلب سائق معتمدة.
+  // تبقى الهوية والرخصة ووثائق المركبة والتأمين وبيانات المستحقات وشروط
+  // السائق محفوظة في driver_applications ولا يمكن تجاوزها بتعديل profile.
+  const driverApplication = await firestoreGet(
+    env,
+    token,
+    `driver_applications/${encodeURIComponent(driverUid)}`
+  );
+
+  if (
+    action === "assign" &&
+    (!driverApplication ||
+      driverApplication.status !== "approved" ||
+      driverApplication.identityVerified !== true ||
+      driverApplication.driverLicenseVerified !== true ||
+      driverApplication.vehicleDocumentsVerified !== true ||
+      driverApplication.payoutVerified !== true ||
+      driverApplication.acceptedDriverTerms !== true ||
+      driverApplication.acceptedPrivacyPolicy !== true)
+  ) {
+    fail(
+      409,
+      "driver-documents-required",
+      "لا يمكن ربط السائق بالمكتب قبل اعتماد وثيقة السائق والتحقق من المركبة."
+    );
+  }
+
+  if (action === "remove") {
+    const result = await firestoreCommit(env, token, [
+      updateWrite(
+        env,
+        `users/${encodeURIComponent(driverUid)}`,
+        {
+          taxiBusinessId: null,
+          taxiBusinessName: null,
+          taxiDriverEnabled: false,
+          taxiRemovedAt: new Date(),
+          taxiRemovedBy: user.uid,
+          updatedAt: new Date()
+        },
+        driver.updateTime
+      )
+    ]);
+
+    if (!result) {
+      fail(
+        409,
+        "driver-changed",
+        "تغيّرت بيانات السائق. حاول مجددًا."
+      );
+    }
+
+    return {
+      ok: true,
+      driverUid,
+      taxiDriverEnabled: false
+    };
+  }
+
+  const business = await firestoreGet(
+    env,
+    token,
+    `items/${encodeURIComponent(businessId)}`
+  );
+
+  if (!business || business.kind === "product") {
+    fail(404, "business-not-found", "مكتب التكسي غير موجود.");
+  }
+
+  const type = String(business.type || "").trim().toLowerCase();
+  const merchantType = String(
+    business.merchantType || ""
+  ).trim().toLowerCase();
+  const category = String(
+    business.category || ""
+  ).trim().toLowerCase();
+  const activity = String(
+    business.activityType || ""
+  ).trim().toLowerCase();
+  const title = String(
+    business.title || business.name || ""
+  ).trim();
+
+  const taxiLike =
+    type === "taxi" ||
+    merchantType === "taxi" ||
+    category.includes("تكسي") ||
+    category.includes("تاكسي") ||
+    category.includes("taxi") ||
+    activity.includes("تكسي") ||
+    activity.includes("تاكسي") ||
+    activity.includes("taxi") ||
+    title.includes("تكسي") ||
+    title.includes("تاكسي");
+
+  if (!taxiLike) {
+    fail(
+      409,
+      "not-taxi-business",
+      "المحل المحدد ليس مكتب تكسي."
+    );
+  }
+
+  if (
+    business.isActive === false ||
+    ["closed", "coming_soon"].includes(
+      String(business.businessStatus || business.status || "")
+        .trim()
+        .toLowerCase()
+    )
+  ) {
+    fail(
+      409,
+      "taxi-business-unavailable",
+      "مكتب التكسي غير متاح حاليًا."
+    );
+  }
+
+  const businessName =
+    title || "مكتب تكسي بركة";
+
+  const result = await firestoreCommit(env, token, [
+    updateWrite(
+      env,
+      `users/${encodeURIComponent(driverUid)}`,
+      {
+        taxiBusinessId: businessId,
+        taxiBusinessName: businessName,
+        taxiDriverEnabled: true,
+        taxiAssignedAt: new Date(),
+        taxiAssignedBy: user.uid,
+        taxiAssignmentAgreementVersion: driverApplication.agreementVersion,
+        updatedAt: new Date()
+      },
+      driver.updateTime
+    )
+  ]);
+
+  if (!result) {
+    fail(
+      409,
+      "driver-changed",
+      "تغيّرت بيانات السائق. حاول مجددًا."
+    );
+  }
+
+  return {
+    ok: true,
+    driverUid,
+    businessId,
+    businessName,
+    taxiDriverEnabled: true
+  };
+}
+__name(assignTaxiDriver, "assignTaxiDriver");
 
 async function updateBusinessManager(request, env, user) {
   const data = await readJson(request);

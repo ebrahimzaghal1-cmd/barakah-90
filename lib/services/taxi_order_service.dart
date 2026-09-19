@@ -19,8 +19,6 @@ class TaxiOrderService {
       _firestore.collection('taxi_orders');
 
   Future<String> createOrder({
-    required String businessId,
-    required String businessName,
     required String pickupAddress,
     double? pickupLatitude,
     double? pickupLongitude,
@@ -39,7 +37,6 @@ class TaxiOrderService {
 
     final result = await _post('/v1/taxi-orders', {
       'requestId': requestId,
-      'businessId': businessId,
       'pickupAddress': pickupAddress.trim(),
       'pickupLatitude': pickupLatitude,
       'pickupLongitude': pickupLongitude,
@@ -59,12 +56,8 @@ class TaxiOrderService {
 
   Stream<QuerySnapshot<Map<String, dynamic>>> watchCustomerActiveOrders({
     required String customerId,
-    required String businessId,
   }) {
-    return _collection
-        .where('customerId', isEqualTo: customerId)
-        .where('businessId', isEqualTo: businessId)
-        .where(
+    return _collection.where('customerId', isEqualTo: customerId).where(
       'status',
       whereIn: [
         'pending',
@@ -82,15 +75,52 @@ class TaxiOrderService {
 
   Future<void> dispatchTaxi({
     required String orderId,
+    required String driverUid,
     required String vehicleInfo,
     int? etaMinutes,
   }) async {
+    final normalizedDriverUid = driverUid.trim();
+    if (normalizedDriverUid.isEmpty) {
+      throw StateError('يجب اختيار السائق أولًا.');
+    }
+
     await _post(
       '/v1/taxi-orders/${Uri.encodeComponent(orderId)}/action',
       {
         'action': 'dispatch',
+        'driverUid': normalizedDriverUid,
         'vehicleInfo': vehicleInfo.trim(),
         'etaMinutes': etaMinutes ?? 5,
+      },
+    );
+  }
+
+  Future<void> startTrip({required String orderId}) async {
+    await _post(
+      '/v1/taxi-orders/${Uri.encodeComponent(orderId)}/action',
+      {'action': 'start_trip'},
+    );
+  }
+
+  Future<void> updateDriverLocation({
+    required String orderId,
+    required double latitude,
+    required double longitude,
+  }) async {
+    if (!latitude.isFinite ||
+        !longitude.isFinite ||
+        latitude < -90 ||
+        latitude > 90 ||
+        longitude < -180 ||
+        longitude > 180) {
+      throw ArgumentError('إحداثيات الموقع غير صالحة.');
+    }
+    await _post(
+      '/v1/taxi-orders/${Uri.encodeComponent(orderId)}/action',
+      {
+        'action': 'update_location',
+        'latitude': latitude,
+        'longitude': longitude,
       },
     );
   }

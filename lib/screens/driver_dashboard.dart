@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../services/admin_notification_service.dart';
 import '../services/driver_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/taxi_driver_tracking.dart';
 
 class DriverDashboard extends StatelessWidget {
   const DriverDashboard({super.key});
@@ -21,7 +22,7 @@ class DriverDashboard extends StatelessWidget {
         stream: FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
-            .snapshots(),
+            .snapshots(includeMetadataChanges: true),
         builder: (context, profileSnapshot) {
           final profile =
               profileSnapshot.data?.data() ?? const <String, dynamic>{};
@@ -330,6 +331,219 @@ class DriverDashboard extends StatelessWidget {
                         }).toList(),
                       );
                     },
+                  );
+                },
+              ),
+              const SizedBox(height: 18),
+              const Text(
+                'رحلات تكسي بركة المعيّنة لي',
+                style: TextStyle(
+                  fontSize: 21,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 10),
+              StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: FirebaseFirestore.instance
+                    .collection('taxi_orders')
+                    .where('driverUid', isEqualTo: user.uid)
+                    .snapshots(includeMetadataChanges: true),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting &&
+                      !snapshot.hasData) {
+                    return const Center(
+                      child: CircularProgressIndicator(),
+                    );
+                  }
+
+                  if (snapshot.hasError) {
+                    return Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(18),
+                        child: Text(
+                          'تعذر تحميل رحلات التكسي: ${snapshot.error}',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+
+                  final trips = (snapshot.data?.docs ?? []).where((doc) {
+                    final status = doc.data()['status']?.toString() ?? '';
+
+                    return status == 'dispatched' ||
+                        status == 'awaiting_customer_confirmation';
+                  }).toList();
+
+                  if (trips.isEmpty) {
+                    return const Card(
+                      child: Padding(
+                        padding: EdgeInsets.all(22),
+                        child: Text(
+                          'لا توجد رحلة تكسي نشطة معيّنة لك حاليًا.',
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    );
+                  }
+
+                  return Column(
+                    children: trips.map((trip) {
+                      final data = trip.data();
+
+                      final customerName = (data['customerName'] ?? 'عميل بركة')
+                          .toString()
+                          .trim();
+
+                      final customerPhone =
+                          (data['customerPhone'] ?? '').toString().trim();
+
+                      final pickupAddress =
+                          (data['pickupAddress'] ?? '').toString().trim();
+
+                      final destination =
+                          (data['destination'] ?? '').toString().trim();
+
+                      final vehicle =
+                          (data['dispatchedVehicle'] ?? '').toString().trim();
+
+                      final eta = data['dispatchedEtaMinutes'];
+
+                      final status = data['status']?.toString() ?? 'dispatched';
+
+                      final createdAt = data['createdAt'];
+                      String createdText = '';
+
+                      if (createdAt is Timestamp) {
+                        final date = createdAt.toDate().toLocal();
+                        final hour = date.hour % 12 == 0 ? 12 : date.hour % 12;
+                        final period = date.hour >= 12 ? 'م' : 'ص';
+
+                        String two(int value) =>
+                            value.toString().padLeft(2, '0');
+
+                        createdText =
+                            '${two(date.day)}/${two(date.month)}/${date.year}'
+                            ' — $hour:${two(date.minute)} $period';
+                      }
+
+                      return Card(
+                        key: ValueKey('taxi-${trip.id}'),
+                        margin: const EdgeInsets.only(bottom: 10),
+                        child: Padding(
+                          padding: const EdgeInsets.all(15),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Row(
+                                children: [
+                                  const CircleAvatar(
+                                    backgroundColor: AppTheme.deepYellow,
+                                    child: Icon(
+                                      Icons.local_taxi_rounded,
+                                      color: AppTheme.ink,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'تكسي بركة • ${trip.id}',
+                                          style: const TextStyle(
+                                            fontSize: 17,
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                        Text(
+                                          status == 'dispatched'
+                                              ? 'رحلة نشطة'
+                                              : 'بانتظار تأكيد العميل',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const Divider(height: 24),
+                              Text(
+                                'العميل: $customerName',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              if (customerPhone.isNotEmpty)
+                                Text('الهاتف: $customerPhone'),
+                              if (createdText.isNotEmpty)
+                                Text('وقت الطلب: $createdText'),
+                              const SizedBox(height: 10),
+                              Text(
+                                '📍 نقطة الانطلاق: '
+                                '${pickupAddress.isEmpty ? 'غير محددة' : pickupAddress}',
+                              ),
+                              const SizedBox(height: 5),
+                              Text(
+                                '🏁 الوجهة: '
+                                '${destination.isEmpty ? 'غير محددة' : destination}',
+                              ),
+                              if (vehicle.isNotEmpty) ...[
+                                const SizedBox(height: 5),
+                                Text('🚕 السيارة: $vehicle'),
+                              ],
+                              if (eta != null) ...[
+                                const SizedBox(height: 5),
+                                Text(
+                                  '⏱️ الوصول المتوقع: $eta دقيقة',
+                                ),
+                              ],
+                              const SizedBox(height: 12),
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.deepYellow.withOpacity(.12),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Text(
+                                  'هذه الرحلة معيّنة لك من نظام تكسي بركة.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              TaxiDriverTracking(
+                                key: ValueKey(trip.id),
+                                orderId: trip.id,
+                                driverUid: user.uid,
+                                assignedDriverUid:
+                                    data['driverUid']?.toString() ?? '',
+                                status: status,
+                                tripStarted: data['tripStartedAt'] != null,
+                                allowed: !profileSnapshot.hasError &&
+                                    profileSnapshot.data != null &&
+                                    !profileSnapshot
+                                        .data!.metadata.isFromCache &&
+                                    !snapshot.data!.metadata.isFromCache &&
+                                    profile['role'] == 'driver' &&
+                                    profile['taxiDriverEnabled'] == true &&
+                                    profile['taxiBusinessId'] ==
+                                        data['businessId'],
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
                   );
                 },
               ),

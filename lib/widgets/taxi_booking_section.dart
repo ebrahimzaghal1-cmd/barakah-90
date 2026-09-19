@@ -5,18 +5,10 @@ import 'package:flutter/material.dart';
 import '../services/location_service.dart';
 import '../services/taxi_order_service.dart';
 import '../theme/app_theme.dart';
+import 'taxi_customer_live_map.dart';
 
 class TaxiBookingSection extends StatefulWidget {
-  const TaxiBookingSection({
-    super.key,
-    required this.businessId,
-    required this.businessName,
-    required this.business,
-  });
-
-  final String businessId;
-  final String businessName;
-  final Map<String, dynamic> business;
+  const TaxiBookingSection({super.key});
 
   @override
   State<TaxiBookingSection> createState() => _TaxiBookingSectionState();
@@ -34,7 +26,6 @@ class _TaxiBookingSectionState extends State<TaxiBookingSection> {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: TaxiOrderService.instance.watchCustomerActiveOrders(
         customerId: user.uid,
-        businessId: widget.businessId,
       ),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -157,9 +148,9 @@ class _TaxiBookingSectionState extends State<TaxiBookingSection> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      widget.businessName,
-                      style: const TextStyle(
+                    const Text(
+                      'تكسي بركة',
+                      style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w900,
                         color: AppTheme.navy,
@@ -303,7 +294,7 @@ class _TaxiBookingSectionState extends State<TaxiBookingSection> {
                     Text(
                       isDispatched
                           ? 'انطلقت السيارة إليك'
-                          : 'بانتظار تأكيد المكتب...',
+                          : 'جاري توجيه سيارة إليك...',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w900,
@@ -345,7 +336,7 @@ class _TaxiBookingSectionState extends State<TaxiBookingSection> {
                   ),
                   SizedBox(height: 8),
                   Text(
-                    'المكتب سجّل انتهاء المشوار',
+                    'تم تسجيل انتهاء المشوار',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontWeight: FontWeight.w900,
@@ -406,6 +397,11 @@ class _TaxiBookingSectionState extends State<TaxiBookingSection> {
                   ),
                 ],
               ),
+            ),
+            TaxiCustomerLiveMap(
+              driverLatitude: trip['driverLatitude'],
+              driverLongitude: trip['driverLongitude'],
+              driverLocationUpdatedAt: trip['driverLocationUpdatedAt'],
             ),
             const SizedBox(height: 14),
           ] else ...[
@@ -619,8 +615,6 @@ class _TaxiBookingSectionState extends State<TaxiBookingSection> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) => _TaxiOrderSheet(
-        businessId: widget.businessId,
-        businessName: widget.businessName,
         user: user,
       ),
     );
@@ -629,13 +623,9 @@ class _TaxiBookingSectionState extends State<TaxiBookingSection> {
 
 class _TaxiOrderSheet extends StatefulWidget {
   const _TaxiOrderSheet({
-    required this.businessId,
-    required this.businessName,
     required this.user,
   });
 
-  final String businessId;
-  final String businessName;
   final User user;
 
   @override
@@ -719,8 +709,6 @@ class _TaxiOrderSheetState extends State<_TaxiOrderSheet> {
     setState(() => _submitting = true);
     try {
       await TaxiOrderService.instance.createOrder(
-        businessId: widget.businessId,
-        businessName: widget.businessName,
         pickupAddress: pickup,
         pickupLatitude: _pickupLat,
         pickupLongitude: _pickupLng,
@@ -785,9 +773,9 @@ class _TaxiOrderSheetState extends State<_TaxiOrderSheet> {
                     color: Colors.amber, size: 28),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
-                    'طلب تاكسي من ${widget.businessName}',
-                    style: const TextStyle(
+                  child: const Text(
+                    'طلب تكسي بركة',
+                    style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
                       color: AppTheme.navy,

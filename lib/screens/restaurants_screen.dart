@@ -29,6 +29,7 @@ import '../games/play_hub_screen.dart';
 import '../config/app_features.dart';
 import 'categories_screen.dart';
 import 'restaurant_details_screen.dart';
+import 'barakah_taxi_screen.dart';
 import 'authentication_screen.dart';
 import 'auction_activity_screen.dart';
 import 'restaurant_offers_screen.dart';
@@ -311,6 +312,89 @@ class _RestaurantsScreenState extends State<RestaurantsScreen> {
                             ),
                           ]),
                           const SizedBox(height: 12),
+
+                          // تكسي بركة — وصول سريع ودائم من أعلى الصفحة.
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 14),
+                            child: Material(
+                              color: const Color(0xFFFFD83D),
+                              borderRadius: BorderRadius.circular(22),
+                              elevation: 4,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(22),
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => const BarakahTaxiScreen(),
+                                    ),
+                                  );
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 18,
+                                    vertical: 15,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 58,
+                                        height: 58,
+                                        decoration: const BoxDecoration(
+                                          color: _barakahNavy,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.local_taxi_rounded,
+                                          color: Color(0xFFFFD83D),
+                                          size: 34,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 14),
+                                      const Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'تكسي بركة',
+                                              style: TextStyle(
+                                                color: _barakahNavy,
+                                                fontSize: 21,
+                                                fontWeight: FontWeight.w900,
+                                              ),
+                                            ),
+                                            SizedBox(height: 3),
+                                            Text(
+                                              'اطلب تكسي الآن بكبسة زر',
+                                              style: TextStyle(
+                                                color: Color(0xFF26354D),
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Container(
+                                        width: 42,
+                                        height: 42,
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withOpacity(.72),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.arrow_back_rounded,
+                                          color: _barakahNavy,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+
                           const AdvertisementBanner(
                             placement: 'restaurant',
                           ),
@@ -981,7 +1065,15 @@ class _AllItemsScreenState extends State<AllItemsScreen> {
                     final allItems = snapshot.data?.docs ?? [];
                     final businesses = allItems.where((doc) {
                       final data = doc.data();
-                      final type = data['type']?.toString().toLowerCase();
+                      final type =
+                          data['type']?.toString().toLowerCase().trim();
+
+                      // مكاتب تكسي بركة كيانات داخلية ولا يجوز عرضها
+                      // للعميل كمتاجر مستقلة أو كشف أسمائها الحقيقية.
+                      if (type == 'taxi') {
+                        return false;
+                      }
+
                       return data['kind']?.toString() != 'product' &&
                           (type == widget.itemType ||
                               (type == null &&

@@ -131,8 +131,6 @@ export async function createTaxiOrder(
   input,
   { now = new Date(), primaryAdminUid } = {},
 ) {
-  const businessId = documentId(input.businessId);
-
   requireValue(
     /^[A-Za-z0-9_-]{8,80}$/.test(input.requestId || ''),
     'invalid-request-id',
@@ -170,8 +168,7 @@ export async function createTaxiOrder(
 
     if (existing) {
       requireValue(
-        existing.data.customerId === user.uid &&
-          existing.data.businessId === businessId,
+        existing.data.customerId === user.uid,
         'request-id-reused',
         'أُعيد استخدام معرّف الطلب لطلب مختلف.',
         409,
@@ -184,43 +181,77 @@ export async function createTaxiOrder(
       };
     }
 
-    const business = (await tx.get(`items/${businessId}`))?.data;
     const actor =
       (await tx.get(`users/${documentId(user.uid)}`))?.data;
 
     requireValue(
-      !!business && !!actor,
-      'business-not-found',
-      'مكتب التاكسي أو الحساب غير موجود.',
+      !!actor,
+      'account-not-found',
+      'الحساب غير موجود.',
       404,
     );
 
+    // العميل يطلب خدمة "تكسي بركة" فقط.
+    // اختيار المكتب الحقيقي يتم داخل الخادم ولا يعتمد على اختيار العميل.
+    const taxiBusinesses = (await tx.query('items'))
+      .filter((record) => taxiBusinessAvailable(record.data))
+      .filter((record) => !ownsBusiness(user, actor, record.data));
+
     requireValue(
-      taxiBusinessAvailable(business),
+      taxiBusinesses.length > 0,
       'taxi-unavailable',
       'خدمة التاكسي غير متاحة حاليًا.',
       409,
     );
 
-    requireValue(
-      !ownsBusiness(user, actor, business),
-      'self-taxi-order',
-      'لا يمكن إنشاء طلب تاكسي لمكتبك من حساب التاجر.',
-      403,
-    );
-
+    // يمنع وجود أكثر من طلب تكسي نشط للعميل عبر جميع المكاتب.
     const activeOrders = await tx.query('taxi_orders', {
       customerId: user.uid,
-      businessId,
     });
 
     requireValue(
       !activeOrders.some((order) =>
         ACTIVE_STATES.includes(order.data.status)),
       'active-taxi-order-exists',
-      'لديك طلب تاكسي نشط بالفعل لدى هذا المكتب.',
+      'لديك طلب تكسي نشط بالفعل.',
       409,
     );
+
+    // اختيار أقرب مكتب لموقع الركوب عند توفر الإحداثيات.
+    // وإذا لم تتوفر إحداثيات نستخدم أول مكتب متاح بترتيب ثابت.
+    const candidates = taxiBusinesses.map((record) => {
+      const lat = Number(record.data.latitude);
+      const lng = Number(record.data.longitude);
+
+      let distanceScore = Number.POSITIVE_INFINITY;
+
+      if (
+        pickupLatitude !== null &&
+        pickupLongitude !== null &&
+        Number.isFinite(lat) &&
+        Number.isFinite(lng)
+      ) {
+        const latDiff = lat - pickupLatitude;
+        const lngDiff = lng - pickupLongitude;
+        distanceScore = (latDiff * latDiff) + (lngDiff * lngDiff);
+      }
+
+      return {
+        record,
+        distanceScore,
+      };
+    });
+
+    candidates.sort((a, b) => {
+      if (a.distanceScore !== b.distanceScore) {
+        return a.distanceScore - b.distanceScore;
+      }
+      return a.record.id.localeCompare(b.record.id);
+    });
+
+    const selectedBusiness = candidates[0].record;
+    const businessId = documentId(selectedBusiness.id);
+    const business = selectedBusiness.data;
 
     const orderNumber =
       `#TK-${input.requestId.slice(-6).toUpperCase()}`;
@@ -230,15 +261,16 @@ export async function createTaxiOrder(
       orderNumber,
       orderType: 'taxi',
       businessId,
-      businessName:
-        String(business.title || business.name || 'تكسي بركة')
-          .trim()
-          .slice(0, 160),
+      // العلامة الظاهرة للعميل موحدة، أما businessId فيستخدم داخلياً
+      // للتوجيه والصلاحيات والحسابات والعمولة.
+      businessName: 'تكسي بركة',
       customerId: user.uid,
       customerName:
         customerName || String(actor.name || user.name || 'عميل بركة'),
       customerPhone:
         customerPhone || String(actor.phone || user.phone_number || ''),
+      customerEmail:
+        String(actor.email || user.email || '').trim(),
       pickupAddress,
       pickupLatitude,
       pickupLongitude,
@@ -259,7 +291,7 @@ export async function createTaxiOrder(
 
       createdAt: now,
       updatedAt: now,
-      taxiOrderVersion: 2,
+      taxiOrderVersion: 3,
     });
 
     return {
@@ -282,7 +314,7 @@ export async function updateTaxiOrder(
   const action = String(input?.action || '').trim();
 
   requireValue(
-    ['dispatch', 'complete', 'confirm', 'cancel'].includes(action),
+    ['dispatch', 'complete', 'confirm', 'cancel', 'start_trip', 'update_location'].includes(action),
     'invalid-taxi-action',
     'إجراء طلب التاكسي غير صالح.',
   );
@@ -323,6 +355,82 @@ export async function updateTaxiOrder(
     const merchant = ownsBusiness(user, actor, business);
     const customer = order.customerId === user.uid;
 
+    if (action === 'start_trip' || action === 'update_location') {
+      // Assignment and lifecycle are checked in the same transaction as the
+      // write, including retries racing with completion or cancellation.
+      // Neither office owners nor administrators may send GPS for a driver.
+      requireValue(
+        order.driverUid === user.uid &&
+          actor.role === 'driver' &&
+          actor.taxiDriverEnabled === true &&
+          actor.taxiBusinessId === businessId,
+        'taxi-permission-denied',
+        'تحديث موقع الرحلة متاح للسائق المعيّن والمعتمد فقط.',
+        403,
+      );
+
+      requireValue(
+        order.status === 'dispatched',
+        'invalid-taxi-transition',
+        'لا يمكن بدء التتبع أو تحديث الموقع بعد انتهاء الرحلة أو إلغائها.',
+        409,
+      );
+
+      const started = order.tripStartedAt instanceof Date &&
+        Number.isFinite(order.tripStartedAt.getTime());
+
+      if (action === 'start_trip') {
+        requireValue(
+          order.tripStartedAt == null || started,
+          'invalid-taxi-transition',
+          'وقت بدء الرحلة يحتاج مراجعة الإدارة.',
+          409,
+        );
+
+        // Resuming GPS must not restart the trip's audit clock. Keep the
+        // existing dispatched -> awaiting_customer_confirmation lifecycle.
+        if (!started) {
+          tx.set(`taxi_orders/${orderId}`, {
+            tripStartedAt: now,
+            tripStartedBy: user.uid,
+            updatedAt: now,
+          }, { merge: true });
+        }
+
+        return { orderId, status: order.status };
+      }
+
+      requireValue(
+        started,
+        'taxi-trip-not-started',
+        'ابدأ الرحلة قبل إرسال موقع السائق.',
+        409,
+      );
+
+      requireValue(
+        typeof input.latitude === 'number' &&
+          Number.isFinite(input.latitude) &&
+          input.latitude >= -90 && input.latitude <= 90 &&
+          typeof input.longitude === 'number' &&
+          Number.isFinite(input.longitude) &&
+          input.longitude >= -180 && input.longitude <= 180,
+        'invalid-driver-location',
+        'إحداثيات موقع السائق غير صالحة.',
+      );
+
+      // Only the latest position is stored, ready for the customer's map.
+      // Timestamps, assignment, status, finance and office names are never
+      // copied from the request body.
+      tx.set(`taxi_orders/${orderId}`, {
+        driverLatitude: input.latitude,
+        driverLongitude: input.longitude,
+        driverLocationUpdatedAt: now,
+        updatedAt: now,
+      }, { merge: true });
+
+      return { orderId, status: order.status };
+    }
+
     if (action === 'dispatch') {
       requireValue(
         admin || merchant,
@@ -338,8 +446,50 @@ export async function updateTaxiOrder(
         409,
       );
 
+      const driverUid = documentId(input.driverUid);
+
+      requireValue(
+        !!driverUid,
+        'taxi-driver-required',
+        'يجب اختيار سائق تابع لمكتب التكسي.',
+        400,
+      );
+
+      const driverRecord = await tx.get(`users/${driverUid}`);
+      const driver = driverRecord?.data;
+
+      requireValue(
+        !!driver &&
+          driver.role === 'driver' &&
+          driver.taxiDriverEnabled === true &&
+          documentId(driver.taxiBusinessId) === businessId,
+        'invalid-taxi-driver',
+        'السائق غير معتمد لهذا المكتب أو تم فصله من المكتب.',
+        409,
+      );
+
+      const driverName = cleanText(
+        driver.displayName ||
+          driver.name ||
+          driver.fullName ||
+          'سائق بركة',
+        'driver-name',
+        120,
+      );
+
+      const driverPhone = optionalText(
+        driver.phone ||
+          driver.phoneNumber ||
+          '',
+        40,
+      );
+
       const vehicleInfo = cleanText(
-        input.vehicleInfo,
+        input.vehicleInfo ||
+          driver.vehicleInfo ||
+          driver.vehicle ||
+          driver.carInfo ||
+          '',
         'vehicle-info',
         160,
       );
@@ -359,8 +509,13 @@ export async function updateTaxiOrder(
         `taxi_orders/${orderId}`,
         {
           status: 'dispatched',
+          driverUid,
+          driverName,
+          driverPhone,
           dispatchedVehicle: vehicleInfo,
           dispatchedEtaMinutes: etaMinutes,
+          driverAssignedAt: now,
+          driverAssignedBy: user.uid,
           dispatchedAt: now,
           dispatchedBy: user.uid,
           updatedAt: now,

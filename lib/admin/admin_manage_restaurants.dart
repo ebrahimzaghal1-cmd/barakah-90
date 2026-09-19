@@ -295,7 +295,15 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
                   TextField(
                     controller: titleController,
                     decoration: InputDecoration(
-                      labelText: 'اسم ${widget.singularLabel}',
+                      labelText: widget.itemType == 'taxi'
+                          ? 'اسم المكتب الداخلي'
+                          : 'اسم ${widget.singularLabel}',
+                      helperText: widget.itemType == 'taxi'
+                          ? 'لإدارة بركة والمكتب فقط — لا يظهر للزبون'
+                          : null,
+                      prefixIcon: widget.itemType == 'taxi'
+                          ? const Icon(Icons.admin_panel_settings_outlined)
+                          : null,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -322,30 +330,33 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
                         ? 'اختيار الموقع على الخريطة'
                         : 'تم اختيار الموقع — تغيير'),
                   ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: descriptionController,
-                    decoration: const InputDecoration(
-                      labelText: 'الوصف',
+                  if (widget.itemType != 'taxi') ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: descriptionController,
+                      decoration: const InputDecoration(
+                        labelText: 'الوصف',
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: ratingController,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration:
-                        const InputDecoration(labelText: 'التقييم من 5'),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: discountController,
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: ratingController,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration:
+                          const InputDecoration(labelText: 'التقييم من 5'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: discountController,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
                         labelText: 'خصم بركة % (اختياري)',
-                        prefixIcon: Icon(Icons.percent_rounded)),
-                  ),
+                        prefixIcon: Icon(Icons.percent_rounded),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   TextField(
                     controller: commissionController,
@@ -358,70 +369,77 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
                       prefixIcon: Icon(Icons.account_balance_wallet_outlined),
                     ),
                   ),
-                  SwitchListTile.adaptive(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('عرض توصيل'),
-                    subtitle: const Text('إظهار داخل خانة عروض التوصيل'),
-                    value: hasDeliveryOffer,
-                    onChanged: isSaving
-                        ? null
-                        : (value) =>
-                            setDialogState(() => hasDeliveryOffer = value),
-                  ),
-                  if (hasDeliveryOffer) ...[
+                  if (widget.itemType != 'taxi') ...[
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('عرض توصيل'),
+                      subtitle: const Text('إظهار داخل خانة عروض التوصيل'),
+                      value: hasDeliveryOffer,
+                      onChanged: isSaving
+                          ? null
+                          : (value) =>
+                              setDialogState(() => hasDeliveryOffer = value),
+                    ),
+                    if (hasDeliveryOffer) ...[
+                      TextField(
+                        controller: deliveryFeeController,
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        decoration: const InputDecoration(
+                            labelText: 'سعر التوصيل بعد العرض (₪)',
+                            prefixIcon: Icon(Icons.delivery_dining_rounded)),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('إظهار في قائمة الترندات'),
+                      secondary: const Icon(Icons.local_fire_department_rounded,
+                          color: Colors.orange),
+                      value: isTrending,
+                      onChanged: isSaving
+                          ? null
+                          : (value) => setDialogState(() => isTrending = value),
+                    ),
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('إضافة إلى شريط جديد في بركة'),
+                      subtitle: const Text('يمكن إزالته من الشريط في أي وقت'),
+                      secondary: const Icon(Icons.new_releases_rounded),
+                      value: isNewInBarakah,
+                      onChanged: isSaving
+                          ? null
+                          : (value) =>
+                              setDialogState(() => isNewInBarakah = value),
+                    ),
+                  ],
+                  if (widget.itemType != 'taxi') ...[
                     TextField(
-                      controller: deliveryFeeController,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
+                      controller: categoryController,
                       decoration: const InputDecoration(
-                          labelText: 'سعر التوصيل بعد العرض (₪)',
-                          prefixIcon: Icon(Icons.delivery_dining_rounded)),
+                        labelText: 'التصنيف',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: typeController,
+                      decoration: const InputDecoration(
+                        labelText: 'النوع',
+                      ),
                     ),
                     const SizedBox(height: 12),
                   ],
-                  SwitchListTile.adaptive(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('إظهار في قائمة الترندات'),
-                    secondary: const Icon(Icons.local_fire_department_rounded,
-                        color: Colors.orange),
-                    value: isTrending,
-                    onChanged: isSaving
-                        ? null
-                        : (value) => setDialogState(() => isTrending = value),
-                  ),
-                  SwitchListTile.adaptive(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('إضافة إلى شريط جديد في بركة'),
-                    subtitle: const Text('يمكن إزالته من الشريط في أي وقت'),
-                    secondary: const Icon(Icons.new_releases_rounded),
-                    value: isNewInBarakah,
-                    onChanged: isSaving
-                        ? null
-                        : (value) =>
-                            setDialogState(() => isNewInBarakah = value),
-                  ),
-                  TextField(
-                    controller: categoryController,
-                    decoration: const InputDecoration(
-                      labelText: 'التصنيف',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: typeController,
-                    decoration: const InputDecoration(
-                      labelText: 'النوع',
-                    ),
-                  ),
-                  const SizedBox(height: 12),
                   TextField(
                     controller: ownerEmailController,
                     keyboardType: TextInputType.emailAddress,
-                    decoration: const InputDecoration(
-                      labelText: 'بريد صاحب المحل المشترك',
-                      helperText:
-                          'بعد الربط تظهر له لوحة إدارة منتجات محله فقط',
-                      prefixIcon: Icon(Icons.storefront_outlined),
+                    decoration: InputDecoration(
+                      labelText: widget.itemType == 'taxi'
+                          ? 'بريد صاحب مكتب التكسي'
+                          : 'بريد صاحب المحل المشترك',
+                      helperText: widget.itemType == 'taxi'
+                          ? 'يجب أن يكون لديه حساب في بركة — يستخدم لإدارة طلبات مكتبه فقط'
+                          : 'بعد الربط تظهر له لوحة إدارة منتجات محله فقط',
+                      prefixIcon: const Icon(Icons.storefront_outlined),
                     ),
                   ),
                   if (doc != null) ...[

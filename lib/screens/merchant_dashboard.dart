@@ -1097,91 +1097,228 @@ class _MerchantTaxiOrders extends StatelessWidget {
     BuildContext context,
     String orderId,
   ) async {
-    final vehicleController = TextEditingController();
-    final etaController = TextEditingController(text: '5');
-
-    final result = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('إرسال سيارة للعميل'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: vehicleController,
-              decoration: const InputDecoration(
-                labelText: 'بيانات السيارة',
-                hintText: 'مثال: سكودا أبيض - رقم 1234',
-                prefixIcon: Icon(Icons.local_taxi_rounded),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: etaController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'وقت الوصول المتوقع بالدقائق',
-                prefixIcon: Icon(Icons.timer_outlined),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('تراجع'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final vehicle = vehicleController.text.trim();
-              final eta = int.tryParse(etaController.text.trim());
-
-              if (vehicle.isEmpty || eta == null || eta < 1 || eta > 240) {
-                ScaffoldMessenger.of(dialogContext).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'أدخل بيانات السيارة ووقت وصول صحيحًا.',
-                    ),
-                  ),
-                );
-                return;
-              }
-
-              Navigator.pop(dialogContext, {
-                'vehicle': vehicle,
-                'eta': eta,
-              });
-            },
-            child: const Text('إرسال السيارة'),
-          ),
-        ],
-      ),
-    );
-
-    vehicleController.dispose();
-    etaController.dispose();
-
-    if (result == null || !context.mounted) return;
-
     try {
+      final driversSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .where('role', isEqualTo: 'driver')
+          .where('taxiDriverEnabled', isEqualTo: true)
+          .where('taxiBusinessId', isEqualTo: businessId)
+          .get();
+
+      if (!context.mounted) return;
+
+      final drivers = driversSnapshot.docs;
+
+      if (drivers.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'لا يوجد سائق تكسي معتمد مرتبط بهذا المكتب. اربط سائقًا بالمكتب أولًا.',
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      final vehicleController = TextEditingController();
+      final etaController = TextEditingController(text: '5');
+      String? selectedDriverUid;
+
+      final result = await showDialog<Map<String, dynamic>>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            Map<String, dynamic>? selectedDriver;
+
+            if (selectedDriverUid != null) {
+              for (final doc in drivers) {
+                if (doc.id == selectedDriverUid) {
+                  selectedDriver = doc.data();
+                  break;
+                }
+              }
+            }
+
+            final storedVehicle = selectedDriver == null
+                ? ''
+                : (selectedDriver['vehicleInfo'] ??
+                        selectedDriver['vehicle'] ??
+                        selectedDriver['carInfo'] ??
+                        '')
+                    .toString()
+                    .trim();
+
+            return AlertDialog(
+              title: const Text('تعيين سائق وإرسال السيارة'),
+              content: SizedBox(
+                width: 460,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      DropdownButtonFormField<String>(
+                        value: selectedDriverUid,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'السائق',
+                          prefixIcon: Icon(Icons.person_pin_circle_outlined),
+                        ),
+                        items: drivers.map((doc) {
+                          final data = doc.data();
+
+                          final name = (data['displayName'] ??
+                                  data['name'] ??
+                                  data['fullName'] ??
+                                  'سائق بركة')
+                              .toString()
+                              .trim();
+
+                          final phone =
+                              (data['phone'] ?? data['phoneNumber'] ?? '')
+                                  .toString()
+                                  .trim();
+
+                          return DropdownMenuItem<String>(
+                            value: doc.id,
+                            child: Text(
+                              phone.isEmpty ? name : '$name — $phone',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          setDialogState(() {
+                            selectedDriverUid = value;
+
+                            if (value != null) {
+                              for (final doc in drivers) {
+                                if (doc.id == value) {
+                                  final data = doc.data();
+                                  final vehicle = (data['vehicleInfo'] ??
+                                          data['vehicle'] ??
+                                          data['carInfo'] ??
+                                          '')
+                                      .toString()
+                                      .trim();
+
+                                  if (vehicle.isNotEmpty) {
+                                    vehicleController.text = vehicle;
+                                  }
+                                  break;
+                                }
+                              }
+                            }
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: vehicleController,
+                        decoration: InputDecoration(
+                          labelText: 'بيانات السيارة',
+                          hintText: storedVehicle.isEmpty
+                              ? 'مثال: سكودا أبيض - رقم 1234'
+                              : storedVehicle,
+                          prefixIcon: const Icon(Icons.local_taxi_rounded),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: etaController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'وقت الوصول المتوقع بالدقائق',
+                          prefixIcon: Icon(Icons.timer_outlined),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('تراجع'),
+                ),
+                FilledButton.icon(
+                  icon: const Icon(Icons.local_taxi_rounded),
+                  label: const Text('تعيين السائق وإرسال السيارة'),
+                  onPressed: () {
+                    final driverUid = selectedDriverUid?.trim() ?? '';
+                    final vehicle = vehicleController.text.trim();
+                    final eta = int.tryParse(etaController.text.trim());
+
+                    if (driverUid.isEmpty) {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                        const SnackBar(
+                          content: Text('اختر السائق أولًا.'),
+                        ),
+                      );
+                      return;
+                    }
+
+                    if (vehicle.isEmpty) {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                        const SnackBar(
+                          content: Text('أدخل بيانات السيارة.'),
+                        ),
+                      );
+                      return;
+                    }
+
+                    if (eta == null || eta < 1 || eta > 240) {
+                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                        const SnackBar(
+                          content:
+                              Text('أدخل وقت وصول صحيحًا من 1 إلى 240 دقيقة.'),
+                        ),
+                      );
+                      return;
+                    }
+
+                    Navigator.pop(dialogContext, {
+                      'driverUid': driverUid,
+                      'vehicle': vehicle,
+                      'eta': eta,
+                    });
+                  },
+                ),
+              ],
+            );
+          },
+        ),
+      );
+
+      vehicleController.dispose();
+      etaController.dispose();
+
+      if (result == null || !context.mounted) return;
+
       await TaxiOrderService.instance.dispatchTaxi(
         orderId: orderId,
+        driverUid: result['driverUid'].toString(),
         vehicleInfo: result['vehicle'].toString(),
         etaMinutes: result['eta'] as int,
       );
 
       if (!context.mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('تم إرسال بيانات السيارة للعميل ✅'),
+          content: Text('تم تعيين السائق وإرسال السيارة للعميل ✅'),
           backgroundColor: Colors.green,
         ),
       );
     } catch (e) {
       if (!context.mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('تعذر إرسال السيارة: $e'),
+          content: Text(
+            'تعذر تعيين السائق: '
+            '${e.toString().replaceFirst('Bad state: ', '')}',
+          ),
           backgroundColor: Colors.red,
         ),
       );

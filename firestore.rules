@@ -275,8 +275,10 @@ match /agent_orders/{requestId} {
       allow read: if signedIn() &&
         (isAdmin() ||
           resource.data.customerId == request.auth.uid ||
+          resource.data.driverUid == request.auth.uid ||
           ownsBusiness(resource.data.businessId));
 
+      // Taxi mutations remain server-only.
       allow create, update, delete: if false;
     }
 

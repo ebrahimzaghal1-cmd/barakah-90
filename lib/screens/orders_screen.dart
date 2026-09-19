@@ -7,12 +7,14 @@ import '../games/play_hub_screen.dart';
 import '../config/app_features.dart';
 import '../services/firebase_state.dart';
 import '../services/order_service.dart';
+import '../services/taxi_order_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/barakah_brand.dart';
 import 'authentication_screen.dart';
 import 'auction_activity_screen.dart';
 import '../widgets/barakah_reactions.dart';
 import '../widgets/customer_agent_orders_panel.dart';
+import '../widgets/taxi_customer_live_map.dart';
 
 class OrdersScreen extends StatelessWidget {
   const OrdersScreen({super.key});
@@ -264,6 +266,13 @@ class _OrdersSplitViewState extends State<_OrdersSplitView> {
                 Center(
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 760),
+                    child: const _CustomerTaxiTripsPanel(),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 760),
                     child: _OrdersTabs(
                       selectedIndex: _selectedTab,
                       onChanged: (index) => setState(
@@ -305,6 +314,254 @@ class _OrdersSplitViewState extends State<_OrdersSplitView> {
                 ),
               ],
             ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _CustomerTaxiTripsPanel extends StatelessWidget {
+  const _CustomerTaxiTripsPanel();
+
+  String _statusLabel(String status) => switch (status) {
+        'pending' => 'بانتظار تأكيد المكتب',
+        'dispatched' => 'السيارة في الطريق إليك',
+        'awaiting_customer_confirmation' => 'المشوار انتهى - أكد الوصول',
+        'completed' => 'رحلة مكتملة',
+        'cancelled' => 'ملغي',
+        _ => status,
+      };
+
+  bool _isActive(String status) =>
+      status == 'pending' ||
+      status == 'dispatched' ||
+      status == 'awaiting_customer_confirmation';
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return const SizedBox.shrink();
+
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('taxi_orders')
+          .where('customerId', isEqualTo: user.uid)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return const _OrdersGlassSurface(
+            padding: EdgeInsets.all(16),
+            child: Text(
+              'تعذر تحميل رحلات تكسي بركة.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+          );
+        }
+
+        if (!snapshot.hasData) {
+          return const _OrdersGlassSurface(
+            padding: EdgeInsets.all(18),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        final trips = snapshot.data!.docs.toList()
+          ..sort((a, b) {
+            final aTime = a.data()['createdAt'];
+            final bTime = b.data()['createdAt'];
+
+            final aMillis =
+                aTime is Timestamp ? aTime.millisecondsSinceEpoch : 0;
+            final bMillis =
+                bTime is Timestamp ? bTime.millisecondsSinceEpoch : 0;
+
+            return bMillis.compareTo(aMillis);
+          });
+
+        if (trips.isEmpty) {
+          return _OrdersGlassSurface(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: AppTheme.coolYellow.withOpacity(.22),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.local_taxi_rounded,
+                    color: AppTheme.navy,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'رحلات تكسي بركة',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      SizedBox(height: 3),
+                      Text(
+                        'عندما تطلب تكسي ستظهر رحلتك هنا.',
+                        style: TextStyle(color: Colors.black54),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return _OrdersGlassSurface(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Row(
+                children: [
+                  Icon(
+                    Icons.local_taxi_rounded,
+                    color: AppTheme.navy,
+                  ),
+                  SizedBox(width: 8),
+                  Text(
+                    'رحلات تكسي بركة',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              ...trips.map((doc) {
+                final data = doc.data();
+                final status = data['status']?.toString() ?? 'pending';
+
+                final pickup = data['pickupAddress']?.toString().trim() ?? '';
+                final destination =
+                    data['destination']?.toString().trim() ?? '';
+                final vehicle =
+                    data['dispatchedVehicle']?.toString().trim() ?? '';
+                final eta = data['dispatchedEtaMinutes'];
+                final fare = data['fareAmount'];
+
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 9),
+                  padding: const EdgeInsets.all(13),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(.80),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: _isActive(status)
+                          ? AppTheme.coolYellow
+                          : Colors.black12,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              data['orderNumber']?.toString() ?? 'طلب تكسي',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            _statusLabel(status),
+                            style: const TextStyle(
+                              color: AppTheme.navy,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'من: ${pickup.isEmpty ? "موقع الركوب" : pickup}',
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        'إلى: ${destination.isEmpty ? "الوجهة" : destination}',
+                      ),
+                      if (vehicle.isNotEmpty) ...[
+                        const Divider(height: 20),
+                        Text(
+                          'السيارة: $vehicle',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        if (eta != null) Text('وقت الوصول المتوقع: $eta دقائق'),
+                      ],
+                      if (fare != null) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          'أجرة الرحلة: $fare ₪',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                      if (status == 'dispatched') ...[
+                        const SizedBox(height: 10),
+                        TaxiCustomerLiveMap(
+                          driverLatitude: data['driverLatitude'],
+                          driverLongitude: data['driverLongitude'],
+                          driverLocationUpdatedAt:
+                              data['driverLocationUpdatedAt'],
+                        ),
+                      ],
+                      if (status == 'awaiting_customer_confirmation') ...[
+                        const SizedBox(height: 10),
+                        FilledButton.icon(
+                          onPressed: () async {
+                            try {
+                              await TaxiOrderService.instance
+                                  .confirmArrival(orderId: doc.id);
+
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'تم تأكيد الوصول بنجاح ✅',
+                                  ),
+                                ),
+                              );
+                            } catch (e) {
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'تعذر تأكيد الوصول: $e',
+                                  ),
+                                ),
+                              );
+                            }
+                          },
+                          icon: const Icon(Icons.check_circle_rounded),
+                          label: const Text('تأكيد الوصول'),
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              }),
+            ],
           ),
         );
       },

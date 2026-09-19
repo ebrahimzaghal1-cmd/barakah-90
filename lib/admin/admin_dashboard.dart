@@ -24,6 +24,7 @@ import 'admin_app_share_settings.dart';
 import 'admin_appointments_accounting_screen.dart';
 import 'admin_agent_finance_screen.dart';
 import 'admin_manage_agent_applications.dart';
+import 'admin_taxi_orders_screen.dart';
 
 import '../theme/app_theme.dart';
 import '../services/user_profile_service.dart';
@@ -95,6 +96,20 @@ class AdminDashboard extends StatelessWidget {
 
   Widget _buildDashboard(BuildContext context) {
     final items = [
+      _AdminItem(
+        title: 'طلبات تكسي بركة',
+        icon: Icons.local_taxi_rounded,
+        page: const AdminTaxiOrdersScreen(),
+      ),
+      _AdminItem(
+        title: 'مكاتب تكسي بركة',
+        icon: Icons.local_taxi_outlined,
+        page: const AdminManageRestaurants(
+          itemType: 'taxi',
+          singularLabel: 'مكتب تكسي',
+          pluralLabel: 'مكاتب التكسي',
+        ),
+      ),
       _AdminItem(
         title: 'مالية الوسيطات',
         icon: Icons.account_balance_wallet_rounded,

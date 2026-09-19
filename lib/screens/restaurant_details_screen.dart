@@ -263,11 +263,7 @@ class RestaurantDetailsScreen extends StatelessWidget {
                           business: data,
                         ),
                       ] else if (isTaxi) ...[
-                        TaxiBookingSection(
-                          businessId: _businessId!,
-                          businessName: name,
-                          business: data,
-                        ),
+                        const TaxiBookingSection(),
                       ] else ...[
                         const Text(
                           'المنتجات والأسعار',

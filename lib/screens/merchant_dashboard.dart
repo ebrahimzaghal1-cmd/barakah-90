@@ -737,6 +737,7 @@ class MerchantDashboard extends StatelessWidget {
                 itemBuilder: (context, index) {
                   final business = businesses[index];
                   final data = business.data();
+                  final isTaxi = _isTaxiBusiness(data);
                   final businessStatus =
                       data['businessStatus']?.toString() ?? 'open';
                   return Card(
@@ -771,8 +772,8 @@ class MerchantDashboard extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
-                                  'مديرو المحل',
+                                Text(
+                                  isTaxi ? 'مديرو مكتب التكسي' : 'مديرو المحل',
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.w900,
@@ -821,8 +822,10 @@ class MerchantDashboard extends StatelessWidget {
                                     icon: const Icon(
                                       Icons.person_add_alt_1_rounded,
                                     ),
-                                    label: const Text(
-                                      'إضافة مدير للمحل بالإيميل',
+                                    label: Text(
+                                      isTaxi
+                                          ? 'إضافة مدير لمكتب التكسي بالإيميل'
+                                          : 'إضافة مدير للمحل بالإيميل',
                                       style: TextStyle(
                                         fontWeight: FontWeight.w900,
                                       ),
@@ -836,29 +839,60 @@ class MerchantDashboard extends StatelessWidget {
                         ],
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String>(
-                          value: const ['open', 'busy', 'closed', 'coming_soon']
-                                  .contains(businessStatus)
-                              ? businessStatus
-                              : 'open',
-                          decoration: const InputDecoration(
-                            labelText: 'حالة المحل للزبائن',
-                            prefixIcon:
-                                Icon(Icons.store_mall_directory_outlined),
+                          value: isTaxi
+                              ? (const ['open', 'busy', 'closed']
+                                      .contains(businessStatus)
+                                  ? businessStatus
+                                  : 'open')
+                              : (const ['open', 'busy', 'closed', 'coming_soon']
+                                      .contains(businessStatus)
+                                  ? businessStatus
+                                  : 'open'),
+                          decoration: InputDecoration(
+                            labelText: isTaxi
+                                ? 'حالة مكتب التكسي'
+                                : 'حالة المحل للزبائن',
+                            prefixIcon: Icon(
+                              isTaxi
+                                  ? Icons.local_taxi_outlined
+                                  : Icons.store_mall_directory_outlined,
+                            ),
                           ),
-                          items: const [
-                            DropdownMenuItem(
-                                value: 'open',
-                                child: Text('مفتوح — يستقبل الطلبات')),
-                            DropdownMenuItem(
-                                value: 'busy',
-                                child: Text('مشغول — قد يتأخر الطلب')),
-                            DropdownMenuItem(
-                                value: 'closed',
-                                child: Text('مغلق — لا يستقبل طلبات')),
-                            DropdownMenuItem(
-                                value: 'coming_soon',
-                                child: Text('قريبًا — يظهر دون استقبال طلبات')),
-                          ],
+                          items: isTaxi
+                              ? const [
+                                  DropdownMenuItem(
+                                    value: 'open',
+                                    child: Text('متاح — يستقبل طلبات التكسي'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'busy',
+                                    child:
+                                        Text('مشغول — قد يتأخر إرسال السيارة'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'closed',
+                                    child: Text('غير متاح — لا يستقبل طلبات'),
+                                  ),
+                                ]
+                              : const [
+                                  DropdownMenuItem(
+                                    value: 'open',
+                                    child: Text('مفتوح — يستقبل الطلبات'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'busy',
+                                    child: Text('مشغول — قد يتأخر الطلب'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'closed',
+                                    child: Text('مغلق — لا يستقبل طلبات'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'coming_soon',
+                                    child:
+                                        Text('قريبًا — يظهر دون استقبال طلبات'),
+                                  ),
+                                ],
                           onChanged: (value) {
                             if (value != null) {
                               business.reference
@@ -866,48 +900,55 @@ class MerchantDashboard extends StatelessWidget {
                             }
                           },
                         ),
-                        SwitchListTile.adaptive(
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text(
-                            'إظهار متجري في «جديد في بركة»',
-                            style: TextStyle(fontWeight: FontWeight.w900),
+                        if (!isTaxi)
+                          SwitchListTile.adaptive(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text(
+                              'إظهار متجري في «جديد في بركة»',
+                              style: TextStyle(fontWeight: FontWeight.w900),
+                            ),
+                            subtitle: const Text(
+                              'يمكنك إزالته عندما لا يعود المتجر جديدًا',
+                            ),
+                            secondary: const Icon(Icons.new_releases_rounded),
+                            value: data['isNewInBarakah'] == true,
+                            onChanged: (value) => business.reference.update({
+                              'isNewInBarakah': value,
+                              'updatedAt': FieldValue.serverTimestamp(),
+                            }),
                           ),
-                          subtitle: const Text(
-                            'يمكنك إزالته عندما لا يعود المتجر جديدًا',
-                          ),
-                          secondary: const Icon(Icons.new_releases_rounded),
-                          value: data['isNewInBarakah'] == true,
-                          onChanged: (value) => business.reference.update({
-                            'isNewInBarakah': value,
-                            'updatedAt': FieldValue.serverTimestamp(),
-                          }),
-                        ),
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            onPressed: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => RestaurantDetailsScreen(
-                                  restaurant: business,
+                        if (!isTaxi) ...[
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => RestaurantDetailsScreen(
+                                    restaurant: business,
+                                  ),
                                 ),
                               ),
-                            ),
-                            icon: const Icon(Icons.visibility_outlined),
-                            label: const Text(
-                              'عرض متجري كما يراه الزبون',
-                              style: TextStyle(fontWeight: FontWeight.w800),
+                              icon: const Icon(Icons.visibility_outlined),
+                              label: const Text(
+                                'عرض متجري كما يراه الزبون',
+                                style: TextStyle(fontWeight: FontWeight.w800),
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                         const SizedBox(height: 8),
                         SizedBox(
                           width: double.infinity,
                           child: OutlinedButton.icon(
                             onPressed: () => _editBusiness(context, business),
                             icon: const Icon(Icons.edit_outlined),
-                            label: const Text('تعديل بيانات محلي'),
+                            label: Text(
+                              isTaxi
+                                  ? 'تعديل بيانات مكتب التكسي'
+                                  : 'تعديل بيانات محلي',
+                            ),
                           ),
                         ),
                         if (data['type']?.toString().toLowerCase() ==
@@ -1001,25 +1042,27 @@ class MerchantDashboard extends StatelessWidget {
                             },
                           ),
                         ],
-                        const SizedBox(height: 8),
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton.icon(
-                            onPressed: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => AdminManageProducts(
-                                  initialBusinessId: business.id,
-                                  initialBusinessTitle:
-                                      data['title']?.toString(),
-                                  ownerUid: user.uid,
+                        if (!isTaxi) ...[
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => AdminManageProducts(
+                                    initialBusinessId: business.id,
+                                    initialBusinessTitle:
+                                        data['title']?.toString(),
+                                    ownerUid: user.uid,
+                                  ),
                                 ),
                               ),
+                              icon: const Icon(Icons.inventory_2_outlined),
+                              label: const Text('إدارة المنتجات والأسعار'),
                             ),
-                            icon: const Icon(Icons.inventory_2_outlined),
-                            label: const Text('إدارة المنتجات والأسعار'),
                           ),
-                        ),
+                        ],
                         const SizedBox(height: 8),
                         if (data['kind']?.toString() == 'agent') ...[
                           _MerchantAgentOrders(agentId: business.id),
@@ -1030,9 +1073,11 @@ class MerchantDashboard extends StatelessWidget {
                           _MerchantTaxiOrders(businessId: business.id),
                           const SizedBox(height: 8),
                         ],
-                        _MerchantCoupons(businessId: business.id),
-                        const SizedBox(height: 8),
-                        _MerchantOrders(businessId: business.id),
+                        if (!isTaxi) ...[
+                          _MerchantCoupons(businessId: business.id),
+                          const SizedBox(height: 8),
+                          _MerchantOrders(businessId: business.id),
+                        ],
                         if (data['type']?.toString().toLowerCase() ==
                             'barber') ...[
                           const SizedBox(height: 8),

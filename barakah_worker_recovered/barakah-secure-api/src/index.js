@@ -787,74 +787,97 @@ async function listOrderSupervisorOrders(env, user) {
 }
 __name(listOrderSupervisorOrders, "listOrderSupervisorOrders");
 async function sendPushToTokens(env, token, deviceTokens, { title, body, data = {} }) {
-  const uniqueTokens = [...new Set((deviceTokens || []).filter((value) => typeof value === "string" && value.length > 20))];
+  const uniqueTokens = [...new Set(
+    (deviceTokens || []).filter(
+      (value) => typeof value === "string" && value.length > 20
+    )
+  )].slice(0, 100);
+
   if (!uniqueTokens.length) return;
-  const isUrgentOrder = data.type === "new_order" || data.type === "driver_order_available";
-  await Promise.all(
-    uniqueTokens.slice(0, 100).map(async (deviceToken) => {
-      const response = await fetch(
-        `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/messages:send`,
-        {
-          method: "POST",
-          headers: {
-            ...JSON_HEADERS,
-            authorization: `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            message: {
-              token: deviceToken,
+
+  const isUrgentOrder =
+    data.type === "new_order" || data.type === "driver_order_available";
+
+  const sendOne = async (deviceToken) => {
+    const response = await fetch(
+      `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/messages:send`,
+      {
+        method: "POST",
+        headers: {
+          ...JSON_HEADERS,
+          authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          message: {
+            token: deviceToken,
+            notification: {
+              title,
+              body
+            },
+            data,
+            android: {
+              priority: "HIGH",
               notification: {
-                title,
-                body
+                sound: "default",
+                channel_id: isUrgentOrder
+                  ? "barakah_urgent_orders_v3"
+                  : "barakah_orders",
+                notification_priority: isUrgentOrder
+                  ? "PRIORITY_MAX"
+                  : "PRIORITY_HIGH",
+                default_vibrate_timings: true,
+                visibility: "PUBLIC",
+                sticky: isUrgentOrder
+              }
+            },
+            apns: {
+              headers: {
+                "apns-priority": "10"
               },
-              data,
-              android: {
-                priority: "HIGH",
-                notification: {
+              payload: {
+                aps: {
                   sound: "default",
-                  channel_id: isUrgentOrder ? "barakah_urgent_orders_v3" : "barakah_orders",
-                  notification_priority: isUrgentOrder ? "PRIORITY_MAX" : "PRIORITY_HIGH",
-                  default_vibrate_timings: true,
-                  visibility: "PUBLIC",
-                  sticky: isUrgentOrder
-                }
-              },
-              apns: {
-                headers: {
-                  "apns-priority": "10"
-                },
-                payload: {
-                  aps: {
-                    sound: "default",
-                    badge: 1,
-                    "interruption-level": isUrgentOrder ? "time-sensitive" : "active"
-                  }
-                }
-              },
-              webpush: {
-                notification: {
-                  icon: "/icons/Icon-192.png",
-                  badge: "/icons/Icon-192.png",
-                  dir: "rtl",
-                  lang: "ar"
-                },
-                fcm_options: {
-                  link: "https://barakah-new.web.app/"
+                  badge: 1,
+                  "interruption-level": isUrgentOrder
+                    ? "time-sensitive"
+                    : "active"
                 }
               }
+            },
+            webpush: {
+              notification: {
+                icon: "/icons/Icon-192.png",
+                badge: "/icons/Icon-192.png",
+                dir: "rtl",
+                lang: "ar"
+              },
+              fcm_options: {
+                link: "https://barakah-new.web.app/"
+              }
             }
-          })
-        }
-      );
-      if (!response.ok) {
-        console.error(
-          "push_notification_failed",
-          response.status,
-          (await response.text()).substring(0, 300)
-        );
+          }
+        })
       }
-    })
-  );
+    );
+
+    // Always consume the response body so Cloudflare can release the
+    // outbound connection before the next batch starts.
+    const responseText = await response.text();
+
+    if (!response.ok) {
+      console.error(
+        "push_notification_failed",
+        response.status,
+        responseText.substring(0, 300)
+      );
+    }
+  };
+
+  const concurrency = 4;
+  for (let offset = 0; offset < uniqueTokens.length; offset += concurrency) {
+    const batch = uniqueTokens.slice(offset, offset + concurrency);
+    await Promise.all(batch.map(sendOne));
+  }
 }
 __name(sendPushToTokens, "sendPushToTokens");
 async function userPushTokens(env, token, uid) {

@@ -129,6 +129,28 @@ var index_default = {
   if (request.method === "POST" && url.pathname === "/v1/support/messages") {
         return json(await sendSupportMessage(request, env, user), 201, cors);
       }
+
+      if (
+        request.method === "POST" &&
+        url.pathname === "/v1/admin/communications/campaigns"
+      ) {
+        return json(
+          await createCommunicationCampaign(request, env, user),
+          201,
+          cors
+        );
+      }
+
+      if (
+        request.method === "POST" &&
+        url.pathname === "/v1/admin/communications/campaigns/process"
+      ) {
+        return json(
+          await processCommunicationCampaign(request, env, user),
+          200,
+          cors
+        );
+      }
       if (request.method === "GET" && url.pathname === "/v1/order-supervisor/orders") {
         return json(await listOrderSupervisorOrders(env, user), 200, cors);
       }
@@ -1599,6 +1621,454 @@ async function sendSupportMessage(request, env, user) {
   return { ok: true, threadId, messageId };
 }
 __name(sendSupportMessage, "sendSupportMessage");
+function canManageCommunications(user, actor) {
+  return isPrimaryAdmin(user, actor) ||
+    actor?.role === "admin" ||
+    actor?.isAdmin === true;
+}
+
+function communicationAudienceMatches(profile, audience) {
+  if (!profile || typeof profile !== "object") return false;
+
+  const role = String(profile.role || "").trim();
+  const isAdminAccount =
+    role === "admin" || profile.isAdmin === true;
+
+  const isTaxiDriver =
+    profile.taxiDriverEnabled === true &&
+    String(profile.taxiBusinessId || "").trim().length > 0;
+
+  const isAgent =
+    String(profile.agentNumber || "").trim().length > 0;
+
+  switch (audience) {
+    case "all":
+      return !isAdminAccount;
+
+    case "customers":
+      return role === "customer" &&
+        !isTaxiDriver &&
+        !isAgent;
+
+    case "merchants":
+      return role === "merchant";
+
+    case "delivery_drivers":
+      return role === "driver";
+
+    case "taxi_drivers":
+      return isTaxiDriver;
+
+    case "agents":
+      return isAgent;
+
+    case "customer_service":
+      return role === "customer_service" &&
+        profile.customerServiceEnabled === true;
+
+    default:
+      return false;
+  }
+}
+
+async function firestoreListCollectionPage(
+  env,
+  token,
+  collectionId,
+  pageSize = 12,
+  pageToken = ""
+) {
+  const url = new URL(
+    `${firestoreBase(env)}/${encodeURIComponent(collectionId)}`
+  );
+
+  url.searchParams.set(
+    "pageSize",
+    String(Math.max(1, Math.min(12, pageSize)))
+  );
+
+  url.searchParams.set("orderBy", "__name__");
+
+  if (pageToken) {
+    url.searchParams.set("pageToken", pageToken);
+  }
+
+  const response = await fetch(url.toString(), {
+    headers: {
+      authorization: `Bearer ${token}`
+    }
+  });
+
+  if (!response.ok) {
+    console.error(
+      "communication_users_page_failed",
+      response.status
+    );
+
+    fail(
+      502,
+      "firestore-read-failed",
+      "تعذر قراءة قائمة المستخدمين."
+    );
+  }
+
+  const payload = await response.json();
+
+  return {
+    documents: Array.isArray(payload.documents)
+      ? payload.documents.map(decodeDocument)
+      : [],
+    nextPageToken:
+      typeof payload.nextPageToken === "string"
+        ? payload.nextPageToken
+        : ""
+  };
+}
+
+async function createCommunicationCampaign(
+  request,
+  env,
+  user
+) {
+  const body = await readJson(request);
+
+  const title = String(body?.title || "").trim();
+  const messageBody = String(body?.body || "").trim();
+  const audience = String(body?.audience || "").trim();
+  const type = String(body?.type || "").trim();
+
+  const allowedAudiences = new Set([
+    "all",
+    "customers",
+    "merchants",
+    "delivery_drivers",
+    "taxi_drivers",
+    "agents",
+    "customer_service"
+  ]);
+
+  const allowedTypes = new Set([
+    "message",
+    "offer",
+    "ad",
+    "alert"
+  ]);
+
+  if (!title || title.length > 120) {
+    fail(
+      400,
+      "invalid-campaign-title",
+      "عنوان الرسالة غير صالح."
+    );
+  }
+
+  if (!messageBody || messageBody.length > 1500) {
+    fail(
+      400,
+      "invalid-campaign-body",
+      "محتوى الرسالة فارغ أو طويل جدًا."
+    );
+  }
+
+  if (!allowedAudiences.has(audience)) {
+    fail(
+      400,
+      "invalid-campaign-audience",
+      "الجمهور المحدد غير صالح."
+    );
+  }
+
+  if (!allowedTypes.has(type)) {
+    fail(
+      400,
+      "invalid-campaign-type",
+      "نوع الرسالة غير صالح."
+    );
+  }
+
+  const token = await serviceToken(env);
+
+  const actor = await firestoreGet(
+    env,
+    token,
+    `users/${encodeURIComponent(user.uid)}`
+  );
+
+  if (!canManageCommunications(user, actor)) {
+    fail(
+      403,
+      "permission-denied",
+      "هذه الميزة متاحة لإدارة بركة فقط."
+    );
+  }
+
+  const campaignId =
+    crypto.randomUUID().replace(/-/g, "");
+
+  const now = new Date();
+
+  await firestoreCreate(
+    env,
+    token,
+    "communication_campaigns",
+    campaignId,
+    {
+      title,
+      body: messageBody,
+      audience,
+      type,
+      status: "sending",
+      createdBy: user.uid,
+      senderName: String(
+        actor?.displayName || "إدارة بركة"
+      ),
+      recipientCount: 0,
+      scannedCount: 0,
+      pushTargetCount: 0,
+      pageCount: 0,
+      nextPageToken: "",
+      createdAt: now,
+      updatedAt: now
+    }
+  );
+
+  return {
+    ok: true,
+    campaignId,
+    status: "sending"
+  };
+}
+
+
+async function processCommunicationCampaign(
+  request,
+  env,
+  user
+) {
+  const body = await readJson(request);
+
+  const campaignId =
+    String(body?.campaignId || "").trim();
+
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(campaignId)) {
+    fail(
+      400,
+      "invalid-campaign-id",
+      "معرّف الحملة غير صالح."
+    );
+  }
+
+  const token = await serviceToken(env);
+
+  const [actor, campaign] = await Promise.all([
+    firestoreGet(
+      env,
+      token,
+      `users/${encodeURIComponent(user.uid)}`
+    ),
+    firestoreGet(
+      env,
+      token,
+      `communication_campaigns/${encodeURIComponent(campaignId)}`
+    )
+  ]);
+
+  if (!canManageCommunications(user, actor)) {
+    fail(
+      403,
+      "permission-denied",
+      "هذه الميزة متاحة لإدارة بركة فقط."
+    );
+  }
+
+  if (!campaign) {
+    fail(
+      404,
+      "campaign-not-found",
+      "الحملة غير موجودة."
+    );
+  }
+
+  if (campaign.status === "completed") {
+    return {
+      ok: true,
+      campaignId,
+      complete: true,
+      recipientCount:
+        Number(campaign.recipientCount || 0),
+      scannedCount:
+        Number(campaign.scannedCount || 0),
+      pushTargetCount:
+        Number(campaign.pushTargetCount || 0),
+      pageCount:
+        Number(campaign.pageCount || 0)
+    };
+  }
+
+  const page = await firestoreListCollectionPage(
+    env,
+    token,
+    "users",
+    12,
+    String(campaign.nextPageToken || "")
+  );
+
+  const recipients = page.documents.filter(
+    (profile) =>
+      profile?.id &&
+      communicationAudienceMatches(
+        profile,
+        campaign.audience
+      )
+  );
+
+  const now = new Date();
+  const writes = [];
+
+  for (const profile of recipients) {
+    writes.push(
+      createWrite(
+        env,
+        `user_inbox/${encodeURIComponent(profile.id)}/messages/${encodeURIComponent(campaignId)}`,
+        {
+          campaignId,
+          recipientId: profile.id,
+          title: String(campaign.title || ""),
+          body: String(campaign.body || ""),
+          type: String(
+            campaign.type || "message"
+          ),
+          audience: String(
+            campaign.audience || "all"
+          ),
+          senderId: String(
+            campaign.createdBy || ""
+          ),
+          senderName: String(
+            campaign.senderName ||
+              "إدارة بركة"
+          ),
+          createdAt: now
+        }
+      )
+    );
+  }
+
+  const pushRecipients = recipients.flatMap(
+    (profile) =>
+      (Array.isArray(profile.fcmTokens)
+        ? profile.fcmTokens
+        : [])
+        .filter(
+          (deviceToken) =>
+            typeof deviceToken === "string" &&
+            deviceToken.length > 20
+        )
+        .map((deviceToken) => ({
+          uid: profile.id,
+          token: deviceToken,
+          updateTime:
+            profile.updateTime || null
+        }))
+  );
+
+  const recipientCount =
+    Number(campaign.recipientCount || 0) +
+    recipients.length;
+
+  const scannedCount =
+    Number(campaign.scannedCount || 0) +
+    page.documents.length;
+
+  const pushTargetCount =
+    Number(campaign.pushTargetCount || 0) +
+    pushRecipients.length;
+
+  const pageCount =
+    Number(campaign.pageCount || 0) + 1;
+
+  const complete =
+    !page.nextPageToken;
+
+  writes.push(
+    updateWrite(
+      env,
+      `communication_campaigns/${encodeURIComponent(campaignId)}`,
+      {
+        status:
+          complete ? "completed" : "sending",
+        recipientCount,
+        scannedCount,
+        pushTargetCount,
+        pageCount,
+        nextPageToken:
+          page.nextPageToken,
+        updatedAt: now,
+        ...(complete
+          ? { completedAt: now }
+          : {})
+      },
+      campaign.updateTime
+    )
+  );
+
+  const commit = await firestoreCommit(
+    env,
+    token,
+    writes
+  );
+
+  if (!commit) {
+    fail(
+      409,
+      "campaign-changed",
+      "تم تحديث الحملة من جلسة أخرى. حاول مرة أخرى."
+    );
+  }
+
+  if (pushRecipients.length > 0) {
+    try {
+      await sendPushToTokens(
+        env,
+        token,
+        pushRecipients,
+        {
+          title: String(
+            campaign.title || "بركة"
+          ),
+          body: String(
+            campaign.body || ""
+          ).slice(0, 220),
+          data: {
+            type: "barakah_campaign",
+            campaignId,
+            campaignType: String(
+              campaign.type || "message"
+            )
+          }
+        }
+      );
+    } catch (error) {
+      console.error(
+        "communication_campaign_push_failed",
+        campaignId,
+        error?.message || String(error)
+      );
+    }
+  }
+
+  return {
+    ok: true,
+    campaignId,
+    complete,
+    recipientCount,
+    scannedCount,
+    pushTargetCount,
+    pageCount
+  };
+}
+
+
 function documentName(env, path) {
   return `projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/databases/(default)/documents/${path}`;
 }

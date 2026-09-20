@@ -35,6 +35,7 @@ import 'agent_registration_screen.dart';
 import 'customer_service_join_screen.dart';
 import 'customer_service_portal.dart';
 import 'customer_support_chat_screen.dart';
+import 'barakah_inbox_screen.dart';
 import 'favorites_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -345,6 +346,20 @@ class _ProfileBody extends StatelessWidget {
                     MaterialPageRoute(builder: (_) => const PlayHubScreen()),
                   ),
                 ),
+              _ProfileAction(
+                icon: Icons.mark_email_unread_outlined,
+                title: 'رسائل بركة',
+                onTap: () => requireLogin(() async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => BarakahInboxScreen(
+                        userId: user!.uid,
+                      ),
+                    ),
+                  );
+                }),
+              ),
               _ProfileAction(
                 icon: Icons.notifications_none_rounded,
                 title: 'الإشعارات',

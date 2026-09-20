@@ -11,6 +11,8 @@ import 'admin_operations_screen.dart';
 import 'order_supervisor_screen.dart';
 import 'admin_add_item_screen.dart';
 import 'admin_manage_ads.dart';
+import 'admin_coming_soon_screen.dart';
+import 'admin_communication_center.dart';
 import 'admin_manage_drivers.dart';
 import 'admin_manage_taxi_drivers.dart';
 import 'admin_account_deletion_requests.dart';
@@ -244,6 +246,16 @@ class AdminDashboard extends StatelessWidget {
         title: 'إدارة الإعلانات',
         icon: Icons.campaign_rounded,
         page: const AdminManageAds(),
+      ),
+      _AdminItem(
+        title: 'قريبًا في بركة',
+        icon: Icons.upcoming_rounded,
+        page: const AdminComingSoonScreen(),
+      ),
+      _AdminItem(
+        title: 'مركز تواصل بركة',
+        icon: Icons.forum_rounded,
+        page: const AdminCommunicationCenter(),
       ),
       _AdminItem(
         title: 'سائقو التوصيل',

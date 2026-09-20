@@ -957,6 +957,7 @@ match /agent_orders/{requestId} {
           request.resource.data.lastMessage.size() <= 4000 &&
           request.resource.data.updatedAt == request.time;
       }
+      allow create: if isAdmin();
       allow create: if signedIn() && threadId == request.auth.uid &&
         request.resource.data.customerId == request.auth.uid &&
         validSupportSummary() &&
@@ -1032,6 +1033,21 @@ match /agent_orders/{requestId} {
             isCustomerService() &&
             get(/databases/$(database)/documents/support_threads/$(threadId)).data.assignedAgentId == request.auth.uid));
         allow update, delete: if false;
+      }
+    }
+
+    match /communication_campaigns/{campaignId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /user_inbox/{userId} {
+      allow read, create, update, delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if isAdmin() ||
+          (signedIn() && request.auth.uid == userId);
+        allow create, update, delete: if false;
       }
     }
 

@@ -939,25 +939,26 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
                         ],
                       ),
                     ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.add_shopping_cart_rounded),
-                          label: Text('عرض وإضافة أصناف $title'),
-                          onPressed: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => AdminManageProducts(
-                                initialBusinessId: doc.id,
-                                initialBusinessTitle: title,
+                    if (type.toLowerCase().trim() != 'taxi')
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.add_shopping_cart_rounded),
+                            label: Text('عرض وإضافة أصناف $title'),
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => AdminManageProducts(
+                                  initialBusinessId: doc.id,
+                                  initialBusinessTitle: title,
+                                ),
                               ),
                             ),
                           ),
                         ),
                       ),
-                    ),
                   ],
                 ),
               );

@@ -12,6 +12,7 @@ import 'order_supervisor_screen.dart';
 import 'admin_add_item_screen.dart';
 import 'admin_manage_ads.dart';
 import 'admin_manage_drivers.dart';
+import 'admin_manage_taxi_drivers.dart';
 import 'admin_account_deletion_requests.dart';
 import 'admin_loyalty_settings.dart';
 import 'admin_app_hours.dart';
@@ -393,12 +394,23 @@ class AdminDashboard extends StatelessWidget {
                     ),
                     const SizedBox(width: 10),
                     _AdminRequestShortcut(
-                      title: 'طلبات السائقين',
+                      title: 'طلبات سائقي التوصيل',
                       icon: Icons.delivery_dining_rounded,
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (_) => const AdminManageDrivers(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    _AdminRequestShortcut(
+                      title: 'طلبات سائقي تكسي بركة',
+                      icon: Icons.local_taxi_rounded,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const AdminManageTaxiDrivers(),
                         ),
                       ),
                     ),

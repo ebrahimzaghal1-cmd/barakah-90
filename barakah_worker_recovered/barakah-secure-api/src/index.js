@@ -1351,7 +1351,14 @@ async function notifyAdminsAboutVerifiedRequest(request, env, user) {
       title: "طلب انضمام سائق جديد 🚗",
       label: (record) => record.fullName || "متقدم جديد"
     },
-    customer_service_application: {
+    taxi_driver_application: {
+    collection: "taxi_driver_applications",
+    title: "طلب انضمام سائق تكسي بركة جديد 🚕",
+    label: (record) => record.fullName || "متقدم جديد",
+    ownerField: "userId",
+    expectedStatus: "pending"
+  },
+  customer_service_application: {
       collection: "customer_service_applications",
       title: "طلب توظيف خدمة عملاء جديد 🎧",
       label: (record) => record.fullName || "متقدم جديد"
@@ -2574,39 +2581,42 @@ async function assignTaxiDriver(request, env, user) {
     `users/${encodeURIComponent(driverUid)}`
   );
 
-  if (!driver || driver.role !== "driver") {
+  if (!driver) {
     fail(
       404,
       "driver-not-found",
-      "الحساب غير موجود أو ليس سائقًا معتمدًا."
+      "حساب سائق التكسي غير موجود."
     );
   }
 
-  // ربط السيارة بمكتب تكسي لا يتم إلا بعد وجود وثيقة طلب سائق معتمدة.
-  // تبقى الهوية والرخصة ووثائق المركبة والتأمين وبيانات المستحقات وشروط
-  // السائق محفوظة في driver_applications ولا يمكن تجاوزها بتعديل profile.
-  const driverApplication = await firestoreGet(
-    env,
-    token,
-    `driver_applications/${encodeURIComponent(driverUid)}`
-  );
+  // سائق تكسي بركة مستقل عن سائق التوصيل.
+  // لا يشترط role=driver ولا يمنح أي صلاحية دليفري.
+  // الربط بالمكتب يتطلب طلب تكسي مستقلًا ومعتمدًا بالكامل.
+  let taxiDriverApplication = null;
 
-  if (
-    action === "assign" &&
-    (!driverApplication ||
-      driverApplication.status !== "approved" ||
-      driverApplication.identityVerified !== true ||
-      driverApplication.driverLicenseVerified !== true ||
-      driverApplication.vehicleDocumentsVerified !== true ||
-      driverApplication.payoutVerified !== true ||
-      driverApplication.acceptedDriverTerms !== true ||
-      driverApplication.acceptedPrivacyPolicy !== true)
-  ) {
-    fail(
-      409,
-      "driver-documents-required",
-      "لا يمكن ربط السائق بالمكتب قبل اعتماد وثيقة السائق والتحقق من المركبة."
+  if (action === "assign") {
+    taxiDriverApplication = await firestoreGet(
+      env,
+      token,
+      `taxi_driver_applications/${encodeURIComponent(driverUid)}`
     );
+
+    if (
+      !taxiDriverApplication ||
+      taxiDriverApplication.status !== "approved" ||
+      taxiDriverApplication.identityVerified !== true ||
+      taxiDriverApplication.driverLicenseVerified !== true ||
+      taxiDriverApplication.vehicleDocumentsVerified !== true ||
+      taxiDriverApplication.payoutVerified !== true ||
+      taxiDriverApplication.acceptedDriverTerms !== true ||
+      taxiDriverApplication.acceptedPrivacyPolicy !== true
+    ) {
+      fail(
+        409,
+        "taxi-driver-documents-required",
+        "لا يمكن ربط سائق التكسي بالمكتب قبل اعتماد طلب تكسي بركة والتحقق من جميع الوثائق."
+      );
+    }
   }
 
   if (action === "remove") {
@@ -2713,7 +2723,7 @@ async function assignTaxiDriver(request, env, user) {
         taxiDriverEnabled: true,
         taxiAssignedAt: new Date(),
         taxiAssignedBy: user.uid,
-        taxiAssignmentAgreementVersion: driverApplication.agreementVersion,
+        taxiAssignmentAgreementVersion: taxiDriverApplication.agreementVersion,
         updatedAt: new Date()
       },
       driver.updateTime

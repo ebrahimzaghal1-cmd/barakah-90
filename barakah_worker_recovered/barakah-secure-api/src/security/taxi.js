@@ -361,7 +361,6 @@ export async function updateTaxiOrder(
       // Neither office owners nor administrators may send GPS for a driver.
       requireValue(
         order.driverUid === user.uid &&
-          actor.role === 'driver' &&
           actor.taxiDriverEnabled === true &&
           actor.taxiBusinessId === businessId,
         'taxi-permission-denied',
@@ -460,7 +459,6 @@ export async function updateTaxiOrder(
 
       requireValue(
         !!driver &&
-          driver.role === 'driver' &&
           driver.taxiDriverEnabled === true &&
           documentId(driver.taxiBusinessId) === businessId,
         'invalid-taxi-driver',

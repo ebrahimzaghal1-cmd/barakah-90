@@ -499,6 +499,43 @@ describe("taxi live driver location", () => {
     });
   }
 
+  it("allows an independent taxi driver with customer role to be dispatched, start trip, and update location", async () => {
+    const store = baseStore();
+
+    await mergeRecord(store, `users/${driverId}`, {
+      role: "customer",
+    });
+
+    const orderId = await createAndDispatch(store);
+
+    await updateTaxiOrder(
+      store as any,
+      { uid: driverId },
+      orderId,
+      { action: "start_trip" },
+      { now: startedAt },
+    );
+
+    await updateTaxiOrder(
+      store as any,
+      { uid: driverId },
+      orderId,
+      { action: "update_location", ...position },
+      { now: updatedAt },
+    );
+
+    expect(store.read(`users/${driverId}`).role).toBe("customer");
+
+    expect(store.read(`taxi_orders/${orderId}`)).toMatchObject({
+      driverUid: driverId,
+      tripStartedBy: driverId,
+      driverLatitude: position.latitude,
+      driverLongitude: position.longitude,
+      driverLocationUpdatedAt: updatedAt,
+      updatedAt,
+    });
+  });
+
   it("starts an assigned trip with server time and ignores injected fields", async () => {
     const store = baseStore();
     const orderId = await createAndDispatch(store);
@@ -627,7 +664,6 @@ describe("taxi live driver location", () => {
       ["non-boolean enabled", { taxiDriverEnabled: "true" }],
       ["moved to another office", { taxiBusinessId: "otherOffice" }],
       ["removed from an office", { taxiBusinessId: null }],
-      ["role changed", { role: "merchant" }],
     ])(`rechecks driver authorization for ${action} when %s`, async (_, patch) => {
       const store = baseStore();
       const orderId = await startTrip(store);

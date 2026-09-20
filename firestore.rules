@@ -413,6 +413,107 @@ match /agent_orders/{requestId} {
       allow delete: if isAdmin();
     }
 
+
+
+    // طلبات الانضمام كسائق تكسي بركة — مستقلة عن سائقي التوصيل
+    match /taxi_driver_applications/{userId} {
+      allow create: if signedIn() &&
+        request.auth.uid == userId &&
+        request.resource.data.keys().hasOnly([
+          'userId',
+          'fullName',
+          'email',
+          'phone',
+          'nationalId',
+          'vehicle',
+          'driverLicenseNumber',
+          'vehicleLicenseNumber',
+          'vehicleInsuranceNumber',
+          'payoutMethod',
+          'payoutAccount',
+          'acceptedDriverTerms',
+          'acceptedPrivacyPolicy',
+          'agreementVersion',
+          'agreementAcceptedAt',
+          'status',
+          'identityVerified',
+          'driverLicenseVerified',
+          'vehicleDocumentsVerified',
+          'payoutVerified',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.fullName is string &&
+        request.resource.data.fullName.size() >= 2 &&
+        request.resource.data.fullName.size() <= 120 &&
+        request.resource.data.email is string &&
+        request.resource.data.email.size() >= 5 &&
+        request.resource.data.email.size() <= 180 &&
+        request.resource.data.phone is string &&
+        request.resource.data.phone.size() >= 6 &&
+        request.resource.data.phone.size() <= 30 &&
+        request.resource.data.nationalId is string &&
+        request.resource.data.nationalId.size() >= 5 &&
+        request.resource.data.nationalId.size() <= 30 &&
+        request.resource.data.vehicle is string &&
+        request.resource.data.vehicle.size() >= 2 &&
+        request.resource.data.vehicle.size() <= 160 &&
+        request.resource.data.driverLicenseNumber is string &&
+        request.resource.data.vehicleLicenseNumber is string &&
+        request.resource.data.vehicleInsuranceNumber is string &&
+        request.resource.data.payoutMethod is string &&
+        request.resource.data.payoutAccount is string &&
+        request.resource.data.acceptedDriverTerms == true &&
+        request.resource.data.acceptedPrivacyPolicy == true &&
+        request.resource.data.agreementVersion is string &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.identityVerified == false &&
+        request.resource.data.driverLicenseVerified == false &&
+        request.resource.data.vehicleDocumentsVerified == false &&
+        request.resource.data.payoutVerified == false;
+
+      allow read: if isAdmin() ||
+        (signedIn() && request.auth.uid == userId);
+
+      allow update: if isAdmin() ||
+        (
+          signedIn() &&
+          request.auth.uid == userId &&
+          resource.data.status == 'pending' &&
+          request.resource.data.status == 'pending' &&
+
+          request.resource.data.identityVerified ==
+            resource.data.identityVerified &&
+          request.resource.data.driverLicenseVerified ==
+            resource.data.driverLicenseVerified &&
+          request.resource.data.vehicleDocumentsVerified ==
+            resource.data.vehicleDocumentsVerified &&
+          request.resource.data.payoutVerified ==
+            resource.data.payoutVerified &&
+
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'fullName',
+            'email',
+            'phone',
+            'nationalId',
+            'vehicle',
+            'driverLicenseNumber',
+            'vehicleLicenseNumber',
+            'vehicleInsuranceNumber',
+            'payoutMethod',
+            'payoutAccount',
+            'acceptedDriverTerms',
+            'acceptedPrivacyPolicy',
+            'agreementVersion',
+            'agreementAcceptedAt',
+            'updatedAt'
+          ])
+        );
+
+      allow delete: if isAdmin();
+    }
+
     // طلبات الانضمام كوسيطة بركة
     match /agent_applications/{userId} {
       allow create: if signedIn() &&

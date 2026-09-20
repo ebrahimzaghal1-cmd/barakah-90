@@ -43,38 +43,90 @@ var index_default = {
       }
 
       if (request.method === "POST" && url.pathname === "/v1/taxi-orders") {
-        const store = createFirestoreStore({ baseUrl: firestoreBase(env), token: await serviceToken(env) });
-        return json(
-          await createTaxiOrder(
-            store,
-            user,
-            await readJson(request),
-            { primaryAdminUid: PRIMARY_ADMIN_UID }
-          ),
-          201,
-          cors
-        );
-      }
+    const serviceTokenValue = await serviceToken(env);
+    const store = createFirestoreStore({
+      baseUrl: firestoreBase(env),
+      token: serviceTokenValue
+    });
 
-      const taxiOrderActionMatch = url.pathname.match(
-        /^\/v1\/taxi-orders\/([^/]+)\/action$/
+    const result = await createTaxiOrder(
+      store,
+      user,
+      await readJson(request),
+      { primaryAdminUid: PRIMARY_ADMIN_UID }
+    );
+
+    try {
+      await notifyTaxiOrderEvent(
+        env,
+        serviceTokenValue,
+        result.orderId,
+        "created"
       );
-      if (request.method === "POST" && taxiOrderActionMatch) {
-        const store = createFirestoreStore({ baseUrl: firestoreBase(env), token: await serviceToken(env) });
-        return json(
-          await updateTaxiOrder(
-            store,
-            user,
-            decodeURIComponent(taxiOrderActionMatch[1]),
-            await readJson(request),
-            { primaryAdminUid: PRIMARY_ADMIN_UID }
-          ),
-          200,
-          cors
+    } catch (error) {
+      console.error(
+        "taxi_notification_failed",
+        "created",
+        error?.message || String(error)
+      );
+    }
+
+    return json(result, 201, cors);
+  }
+
+  const taxiOrderActionMatch = url.pathname.match(
+    /^\/v1\/taxi-orders\/([^/]+)\/action$/
+  );
+
+  if (request.method === "POST" && taxiOrderActionMatch) {
+    const orderId = decodeURIComponent(
+      taxiOrderActionMatch[1]
+    );
+
+    const input = await readJson(request);
+    const serviceTokenValue = await serviceToken(env);
+
+    const store = createFirestoreStore({
+      baseUrl: firestoreBase(env),
+      token: serviceTokenValue
+    });
+
+    const result = await updateTaxiOrder(
+      store,
+      user,
+      orderId,
+      input,
+      { primaryAdminUid: PRIMARY_ADMIN_UID }
+    );
+
+    const notificationActions = new Set([
+      "dispatch",
+      "complete",
+      "confirm",
+      "cancel"
+    ]);
+
+    if (notificationActions.has(input?.action)) {
+      try {
+        await notifyTaxiOrderEvent(
+          env,
+          serviceTokenValue,
+          orderId,
+          input.action
+        );
+      } catch (error) {
+        console.error(
+          "taxi_notification_failed",
+          input?.action,
+          error?.message || String(error)
         );
       }
+    }
 
-      if (request.method === "POST" && url.pathname === "/v1/support/messages") {
+    return json(result, 200, cors);
+  }
+
+  if (request.method === "POST" && url.pathname === "/v1/support/messages") {
         return json(await sendSupportMessage(request, env, user), 201, cors);
       }
       if (request.method === "GET" && url.pathname === "/v1/order-supervisor/orders") {
@@ -786,19 +838,53 @@ async function listOrderSupervisorOrders(env, user) {
   };
 }
 __name(listOrderSupervisorOrders, "listOrderSupervisorOrders");
-async function sendPushToTokens(env, token, deviceTokens, { title, body, data = {} }) {
-  const uniqueTokens = [...new Set(
-    (deviceTokens || []).filter(
-      (value) => typeof value === "string" && value.length > 20
-    )
-  )].slice(0, 100);
+async function sendPushToTokens(
+  env,
+  token,
+  deviceTokens,
+  { title, body, data = {} }
+) {
+  const recipients = [];
+  const seenTokens = new Set();
 
-  if (!uniqueTokens.length) return;
+  for (const value of deviceTokens || []) {
+    const recipient =
+      typeof value === "string"
+        ? { uid: null, token: value, updateTime: null }
+        : {
+            uid:
+              typeof value?.uid === "string"
+                ? value.uid
+                : null,
+            token:
+              typeof value?.token === "string"
+                ? value.token
+                : "",
+            updateTime: value?.updateTime || null
+          };
+
+    if (
+      recipient.token.length <= 20 ||
+      seenTokens.has(recipient.token)
+    ) {
+      continue;
+    }
+
+    seenTokens.add(recipient.token);
+    recipients.push(recipient);
+
+    if (recipients.length >= 100) break;
+  }
+
+  if (!recipients.length) return;
 
   const isUrgentOrder =
-    data.type === "new_order" || data.type === "driver_order_available";
+    data.type === "new_order" ||
+    data.type === "driver_order_available";
 
-  const sendOne = async (deviceToken) => {
+  const deadRecipients = [];
+
+  const sendOne = async (recipient) => {
     const response = await fetch(
       `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/messages:send`,
       {
@@ -809,7 +895,7 @@ async function sendPushToTokens(env, token, deviceTokens, { title, body, data = 
         },
         body: JSON.stringify({
           message: {
-            token: deviceToken,
+            token: recipient.token,
             notification: {
               title,
               body
@@ -860,24 +946,72 @@ async function sendPushToTokens(env, token, deviceTokens, { title, body, data = 
       }
     );
 
-    // Always consume the response body so Cloudflare can release the
-    // outbound connection before the next batch starts.
     const responseText = await response.text();
 
-    if (!response.ok) {
-      console.error(
-        "push_notification_failed",
-        response.status,
-        responseText.substring(0, 300)
-      );
+    if (response.ok) {
+      return;
     }
+
+    let isUnregistered = false;
+
+    if (response.status === 404) {
+      try {
+        const parsed = JSON.parse(responseText);
+        isUnregistered =
+          parsed?.error?.status === "NOT_FOUND" &&
+          (
+            parsed?.error?.message === "NotRegistered" ||
+            parsed?.error?.message === "Device unregistered." ||
+            parsed?.error?.details?.some(
+              (detail) =>
+                detail?.errorCode === "UNREGISTERED"
+            )
+          );
+      } catch (_) {
+        isUnregistered = false;
+      }
+    }
+
+    if (isUnregistered && recipient.uid) {
+      deadRecipients.push(recipient);
+
+      console.warn("push_token_unregistered", {
+        uid: recipient.uid
+      });
+
+      return;
+    }
+
+    console.error(
+      "push_notification_failed",
+      response.status,
+      responseText.substring(0, 300)
+    );
   };
 
   const concurrency = 4;
-  for (let offset = 0; offset < uniqueTokens.length; offset += concurrency) {
-    const batch = uniqueTokens.slice(offset, offset + concurrency);
+
+  for (
+    let offset = 0;
+    offset < recipients.length;
+    offset += concurrency
+  ) {
+    const batch = recipients.slice(
+      offset,
+      offset + concurrency
+    );
+
     await Promise.all(batch.map(sendOne));
   }
+
+  // Do not mutate Firestore while delivering transactional pushes.
+// UNREGISTERED tokens are counted here and can be cleaned separately,
+// avoiding extra subrequests in order and taxi request flows.
+
+console.log("PUSH_DELIVERY_RESULT", {
+    attempted: recipients.length,
+    unregistered: deadRecipients.length
+  });
 }
 __name(sendPushToTokens, "sendPushToTokens");
 async function userPushTokens(env, token, uid) {
@@ -890,6 +1024,31 @@ async function userPushTokens(env, token, uid) {
   return Array.isArray(profile?.fcmTokens) ? profile.fcmTokens : [];
 }
 __name(userPushTokens, "userPushTokens");
+
+async function userPushRecipients(env, token, uid) {
+  if (!uid) return [];
+
+  const profile = await firestoreGet(
+    env,
+    token,
+    `users/${encodeURIComponent(uid)}`
+  );
+
+  if (!profile || !Array.isArray(profile.fcmTokens)) return [];
+
+  return profile.fcmTokens
+    .filter(
+      (deviceToken) =>
+        typeof deviceToken === "string" && deviceToken.length > 20
+    )
+    .map((deviceToken) => ({
+      uid,
+      token: deviceToken,
+      updateTime: profile.updateTime
+    }));
+}
+__name(userPushRecipients, "userPushRecipients");
+
 async function notifyCustomerOrderStatus(env, token, order, orderId, status) {
   const labels = {
     accepted: "\u062A\u0645 \u0642\u0628\u0648\u0644 \u0637\u0644\u0628\u0643 \u2705",
@@ -928,19 +1087,46 @@ async function notifyCustomerOrderStatus(env, token, order, orderId, status) {
 }
 __name(notifyCustomerOrderStatus, "notifyCustomerOrderStatus");
 async function notifyAdminsAboutOrder(env, token, orderId, order) {
-  const [ownerTokens, supervisors] = await Promise.all([
-    adminPushTokens(env, token),
-    firestoreQuery(env, token, "users", [fieldEquals("role", "order_supervisor")])
+  const [ownerRecipients, supervisors] = await Promise.all([
+    userPushRecipients(env, token, PRIMARY_ADMIN_UID),
+    firestoreQuery(env, token, "users", [
+      fieldEquals("role", "order_supervisor")
+    ])
   ]);
-  const adminTokens = [
-    ...ownerTokens,
+
+  const adminRecipients = [
+    ...ownerRecipients,
     ...supervisors
-      .filter((supervisor) => supervisor.adminPermissions?.manageOrders === true)
-      .flatMap((supervisor) => Array.isArray(supervisor.fcmTokens) ? supervisor.fcmTokens : [])
+      .filter(
+        (supervisor) =>
+          supervisor.adminPermissions?.manageOrders === true
+      )
+      .flatMap((supervisor) =>
+        (Array.isArray(supervisor.fcmTokens)
+          ? supervisor.fcmTokens
+          : []
+        )
+          .filter(
+            (deviceToken) =>
+              typeof deviceToken === "string" &&
+              deviceToken.length > 20
+          )
+          .map((deviceToken) => ({
+            uid: supervisor.id,
+            token: deviceToken,
+            updateTime: supervisor.updateTime
+          }))
+      )
   ];
-  let merchantTokens = [];
+
+  let merchantRecipients = [];
+
   if (order.businessId) {
-    const [business, directlyLinkedMerchants, managedBusinessMerchants] = await Promise.all([
+    const [
+      business,
+      directlyLinkedMerchants,
+      managedBusinessMerchants
+    ] = await Promise.all([
       firestoreGet(
         env,
         token,
@@ -953,35 +1139,62 @@ async function notifyAdminsAboutOrder(env, token, orderId, order) {
         fieldArrayContains("managedBusinessIds", order.businessId)
       ])
     ]);
+
     const merchantUserIds = [
       business?.ownerId,
-      ...(Array.isArray(business?.managerIds) ? business.managerIds : [])
+      ...(Array.isArray(business?.managerIds)
+        ? business.managerIds
+        : [])
     ].filter(Boolean);
-    merchantTokens = (await Promise.all(
-      [...new Set(merchantUserIds)].map((uid) => userPushTokens(env, token, uid))
-    )).flat();
-    merchantTokens.push(
-      ...directlyLinkedMerchants.flatMap((profile) =>
-        Array.isArray(profile.fcmTokens) ? profile.fcmTokens : []
-      ),
-      ...managedBusinessMerchants.flatMap((profile) =>
-        Array.isArray(profile.fcmTokens) ? profile.fcmTokens : []
+
+    merchantRecipients = (
+      await Promise.all(
+        [...new Set(merchantUserIds)].map((uid) =>
+          userPushRecipients(env, token, uid)
+        )
+      )
+    ).flat();
+
+    const linkedProfiles = [
+      ...directlyLinkedMerchants,
+      ...managedBusinessMerchants
+    ];
+
+    merchantRecipients.push(
+      ...linkedProfiles.flatMap((profile) =>
+        (Array.isArray(profile.fcmTokens)
+          ? profile.fcmTokens
+          : []
+        )
+          .filter(
+            (deviceToken) =>
+              typeof deviceToken === "string" &&
+              deviceToken.length > 20
+          )
+          .map((deviceToken) => ({
+            uid: profile.id,
+            token: deviceToken,
+            updateTime: profile.updateTime
+          }))
       )
     );
   }
+
   const orderLabel = String(
-    order.orderNumber || orderId.substring(0, 6).toUpperCase()
+    order.orderNumber ||
+      orderId.substring(0, 6).toUpperCase()
   );
+
   await sendPushToTokens(
     env,
     token,
     [
-      ...adminTokens,
-      ...merchantTokens
+      ...adminRecipients,
+      ...merchantRecipients
     ],
     {
-      title: "\u0637\u0644\u0628 \u062C\u062F\u064A\u062F \u0641\u064A \u0628\u0631\u0643\u0629",
-      body: `\u0627\u0644\u0637\u0644\u0628 #${orderLabel} \u0645\u0646 ${order.businessTitle || "\u0623\u062D\u062F \u0627\u0644\u0645\u062D\u0644\u0627\u062A"} \u0628\u0642\u064A\u0645\u0629 ${order.total} \u20AA`,
+      title: "طلب جديد في بركة",
+      body: `الطلب #${orderLabel} من ${order.businessTitle || "أحد المحلات"} بقيمة ${order.total} ₪`,
       data: {
         type: "new_order",
         orderId,
@@ -2043,6 +2256,284 @@ function canManageBusiness(userId, business) {
   );
 }
 __name(canManageBusiness, "canManageBusiness");
+
+
+async function notifyTaxiOrderEvent(
+  env,
+  serviceTokenValue,
+  orderId,
+  action = "created"
+) {
+  const order = await firestoreGet(
+    env,
+    serviceTokenValue,
+    `taxi_orders/${encodeURIComponent(orderId)}`
+  );
+
+  if (!order) return;
+
+  const businessId = String(order.businessId || "").trim();
+  const customerId = String(order.customerId || "").trim();
+  const driverUid = String(order.driverUid || "").trim();
+  const orderLabel = String(
+    order.orderNumber ||
+      orderId.substring(0, 10).toUpperCase()
+  );
+
+  if (action === "created") {
+    if (!businessId) return;
+
+    const [business, linkedMerchants, managedMerchants] =
+      await Promise.all([
+        firestoreGet(
+          env,
+          serviceTokenValue,
+          `items/${encodeURIComponent(businessId)}`
+        ),
+        firestoreQuery(env, serviceTokenValue, "users", [
+          fieldEquals("merchantBusinessId", businessId)
+        ]),
+        firestoreQuery(env, serviceTokenValue, "users", [
+          fieldArrayContains("managedBusinessIds", businessId)
+        ])
+      ]);
+
+    const managerIds = [
+      business?.ownerId,
+      ...(Array.isArray(business?.managerIds)
+        ? business.managerIds
+        : [])
+    ].filter(Boolean);
+
+    const managerRecipients = (
+      await Promise.all(
+        [...new Set(managerIds)].map((uid) =>
+          userPushRecipients(
+            env,
+            serviceTokenValue,
+            uid
+          )
+        )
+      )
+    ).flat();
+
+    for (const profile of [
+      ...linkedMerchants,
+      ...managedMerchants
+    ]) {
+      for (const deviceToken of Array.isArray(profile.fcmTokens)
+        ? profile.fcmTokens
+        : []) {
+        if (
+          typeof deviceToken === "string" &&
+          deviceToken.length > 20
+        ) {
+          managerRecipients.push({
+            uid: profile.id,
+            token: deviceToken,
+            updateTime: profile.updateTime
+          });
+        }
+      }
+    }
+
+    await sendPushToTokens(
+      env,
+      serviceTokenValue,
+      managerRecipients,
+      {
+        title: "طلب تكسي جديد 🚕",
+        body: `طلب ${orderLabel} جديد في تكسي بركة. افتح لوحة التكسي لإرسال سيارة.`,
+        data: {
+          type: "taxi_order_new",
+          orderId: String(orderId),
+          orderNumber: orderLabel
+        }
+      }
+    );
+
+    return;
+  }
+
+  if (action === "dispatch") {
+    const [driverRecipients, customerRecipients] =
+      await Promise.all([
+        userPushRecipients(
+          env,
+          serviceTokenValue,
+          driverUid
+        ),
+        userPushRecipients(
+          env,
+          serviceTokenValue,
+          customerId
+        )
+      ]);
+
+    await Promise.all([
+      sendPushToTokens(
+        env,
+        serviceTokenValue,
+        driverRecipients,
+        {
+          title: "رحلة تكسي جديدة 🚕",
+          body: `تم تعيينك للطلب ${orderLabel}. افتح لوحة السائق لبدء الرحلة.`,
+          data: {
+            type: "taxi_driver_assigned",
+            orderId: String(orderId),
+            orderNumber: orderLabel
+          }
+        }
+      ),
+      sendPushToTokens(
+        env,
+        serviceTokenValue,
+        customerRecipients,
+        {
+          title: "السيارة في طريقها إليك 🚕",
+          body: `تم إرسال سائق لطلب ${orderLabel}.`,
+          data: {
+            type: "taxi_dispatched",
+            orderId: String(orderId),
+            orderNumber: orderLabel
+          }
+        }
+      )
+    ]);
+
+    return;
+  }
+
+  if (action === "complete") {
+    await sendPushToTokens(
+      env,
+      serviceTokenValue,
+      await userPushRecipients(
+        env,
+        serviceTokenValue,
+        customerId
+      ),
+      {
+        title: "أكد وصولك بأمان",
+        body: `انتهت رحلة ${orderLabel}. افتح تكسي بركة لتأكيد الوصول.`,
+        data: {
+          type: "taxi_confirm_arrival",
+          orderId: String(orderId),
+          orderNumber: orderLabel
+        }
+      }
+    );
+
+    return;
+  }
+
+  if (action === "confirm") {
+    if (!businessId) return;
+
+    const business = await firestoreGet(
+      env,
+      serviceTokenValue,
+      `items/${encodeURIComponent(businessId)}`
+    );
+
+    const targetIds = [
+      business?.ownerId,
+      ...(Array.isArray(business?.managerIds)
+        ? business.managerIds
+        : [])
+    ].filter(Boolean);
+
+    const recipientGroups = await Promise.all(
+      [...new Set(targetIds)].map((uid) =>
+        userPushRecipients(
+          env,
+          serviceTokenValue,
+          uid
+        )
+      )
+    );
+
+    await sendPushToTokens(
+      env,
+      serviceTokenValue,
+      recipientGroups.flat(),
+      {
+        title: "تم تأكيد رحلة التكسي ✅",
+        body: `أكد العميل وصوله للطلب ${orderLabel} وتم تسجيل استحقاق الرحلة.`,
+        data: {
+          type: "taxi_customer_confirmed",
+          orderId: String(orderId),
+          orderNumber: orderLabel
+        }
+      }
+    );
+
+    return;
+  }
+
+  if (action === "cancel") {
+    const cancelledByCustomer =
+      String(order.cancelledBy || "") === customerId;
+
+    const targetIds = [];
+
+    if (cancelledByCustomer) {
+      if (driverUid) {
+        targetIds.push(driverUid);
+      }
+
+      if (businessId) {
+        const business = await firestoreGet(
+          env,
+          serviceTokenValue,
+          `items/${encodeURIComponent(businessId)}`
+        );
+
+        if (business?.ownerId) {
+          targetIds.push(business.ownerId);
+        }
+
+        if (Array.isArray(business?.managerIds)) {
+          targetIds.push(...business.managerIds);
+        }
+      }
+    } else {
+      if (customerId) {
+        targetIds.push(customerId);
+      }
+
+      if (driverUid) {
+        targetIds.push(driverUid);
+      }
+    }
+
+    const recipientGroups = await Promise.all(
+      [...new Set(targetIds.filter(Boolean))].map((uid) =>
+        userPushRecipients(
+          env,
+          serviceTokenValue,
+          uid
+        )
+      )
+    );
+
+    await sendPushToTokens(
+      env,
+      serviceTokenValue,
+      recipientGroups.flat(),
+      {
+        title: "تم إلغاء طلب التكسي",
+        body: `تم إلغاء طلب ${orderLabel}.`,
+        data: {
+          type: "taxi_cancelled",
+          orderId: String(orderId),
+          orderNumber: orderLabel
+        }
+      }
+    );
+  }
+}
+__name(notifyTaxiOrderEvent, "notifyTaxiOrderEvent");
 
 async function assignTaxiDriver(request, env, user) {
   const data = await readJson(request);
@@ -4492,7 +4983,19 @@ async function publishOrderToDrivers(env, token, order, orderId) {
   if (!result) {
     fail(409, "order-changed", "\u062A\u063A\u064A\u0651\u0631\u062A \u062D\u0627\u0644\u0629 \u0627\u0644\u0637\u0644\u0628\u061B \u062D\u062F\u0651\u062B \u0627\u0644\u0635\u0641\u062D\u0629.");
   }
-  const driverTokens = availableDrivers.flatMap((driver) => Array.isArray(driver.fcmTokens) ? driver.fcmTokens : []);
+  const driverTokens = availableDrivers.flatMap((driver) =>
+  (Array.isArray(driver.fcmTokens) ? driver.fcmTokens : [])
+    .filter(
+      (deviceToken) =>
+        typeof deviceToken === "string" &&
+        deviceToken.length > 20
+    )
+    .map((deviceToken) => ({
+      uid: driver.id,
+      token: deviceToken,
+      updateTime: driver.updateTime
+    }))
+);
   if (driverTokens.length > 0) {
     const orderLabel = String(
       order.orderNumber || orderId.substring(0, 6).toUpperCase()

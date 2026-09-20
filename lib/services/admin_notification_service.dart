@@ -104,10 +104,24 @@ class AdminNotificationService {
       // Chrome only accepts the permission prompt after an explicit user
       // gesture. On web we therefore register silently only when permission
       // was already granted; the profile button performs the actual request.
-      // لا نُظهر نافذة إذن iOS تلقائيًا بعد تسجيل الدخول. Apple توصي بطلب
-      // الإذن ضمن سياق واضح؛ زر الجرس في الواجهة هو الذي يطلبه من المستخدم.
-      final permission =
+      // على Android وiOS نطلب الإذن تلقائيًا مرة واحدة فقط إذا لم يسبق
+      // للنظام أن سأل المستخدم، ولا نكرر الطلب بعد الرفض الصريح.
+      var permission =
           await FirebaseMessaging.instance.getNotificationSettings();
+
+      // On Android/iOS, ask once automatically after sign-in when the OS has
+      // never asked this user before. Never override or repeatedly prompt
+      // after an explicit denial. Web keeps its user-gesture flow.
+      if (!kIsWeb &&
+          permission.authorizationStatus == AuthorizationStatus.notDetermined) {
+        permission = await FirebaseMessaging.instance.requestPermission(
+          alert: true,
+          badge: true,
+          sound: true,
+          provisional: false,
+        );
+      }
+
       if (permission.authorizationStatus == AuthorizationStatus.denied) return;
       if (permission.authorizationStatus != AuthorizationStatus.authorized &&
           permission.authorizationStatus != AuthorizationStatus.provisional) {

@@ -17,7 +17,7 @@
 
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="barakah_urgent_orders_v2"/>
+            android:value="barakah_urgent_orders_v3"/>
 
         <activity
             android:name=".MainActivity"

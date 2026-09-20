@@ -412,6 +412,21 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
                           : (value) =>
                               setDialogState(() => isNewInBarakah = value),
                     ),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('إضافة إلى قريبًا في بركة'),
+                    subtitle: const Text(
+                      'يظهر المحل في قسم قريبًا ولا يستقبل الطلبات',
+                    ),
+                    secondary: const Icon(Icons.upcoming_rounded),
+                    value: businessStatus == 'coming_soon',
+                    onChanged: isSaving
+                        ? null
+                        : (value) => setDialogState(() {
+                              businessStatus =
+                                  value ? 'coming_soon' : 'open';
+                            }),
+                  ),
                   ],
                   if (widget.itemType != 'taxi') ...[
                     TextField(

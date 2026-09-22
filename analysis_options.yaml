@@ -13,6 +13,7 @@ analyzer:
   exclude:
     # هذه ملفات أرشيفية للمقارنة وليست جزءاً من التطبيق الذي يتم بناؤه.
     - backup/**
+    - work/**
     - lib/**/*.before_*.dart
   errors:
     deprecated_member_use: ignore

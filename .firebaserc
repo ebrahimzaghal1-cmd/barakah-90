@@ -1,5 +1,18 @@
 {
   "projects": {
     "default": "barakah-new"
-  }
+  },
+  "targets": {
+    "barakah-new": {
+      "hosting": {
+        "customer": [
+          "barakah-new"
+        ],
+        "admin": [
+          "barakah-new-admin"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

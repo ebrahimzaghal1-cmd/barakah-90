@@ -120,13 +120,31 @@ class CustomerServiceService {
     return reference;
   }
 
-  Future<void> sendCustomerMessage(String text) async {
+  Future<void> sendCustomerMessage(
+    String text, {
+    String? imageUrl,
+    String? videoUrl,
+    String? mediaType,
+  }) async {
     final user = _auth.currentUser;
     if (user == null) throw StateError('سجّل الدخول أولاً.');
+
     final message = text.trim();
-    if (message.isEmpty) return;
+    final image = imageUrl?.trim() ?? '';
+    final video = videoUrl?.trim() ?? '';
+    final type = mediaType?.trim() ?? '';
+
+    if (message.isEmpty && image.isEmpty && video.isEmpty) return;
+
     final thread = await ensureCustomerThread();
-    await _postSupportMessage(thread.id, message);
+
+    await _postSupportMessage(
+      thread.id,
+      message,
+      imageUrl: image,
+      videoUrl: video,
+      mediaType: type,
+    );
   }
 
   Future<void> claimThread(String threadId, String displayName) async {
@@ -169,34 +187,80 @@ class CustomerServiceService {
     });
   }
 
-  Future<void> sendAgentMessage(String threadId, String text) async {
+  Future<void> sendAgentMessage(
+    String threadId,
+    String text, {
+    String? imageUrl,
+    String? videoUrl,
+    String? mediaType,
+  }) async {
     final user = _auth.currentUser;
     if (user == null) throw StateError('سجّل الدخول أولاً.');
+
     final profile = await _firestore.collection('users').doc(user.uid).get();
     final data = profile.data() ?? const <String, dynamic>{};
+
     if (data['role'] != 'customer_service' ||
         data['customerServiceEnabled'] != true) {
       throw StateError('لا تملك صلاحية موظف خدمة العملاء.');
     }
+
     final message = text.trim();
-    if (message.isEmpty) return;
-    await _postSupportMessage(threadId, message);
+    final image = imageUrl?.trim() ?? '';
+    final video = videoUrl?.trim() ?? '';
+    final type = mediaType?.trim() ?? '';
+
+    if (message.isEmpty && image.isEmpty && video.isEmpty) return;
+
+    await _postSupportMessage(
+      threadId,
+      message,
+      imageUrl: image,
+      videoUrl: video,
+      mediaType: type,
+    );
   }
 
-  Future<void> sendAdminMessage(String threadId, String text) async {
+  Future<void> sendAdminMessage(
+    String threadId,
+    String text, {
+    String? imageUrl,
+    String? videoUrl,
+    String? mediaType,
+  }) async {
     final user = _auth.currentUser;
     if (user == null) throw StateError('سجّل الدخول أولاً.');
+
     final profile = await _firestore.collection('users').doc(user.uid).get();
     final data = profile.data() ?? const <String, dynamic>{};
+
     if (data['role'] != 'admin' && data['isAdmin'] != true) {
       throw StateError('هذه المحادثات متاحة للأدمن فقط.');
     }
+
     final message = text.trim();
-    if (message.isEmpty) return;
-    await _postSupportMessage(threadId, message);
+    final image = imageUrl?.trim() ?? '';
+    final video = videoUrl?.trim() ?? '';
+    final type = mediaType?.trim() ?? '';
+
+    if (message.isEmpty && image.isEmpty && video.isEmpty) return;
+
+    await _postSupportMessage(
+      threadId,
+      message,
+      imageUrl: image,
+      videoUrl: video,
+      mediaType: type,
+    );
   }
 
-  Future<void> _postSupportMessage(String threadId, String message) async {
+  Future<void> _postSupportMessage(
+    String threadId,
+    String message, {
+    String? imageUrl,
+    String? videoUrl,
+    String? mediaType,
+  }) async {
     final user = _auth.currentUser;
     if (user == null) throw StateError('سجّل الدخول أولاً.');
     final token = await user.getIdToken();
@@ -213,6 +277,12 @@ class CustomerServiceService {
           body: jsonEncode({
             'threadId': threadId,
             'text': message,
+            if (imageUrl != null && imageUrl.trim().isNotEmpty)
+              'imageUrl': imageUrl.trim(),
+            if (videoUrl != null && videoUrl.trim().isNotEmpty)
+              'videoUrl': videoUrl.trim(),
+            if (mediaType != null && mediaType.trim().isNotEmpty)
+              'mediaType': mediaType.trim(),
           }),
         )
         .timeout(const Duration(seconds: 25));

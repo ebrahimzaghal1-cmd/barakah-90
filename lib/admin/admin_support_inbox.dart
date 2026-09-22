@@ -2,7 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../services/chat_media_service.dart';
 import '../services/customer_service_service.dart';
+import '../widgets/chat_media_widgets.dart';
 import '../theme/app_theme.dart';
 
 class AdminSupportInbox extends StatelessWidget {
@@ -120,21 +122,37 @@ class _AdminSupportThread extends StatefulWidget {
 
 class _AdminSupportThreadState extends State<_AdminSupportThread> {
   final _message = TextEditingController();
+  final _mediaDraft = ChatMediaDraft();
   bool _sending = false;
 
   @override
   void dispose() {
     _message.dispose();
+    _mediaDraft.dispose();
     super.dispose();
   }
 
   Future<void> _send() async {
     final text = _message.text.trim();
-    if (text.isEmpty || _sending) return;
+    if ((text.isEmpty && !_mediaDraft.hasAttachment) ||
+        _sending ||
+        _mediaDraft.isBusy) {
+      return;
+    }
     setState(() => _sending = true);
     try {
-      await CustomerServiceService().sendAdminMessage(widget.threadId, text);
+      final media = await _mediaDraft.upload();
+      if (!mounted) return;
+      await CustomerServiceService().sendAdminMessage(
+        widget.threadId,
+        text,
+        imageUrl: media['imageUrl'],
+        videoUrl: media['videoUrl'],
+        mediaType: media['mediaType'],
+      );
+      if (!mounted) return;
       _message.clear();
+      _mediaDraft.clear();
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -219,9 +237,9 @@ class _AdminSupportThreadState extends State<_AdminSupportThread> {
                               ),
                             ),
                             const SizedBox(height: 3),
-                            Text(
-                              data['text']?.toString() ?? '',
-                              style: TextStyle(
+                            ChatMessageContent(
+                              data: data,
+                              textStyle: TextStyle(
                                 color: mine ? Colors.white : Colors.black87,
                               ),
                             ),
@@ -238,28 +256,36 @@ class _AdminSupportThreadState extends State<_AdminSupportThread> {
             top: false,
             child: Padding(
               padding: const EdgeInsets.all(10),
-              child: Row(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _message,
-                      minLines: 1,
-                      maxLines: 4,
-                      textInputAction: TextInputAction.newline,
-                      decoration: const InputDecoration(
-                        hintText: 'اكتب الرد للعميل…',
+                  ChatMediaPicker(draft: _mediaDraft, enabled: !_sending),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _message,
+                          enabled: !_sending,
+                          minLines: 1,
+                          maxLines: 4,
+                          textInputAction: TextInputAction.newline,
+                          decoration: const InputDecoration(
+                            hintText: 'اكتب الرد للعميل…',
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton.filled(
-                    onPressed: _sending ? null : _send,
-                    icon: _sending
-                        ? const SizedBox.square(
-                            dimension: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.send_rounded),
+                      const SizedBox(width: 8),
+                      IconButton.filled(
+                        onPressed: _sending ? null : _send,
+                        icon: _sending
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.send_rounded),
+                      ),
+                    ],
                   ),
                 ],
               ),

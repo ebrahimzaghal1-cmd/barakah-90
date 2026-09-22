@@ -2,7 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../services/chat_media_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/chat_media_widgets.dart';
 
 class RecruitmentChatScreen extends StatefulWidget {
   const RecruitmentChatScreen({
@@ -22,6 +24,7 @@ class RecruitmentChatScreen extends StatefulWidget {
 
 class _RecruitmentChatScreenState extends State<RecruitmentChatScreen> {
   final _controller = TextEditingController();
+  final _media = ChatMediaDraft();
   bool _sending = false;
 
   DocumentReference<Map<String, dynamic>> get _thread =>
@@ -32,23 +35,34 @@ class _RecruitmentChatScreenState extends State<RecruitmentChatScreen> {
   @override
   void dispose() {
     _controller.dispose();
+    _media.dispose();
     super.dispose();
   }
 
   Future<void> _send() async {
     final user = FirebaseAuth.instance.currentUser;
     final text = _controller.text.trim();
-    if (user == null || text.isEmpty || _sending) return;
+    if (user == null ||
+        _sending ||
+        _media.isBusy ||
+        (text.isEmpty && !_media.hasAttachment)) {
+      return;
+    }
     setState(() => _sending = true);
-    _controller.clear();
     try {
+      final media = await _media.upload();
+      if (!mounted) return;
       final batch = FirebaseFirestore.instance.batch();
       batch.set(
         _thread,
         {
           'applicantId': widget.applicantId,
           'applicantName': widget.applicantName,
-          'lastMessage': text,
+          'lastMessage': text.isNotEmpty
+              ? text
+              : media['mediaType'] == 'video'
+                  ? 'فيديو'
+                  : 'صورة',
           'updatedAt': FieldValue.serverTimestamp(),
         },
         SetOptions(merge: true),
@@ -58,9 +72,13 @@ class _RecruitmentChatScreenState extends State<RecruitmentChatScreen> {
         'senderRole': widget.adminMode ? 'admin' : 'applicant',
         'senderName': widget.adminMode ? 'إدارة بركة' : widget.applicantName,
         'text': text,
+        ...media,
         'createdAt': FieldValue.serverTimestamp(),
       });
       await batch.commit();
+      if (!mounted) return;
+      _controller.clear();
+      _media.clear();
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -130,9 +148,9 @@ class _RecruitmentChatScreenState extends State<RecruitmentChatScreen> {
                           color: mine ? AppTheme.navy : Colors.white,
                           borderRadius: BorderRadius.circular(18),
                         ),
-                        child: Text(
-                          data['text']?.toString() ?? '',
-                          style: TextStyle(
+                        child: ChatMessageContent(
+                          data: data,
+                          textStyle: TextStyle(
                               color: mine ? Colors.white : Colors.black87),
                         ),
                       ),
@@ -142,27 +160,37 @@ class _RecruitmentChatScreenState extends State<RecruitmentChatScreen> {
               },
             ),
           ),
-          SafeArea(
-            top: false,
-            child: Container(
-              color: Colors.white,
-              padding: const EdgeInsets.all(10),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      maxLines: 4,
-                      minLines: 1,
-                      decoration: const InputDecoration(
-                          hintText: 'اكتب رسالة التوظيف…'),
+          ListenableBuilder(
+            listenable: _media,
+            builder: (context, _) => SafeArea(
+              top: false,
+              child: Container(
+                color: Colors.white,
+                padding: const EdgeInsets.all(10),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ChatMediaPicker(draft: _media, enabled: !_sending),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _controller,
+                            enabled: !_sending && !_media.isBusy,
+                            maxLines: 4,
+                            minLines: 1,
+                            decoration: const InputDecoration(
+                                hintText: 'اكتب رسالة التوظيف…'),
+                          ),
+                        ),
+                        IconButton.filled(
+                          onPressed: _sending || _media.isBusy ? null : _send,
+                          icon: const Icon(Icons.send_rounded),
+                        ),
+                      ],
                     ),
-                  ),
-                  IconButton.filled(
-                    onPressed: _sending ? null : _send,
-                    icon: const Icon(Icons.send_rounded),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

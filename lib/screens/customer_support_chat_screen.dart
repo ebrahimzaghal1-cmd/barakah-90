@@ -2,8 +2,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../services/chat_media_service.dart';
 import '../services/customer_service_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/chat_media_widgets.dart';
 import 'authentication_screen.dart';
 
 class CustomerSupportChatScreen extends StatefulWidget {
@@ -21,6 +23,7 @@ class CustomerSupportChatScreen extends StatefulWidget {
 
 class _CustomerSupportChatScreenState extends State<CustomerSupportChatScreen> {
   final _message = TextEditingController();
+  final _media = ChatMediaDraft();
   bool _sending = false;
 
   @override
@@ -32,16 +35,30 @@ class _CustomerSupportChatScreenState extends State<CustomerSupportChatScreen> {
   @override
   void dispose() {
     _message.dispose();
+    _media.dispose();
     super.dispose();
   }
 
   Future<void> _send() async {
-    if (_sending || _message.text.trim().isEmpty) return;
+    if (_sending ||
+        _media.isBusy ||
+        (_message.text.trim().isEmpty && !_media.hasAttachment)) {
+      return;
+    }
     setState(() => _sending = true);
     final text = _message.text;
-    _message.clear();
     try {
-      await CustomerServiceService().sendCustomerMessage(text);
+      final media = await _media.upload();
+      if (!mounted) return;
+      await CustomerServiceService().sendCustomerMessage(
+        text,
+        imageUrl: media['imageUrl'],
+        videoUrl: media['videoUrl'],
+        mediaType: media['mediaType'],
+      );
+      if (!mounted) return;
+      _message.clear();
+      _media.clear();
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -150,36 +167,47 @@ class _CustomerSupportChatScreenState extends State<CustomerSupportChatScreen> {
     );
   }
 
-  Widget _composer() => SafeArea(
-        top: false,
-        child: Container(
-          color: Colors.white,
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _message,
-                  minLines: 1,
-                  maxLines: 4,
-                  decoration: InputDecoration(
-                    hintText: 'اكتب رسالتك…',
-                    filled: true,
-                    fillColor: const Color(0xFFF3F4F6),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide.none,
+  Widget _composer() => ListenableBuilder(
+        listenable: _media,
+        builder: (context, _) => SafeArea(
+          top: false,
+          child: Container(
+            color: Colors.white,
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ChatMediaPicker(draft: _media, enabled: !_sending),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _message,
+                        enabled: !_sending && !_media.isBusy,
+                        minLines: 1,
+                        maxLines: 4,
+                        decoration: InputDecoration(
+                          hintText: 'اكتب رسالتك…',
+                          filled: true,
+                          fillColor: const Color(0xFFF3F4F6),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    IconButton.filled(
+                      onPressed: _sending || _media.isBusy ? null : _send,
+                      style:
+                          IconButton.styleFrom(backgroundColor: AppTheme.navy),
+                      icon: const Icon(Icons.send_rounded, color: Colors.white),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(width: 8),
-              IconButton.filled(
-                onPressed: _sending ? null : _send,
-                style: IconButton.styleFrom(backgroundColor: AppTheme.navy),
-                icon: const Icon(Icons.send_rounded, color: Colors.white),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       );
@@ -271,9 +299,10 @@ class _MessageBubble extends StatelessWidget {
                         color: AppTheme.deepYellow,
                         fontSize: 11,
                         fontWeight: FontWeight.w900)),
-              Text(
-                data['text']?.toString() ?? '',
-                style: TextStyle(color: mine ? Colors.white : Colors.black87),
+              ChatMessageContent(
+                data: data,
+                textStyle:
+                    TextStyle(color: mine ? Colors.white : Colors.black87),
               ),
             ],
           ),

@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../screens/authentication_screen.dart';
 import '../services/location_service.dart';
 import '../services/taxi_order_service.dart';
 import '../theme/app_theme.dart';
@@ -89,7 +90,15 @@ class _TaxiBookingSectionState extends State<TaxiBookingSection> {
           ),
           const SizedBox(height: 16),
           FilledButton.icon(
-            onPressed: () => Navigator.pushNamed(context, '/login'),
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const AuthenticationScreen(),
+                ),
+              );
+              if (mounted) setState(() {});
+            },
             icon: const Icon(Icons.login_rounded),
             label: const Text('تسجيل الدخول لطلب تاكسي'),
             style: FilledButton.styleFrom(

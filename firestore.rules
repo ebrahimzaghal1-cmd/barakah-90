@@ -299,18 +299,87 @@ match /agent_orders/{requestId} {
         request.resource.data.message.size() >= 5 &&
         request.resource.data.message.size() <= 4000 &&
         request.resource.data.status == 'pending' &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.updatedAt == request.time &&
+
+        (
+          !request.resource.data.keys().hasAny(['patientName']) ||
+          request.resource.data.patientName is string
+        ) &&
+        (
+          !request.resource.data.keys().hasAny(['patientPhone']) ||
+          request.resource.data.patientPhone is string
+        ) &&
+        (
+          !request.resource.data.keys().hasAny(['patientEmail']) ||
+          request.resource.data.patientEmail is string
+        ) &&
+
         request.resource.data.keys().hasOnly([
-          'doctorId', 'patientId', 'message', 'status', 'createdAt', 'updatedAt'
+          'doctorId',
+          'patientId',
+          'patientName',
+          'patientPhone',
+          'patientEmail',
+          'message',
+          'status',
+          'createdAt',
+          'updatedAt'
         ]);
+
       allow read: if signedIn() &&
-        (isAdmin() || resource.data.patientId == request.auth.uid ||
-          get(/databases/$(database)/documents/items/$(resource.data.doctorId)).data.ownerId == request.auth.uid);
+        (
+          isAdmin() ||
+          resource.data.patientId == request.auth.uid ||
+          get(
+            /databases/$(database)/documents/items/$(resource.data.doctorId)
+          ).data.ownerId == request.auth.uid
+        );
+
       allow update: if isAdmin() ||
-        (signedIn() &&
-          get(/databases/$(database)/documents/items/$(resource.data.doctorId)).data.ownerId == request.auth.uid &&
+        (
+          signedIn() &&
+          get(
+            /databases/$(database)/documents/items/$(resource.data.doctorId)
+          ).data.ownerId == request.auth.uid &&
+
+          request.resource.data.status in [
+            'pending',
+            'in_progress',
+            'answered',
+            'closed'
+          ] &&
+
+          request.resource.data.updatedAt == request.time &&
+
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'status', 'reply', 'updatedAt'
-          ]));
+            'status',
+            'reply',
+            'updatedAt',
+            'inProgressAt',
+            'answeredAt',
+            'closedAt'
+          ]) &&
+
+          (
+            !request.resource.data.diff(resource.data)
+              .affectedKeys().hasAny(['inProgressAt']) ||
+            request.resource.data.inProgressAt == request.time
+          ) &&
+
+          (
+            !request.resource.data.diff(resource.data)
+              .affectedKeys().hasAny(['answeredAt']) ||
+            request.resource.data.answeredAt == request.time
+          ) &&
+
+          (
+            !request.resource.data.diff(resource.data)
+              .affectedKeys().hasAny(['closedAt']) ||
+            request.resource.data.closedAt == request.time
+          )
+        );
+
       allow delete: if isAdmin();
     }
 
@@ -406,6 +475,175 @@ match /agent_orders/{requestId} {
             'agreementVersion',
             'agreementAcceptedAt',
             'createdAt',
+            'updatedAt'
+          ])
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // طلبات الانضمام كسائق تكسي بركة — مستقلة عن سائقي التوصيل
+    match /taxi_driver_applications/{userId} {
+      allow create: if signedIn() &&
+        request.auth.uid == userId &&
+        request.resource.data.keys().hasOnly([
+          'userId',
+          'fullName',
+          'email',
+          'phone',
+          'nationalId',
+          'vehicle',
+          'plateNumber',
+          'vehicleColor',
+          'driverLicenseNumber',
+          'vehicleLicenseNumber',
+          'vehicleInsuranceNumber',
+          'payoutMethod',
+          'payoutAccount',
+          'acceptedDriverTerms',
+          'acceptedPrivacyPolicy',
+          'agreementVersion',
+          'agreementAcceptedAt',
+          'status',
+          'identityVerified',
+          'driverLicenseVerified',
+          'vehicleDocumentsVerified',
+          'payoutVerified',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        request.resource.data.userId == request.auth.uid &&
+
+        request.resource.data.fullName is string &&
+        request.resource.data.fullName.size() >= 2 &&
+        request.resource.data.fullName.size() <= 120 &&
+
+        request.resource.data.email is string &&
+        request.resource.data.email.size() >= 5 &&
+        request.resource.data.email.size() <= 180 &&
+
+        request.resource.data.phone is string &&
+        request.resource.data.phone.size() >= 6 &&
+        request.resource.data.phone.size() <= 30 &&
+
+        request.resource.data.nationalId is string &&
+        request.resource.data.nationalId.size() >= 5 &&
+        request.resource.data.nationalId.size() <= 30 &&
+
+        request.resource.data.vehicle is string &&
+        request.resource.data.vehicle.size() >= 2 &&
+        request.resource.data.vehicle.size() <= 160 &&
+
+        request.resource.data.plateNumber is string &&
+        request.resource.data.plateNumber.size() >= 2 &&
+        request.resource.data.plateNumber.size() <= 40 &&
+
+        request.resource.data.vehicleColor is string &&
+        request.resource.data.vehicleColor.size() >= 2 &&
+        request.resource.data.vehicleColor.size() <= 60 &&
+
+        request.resource.data.driverLicenseNumber is string &&
+        request.resource.data.vehicleLicenseNumber is string &&
+        request.resource.data.vehicleInsuranceNumber is string &&
+        request.resource.data.payoutMethod is string &&
+        request.resource.data.payoutAccount is string &&
+        request.resource.data.agreementVersion is string &&
+
+        request.resource.data.acceptedDriverTerms == true &&
+        request.resource.data.acceptedPrivacyPolicy == true &&
+
+        request.resource.data.status == 'pending' &&
+        request.resource.data.identityVerified == false &&
+        request.resource.data.driverLicenseVerified == false &&
+        request.resource.data.vehicleDocumentsVerified == false &&
+        request.resource.data.payoutVerified == false &&
+
+        request.resource.data.agreementAcceptedAt == request.time &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.updatedAt == request.time;
+
+      allow read: if isAdmin() ||
+        (signedIn() && request.auth.uid == userId);
+
+      allow update: if isAdmin() ||
+        (
+          signedIn() &&
+          request.auth.uid == userId &&
+
+          resource.data.userId == request.auth.uid &&
+          request.resource.data.userId == resource.data.userId &&
+
+          resource.data.status == 'pending' &&
+          request.resource.data.status == resource.data.status &&
+
+          request.resource.data.identityVerified ==
+            resource.data.identityVerified &&
+          request.resource.data.driverLicenseVerified ==
+            resource.data.driverLicenseVerified &&
+          request.resource.data.vehicleDocumentsVerified ==
+            resource.data.vehicleDocumentsVerified &&
+          request.resource.data.payoutVerified ==
+            resource.data.payoutVerified &&
+
+          request.resource.data.createdAt == resource.data.createdAt &&
+
+          request.resource.data.fullName is string &&
+          request.resource.data.fullName.size() >= 2 &&
+          request.resource.data.fullName.size() <= 120 &&
+
+          request.resource.data.email is string &&
+          request.resource.data.email.size() >= 5 &&
+          request.resource.data.email.size() <= 180 &&
+
+          request.resource.data.phone is string &&
+          request.resource.data.phone.size() >= 6 &&
+          request.resource.data.phone.size() <= 30 &&
+
+          request.resource.data.nationalId is string &&
+          request.resource.data.nationalId.size() >= 5 &&
+          request.resource.data.nationalId.size() <= 30 &&
+
+          request.resource.data.vehicle is string &&
+          request.resource.data.vehicle.size() >= 2 &&
+          request.resource.data.vehicle.size() <= 160 &&
+
+          request.resource.data.plateNumber is string &&
+          request.resource.data.plateNumber.size() >= 2 &&
+          request.resource.data.plateNumber.size() <= 40 &&
+
+          request.resource.data.vehicleColor is string &&
+          request.resource.data.vehicleColor.size() >= 2 &&
+          request.resource.data.vehicleColor.size() <= 60 &&
+
+          request.resource.data.driverLicenseNumber is string &&
+          request.resource.data.vehicleLicenseNumber is string &&
+          request.resource.data.vehicleInsuranceNumber is string &&
+          request.resource.data.payoutMethod is string &&
+          request.resource.data.payoutAccount is string &&
+          request.resource.data.agreementVersion is string &&
+
+          request.resource.data.acceptedDriverTerms == true &&
+          request.resource.data.acceptedPrivacyPolicy == true &&
+          request.resource.data.agreementAcceptedAt == request.time &&
+          request.resource.data.updatedAt == request.time &&
+
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'fullName',
+            'email',
+            'phone',
+            'nationalId',
+            'vehicle',
+            'plateNumber',
+            'vehicleColor',
+            'driverLicenseNumber',
+            'vehicleLicenseNumber',
+            'vehicleInsuranceNumber',
+            'payoutMethod',
+            'payoutAccount',
+            'acceptedDriverTerms',
+            'acceptedPrivacyPolicy',
+            'agreementVersion',
+            'agreementAcceptedAt',
             'updatedAt'
           ])
         );
@@ -834,14 +1072,27 @@ match /agent_orders/{requestId} {
           (signedIn() && request.auth.uid == applicantId);
         allow create: if signedIn() &&
           request.resource.data.keys().hasOnly([
-            'senderId', 'senderRole', 'senderName', 'text', 'createdAt'
+            'senderId', 'senderRole', 'senderName', 'text', 'createdAt',
+            'imageUrl', 'videoUrl', 'mediaType'
           ]) &&
           request.resource.data.senderName is string &&
           request.resource.data.createdAt == request.time &&
           request.resource.data.senderId == request.auth.uid &&
           request.resource.data.text is string &&
-          request.resource.data.text.size() > 0 &&
           request.resource.data.text.size() <= 4000 &&
+          (
+            request.resource.data.text.size() > 0 ||
+            (
+              request.resource.data.mediaType == 'image' &&
+              request.resource.data.imageUrl is string &&
+              request.resource.data.imageUrl.size() > 0
+            ) ||
+            (
+              request.resource.data.mediaType == 'video' &&
+              request.resource.data.videoUrl is string &&
+              request.resource.data.videoUrl.size() > 0
+            )
+          ) &&
           ((request.resource.data.senderRole == 'admin' && isAdmin()) ||
            (request.resource.data.senderRole == 'applicant' &&
             request.auth.uid == applicantId));
@@ -932,6 +1183,29 @@ match /agent_orders/{requestId} {
             get(/databases/$(database)/documents/support_threads/$(threadId)).data.assignedAgentId == request.auth.uid));
         allow update, delete: if false;
       }
+    }
+
+
+    // رسائل وحملات بركة: الكتابة من الخادم فقط.
+    match /user_inbox/{userId} {
+      allow read: if signedIn() &&
+        (request.auth.uid == userId || isAdmin());
+
+      allow create, update, delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if signedIn() &&
+          (request.auth.uid == userId || isAdmin());
+
+        allow create, update, delete: if false;
+      }
+    }
+
+
+    // الحملات ينشئها ويعالجها Worker الآمن فقط.
+    match /communication_campaigns/{campaignId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
     }
 
     match /app_settings/{settingId} {

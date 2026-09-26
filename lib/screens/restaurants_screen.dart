@@ -1,3 +1,4 @@
+import 'mediators_screen.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -16,8 +17,8 @@ import '../widgets/barakah_brand.dart';
 import '../widgets/barakah_media_image.dart';
 import '../widgets/barakah_online_status_button.dart';
 import '../widgets/advertisement_banner.dart';
+import '../widgets/arabic_map_layer.dart';
 import '../widgets/home_strip_card.dart';
-import '../widgets/new_in_barakah_strip.dart';
 import '../services/admin_notification_service.dart';
 import '../services/admin_submission_notification_service.dart';
 import '../services/firebase_state.dart';
@@ -26,12 +27,9 @@ import '../services/location_service.dart';
 import '../services/media_upload_service.dart';
 import '../theme/app_theme.dart';
 import '../games/play_hub_screen.dart';
-import '../config/app_features.dart';
 import 'categories_screen.dart';
 import 'restaurant_details_screen.dart';
-import 'barakah_taxi_screen.dart';
 import 'authentication_screen.dart';
-import 'auction_activity_screen.dart';
 import 'restaurant_offers_screen.dart';
 import 'weekend_offers_screen.dart';
 import 'location_picker_screen.dart';
@@ -49,23 +47,12 @@ class RestaurantsScreen extends StatefulWidget {
 class _RestaurantsScreenState extends State<RestaurantsScreen> {
   String _query = '';
   String _selectedArea = 'اكتشف أفضل ما حولك';
-  bool _locating = false;
 
   @override
   void initState() {
     super.initState();
     AnalyticsService.instance.recordAppVisit();
   }
-
-  static const _areas = [
-    'طولكرم',
-    'الشعراوية',
-    'قلقيلية',
-    'رام الله',
-    'نابلس',
-    'الخليل',
-    'القدس',
-  ];
 
   String _closestArea(double latitude, double longitude) {
     const cities = {
@@ -91,89 +78,7 @@ class _RestaurantsScreenState extends State<RestaurantsScreen> {
     return bestDistance <= 35000 ? nearest : 'موقعي الحالي';
   }
 
-  Future<void> _useCurrentLocation() async {
-    if (_locating) return;
-    setState(() => _locating = true);
-    try {
-      final position = await LocationService.getCurrentLocation();
-      if (!mounted) return;
-      setState(() =>
-          _selectedArea = _closestArea(position.latitude, position.longitude));
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(_selectedArea == 'موقعي الحالي'
-            ? 'تم تحديد موقعك الحقيقي بنجاح.'
-            : 'تم تحديد موقعك: $_selectedArea'),
-      ));
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text(
-            'تعذر تحديد الموقع. فعّلي GPS واسمحي لتطبيق بركة باستخدام الموقع.'),
-      ));
-    } finally {
-      if (mounted) setState(() => _locating = false);
-    }
-  }
-
   Future<void> _chooseArea() async {
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetContext) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-          children: [
-            const ListTile(
-              title: Text(
-                'اختر المنطقة',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-              ),
-            ),
-            ListTile(
-              leading: const Icon(Icons.public_rounded),
-              title: const Text('كل المناطق'),
-              onTap: () => Navigator.pop(sheetContext, '__all__'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.my_location_rounded),
-              title: const Text('استخدام موقعي الحالي'),
-              onTap: () => Navigator.pop(sheetContext, '__current__'),
-            ),
-            for (final area in _areas)
-              ListTile(
-                leading: const Icon(Icons.location_city_rounded),
-                title: Text(area),
-                trailing: _selectedArea == area
-                    ? const Icon(Icons.check_circle, color: _barakahGold)
-                    : null,
-                onTap: () => Navigator.pop(sheetContext, area),
-              ),
-            ListTile(
-              leading: const Icon(Icons.map_outlined),
-              title: const Text('تحديد مكان على الخريطة'),
-              onTap: () => Navigator.pop(sheetContext, '__map__'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (choice == null || !mounted) return;
-    if (choice == '__all__') {
-      setState(() => _selectedArea = 'كل المناطق');
-      return;
-    }
-    if (choice == '__current__') {
-      await _useCurrentLocation();
-      return;
-    }
-    if (choice != '__map__') {
-      setState(() => _selectedArea = choice);
-      return;
-    }
-
     final location = await Navigator.push<Map<String, double>>(
       context,
       MaterialPageRoute(
@@ -222,6 +127,12 @@ class _RestaurantsScreenState extends State<RestaurantsScreen> {
                             ),
                           ),
                           const SizedBox(height: 10),
+                          const AdvertisementBanner(
+                            placement: 'restaurants_top',
+                          ),
+                          const SizedBox(height: 10),
+                          const _OfferBanner(),
+                          const SizedBox(height: 12),
                           Row(children: [
                             Expanded(
                               child: Material(
@@ -241,10 +152,8 @@ class _RestaurantsScreenState extends State<RestaurantsScreen> {
                                           color: Color(0x2EFFFFFF),
                                           shape: BoxShape.circle,
                                         ),
-                                        child: Icon(
-                                          _locating
-                                              ? Icons.gps_fixed_rounded
-                                              : Icons.location_on_outlined,
+                                        child: const Icon(
+                                          Icons.location_on_outlined,
                                           color: Colors.white,
                                         ),
                                       ),
@@ -254,10 +163,7 @@ class _RestaurantsScreenState extends State<RestaurantsScreen> {
                                           crossAxisAlignment:
                                               CrossAxisAlignment.start,
                                           children: [
-                                            Text(
-                                                _locating
-                                                    ? 'جارٍ تحديد موقعك...'
-                                                    : _selectedArea,
+                                            Text(_selectedArea,
                                                 style: const TextStyle(
                                                     color: Colors.white,
                                                     fontSize: 16,
@@ -311,100 +217,6 @@ class _RestaurantsScreenState extends State<RestaurantsScreen> {
                               ),
                             ),
                           ]),
-                          const SizedBox(height: 12),
-
-                          // تكسي بركة — وصول سريع ودائم من أعلى الصفحة.
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 14),
-                            child: Material(
-                              color: const Color(0xFFFFD83D),
-                              borderRadius: BorderRadius.circular(22),
-                              elevation: 4,
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(22),
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => const BarakahTaxiScreen(),
-                                    ),
-                                  );
-                                },
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 18,
-                                    vertical: 15,
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        width: 58,
-                                        height: 58,
-                                        decoration: const BoxDecoration(
-                                          color: _barakahNavy,
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: const Icon(
-                                          Icons.local_taxi_rounded,
-                                          color: Color(0xFFFFD83D),
-                                          size: 34,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 14),
-                                      const Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              'تكسي بركة',
-                                              style: TextStyle(
-                                                color: _barakahNavy,
-                                                fontSize: 21,
-                                                fontWeight: FontWeight.w900,
-                                              ),
-                                            ),
-                                            SizedBox(height: 3),
-                                            Text(
-                                              'اطلب تكسي الآن بكبسة زر',
-                                              style: TextStyle(
-                                                color: Color(0xFF26354D),
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      Container(
-                                        width: 42,
-                                        height: 42,
-                                        decoration: BoxDecoration(
-                                          color: Colors.white.withOpacity(.72),
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: const Icon(
-                                          Icons.arrow_back_rounded,
-                                          color: _barakahNavy,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-
-                          const AdvertisementBanner(
-                            placement: 'restaurant',
-                          ),
-                          const AdvertisementBanner(
-                            placement: 'restaurants_top',
-                          ),
-                          const SizedBox(height: 10),
-                          const _OfferBanner(),
-                          const SizedBox(height: 18),
-                          const NewInBarakahStrip(itemType: 'restaurant'),
                           const SizedBox(height: 14),
                           const SponsoredAdsFeed(
                             placement: 'restaurants_gallery',
@@ -590,17 +402,6 @@ class _RestaurantsScreenState extends State<RestaurantsScreen> {
 
                           if (!isRestaurant) {
                             return false;
-                          }
-
-                          if (_areas.contains(_selectedArea)) {
-                            final businessArea = normalizeSearch(
-                              '${data['area'] ?? ''} ${data['address'] ?? ''} ${data['city'] ?? ''}',
-                            );
-                            if (!businessArea.contains(
-                              normalizeSearch(_selectedArea),
-                            )) {
-                              return false;
-                            }
                           }
 
                           if (normalizedQuery.isEmpty) {
@@ -843,44 +644,37 @@ class _TurquoiseQuickLinks extends StatelessWidget {
           ),
         );
 
-    return Column(
+    return Row(
       children: [
-        Row(
-          children: [
-            link(
-              'المطاعم',
-              Icons.restaurant_rounded,
-              () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const AllItemsScreen()),
-              ),
-            ),          ],
+        link(
+          'المطاعم',
+          Icons.restaurant_rounded,
+          () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const AllItemsScreen()),
+          ),
         ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            link(
-              'التصنيفات',
-              Icons.grid_view_rounded,
-              () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const _AllRestaurantCategoriesScreen(),
-                ),
-              ),
+        const SizedBox(width: 8),
+        link(
+          'التصنيفات',
+          Icons.grid_view_rounded,
+          () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const _AllRestaurantCategoriesScreen(),
             ),
-            const SizedBox(width: 8),
-            link(
-              'عروض الماركت',
-              Icons.shopping_cart_outlined,
-              () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const AllItemsScreen(itemType: 'market'),
-                ),
-              ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        link(
+          'عروض الماركت',
+          Icons.shopping_cart_outlined,
+          () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const AllItemsScreen(itemType: 'market'),
             ),
-          ],
+          ),
         ),
       ],
     );
@@ -1065,15 +859,7 @@ class _AllItemsScreenState extends State<AllItemsScreen> {
                     final allItems = snapshot.data?.docs ?? [];
                     final businesses = allItems.where((doc) {
                       final data = doc.data();
-                      final type =
-                          data['type']?.toString().toLowerCase().trim();
-
-                      // مكاتب تكسي بركة كيانات داخلية ولا يجوز عرضها
-                      // للعميل كمتاجر مستقلة أو كشف أسمائها الحقيقية.
-                      if (type == 'taxi') {
-                        return false;
-                      }
-
+                      final type = data['type']?.toString().toLowerCase();
                       return data['kind']?.toString() != 'product' &&
                           (type == widget.itemType ||
                               (type == null &&
@@ -1507,10 +1293,23 @@ class _CategoriesRow extends StatelessWidget {
 
   Future<void> _openItem(
       BuildContext context, Map<String, dynamic> item) async {
-    final configuredAction = item['actionType']?.toString() ?? 'details';
-    final action = openWeekendOffers && configuredAction == 'details'
+    final title = item['title']?.toString().trim() ?? '';
+    final configuredAction =
+        item['actionType']?.toString().trim().toLowerCase() ?? 'details';
+    final normalizedAction = switch (configuredAction) {
+      'games' || 'game' || 'playandreward' || 'play_and_reward' => 'play',
+      'deliveryoffers' || 'delivery_offers' => 'deliveryOffers',
+      'weekendoffers' || 'weekend_offers' => 'weekendOffers',
+      _ when title.contains('العب') || title.contains('لعب') => 'play',
+      _
+          when configuredAction.contains('play') ||
+              configuredAction.contains('game') =>
+        'play',
+      _ => configuredAction,
+    };
+    final action = openWeekendOffers && normalizedAction == 'details'
         ? 'weekendOffers'
-        : configuredAction;
+        : normalizedAction;
     switch (action) {
       case 'weekendOffers':
         await Navigator.push(
@@ -1519,10 +1318,8 @@ class _CategoriesRow extends StatelessWidget {
         );
         return;
       case 'play':
-        if (kLoyaltyRewardsEnabled) {
-          await Navigator.push(context,
-              MaterialPageRoute(builder: (_) => const PlayHubScreen()));
-        }
+        await Navigator.push(
+            context, MaterialPageRoute(builder: (_) => const PlayHubScreen()));
         return;
       case 'deliveryOffers':
         await Navigator.push(
@@ -1544,7 +1341,7 @@ class _CategoriesRow extends StatelessWidget {
         return;
       case 'nearby':
         await Navigator.push(context,
-            MaterialPageRoute(builder: (_) => const NearbyPlacesScreen()));
+            MaterialPageRoute(builder: (_) => const _NearbyPlacesScreen()));
         return;
       case 'market':
         await Navigator.push(
@@ -1608,19 +1405,17 @@ class _CategoriesRow extends StatelessWidget {
       scrollDirection: Axis.horizontal,
       reverse: true,
       children: [
-        if (kLoyaltyRewardsEnabled) ...[
-          _YellowHomeTile(
-            title: 'العب واربح',
-            image: 'assets/images/play_with_barakah_selected.png',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const PlayHubScreen(),
-              ),
+        _YellowHomeTile(
+          title: 'العب واربح',
+          image: 'assets/images/play_with_barakah_selected.png',
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const PlayHubScreen(),
             ),
           ),
-          const SizedBox(width: 10),
-        ],
+        ),
+        const SizedBox(width: 10),
         _YellowHomeTile(
           title: 'عروض التوصيل',
           image: 'assets/images/home_icons/delivery.png',
@@ -1653,7 +1448,7 @@ class _CategoriesRow extends StatelessWidget {
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => const NearbyPlacesScreen(),
+              builder: (_) => const _NearbyPlacesScreen(),
             ),
           ),
         ),
@@ -1847,6 +1642,8 @@ class _FallbackCategories extends StatelessWidget {
       );
 }
 
+// Kept as an optional home-section component for future admin configuration.
+// ignore: unused_element
 class _BarakahAppStatusBanner extends StatelessWidget {
   const _BarakahAppStatusBanner();
 
@@ -2034,6 +1831,8 @@ class _BarakahAppStatusBanner extends StatelessWidget {
   }
 }
 
+// Kept as an alternative compact entry point for responsive layouts.
+// ignore: unused_element
 class _NearbyPlacesTile extends StatelessWidget {
   const _NearbyPlacesTile();
 
@@ -2047,7 +1846,7 @@ class _NearbyPlacesTile extends StatelessWidget {
           child: InkWell(
             onTap: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const NearbyPlacesScreen()),
+              MaterialPageRoute(builder: (_) => const _NearbyPlacesScreen()),
             ),
             child: Column(children: [
               Expanded(
@@ -2096,17 +1895,20 @@ class _NearbyPlacesTile extends StatelessWidget {
       );
 }
 
-class NearbyPlacesScreen extends StatefulWidget {
-  const NearbyPlacesScreen({super.key});
+class _NearbyPlacesScreen extends StatefulWidget {
+  const _NearbyPlacesScreen();
 
   @override
-  State<NearbyPlacesScreen> createState() => NearbyPlacesScreenState();
+  State<_NearbyPlacesScreen> createState() => _NearbyPlacesScreenState();
 }
 
-class NearbyPlacesScreenState extends State<NearbyPlacesScreen> {
-  double? _latitude;
-  double? _longitude;
-  bool _loadingLocation = true;
+class _NearbyPlacesScreenState extends State<_NearbyPlacesScreen> {
+  // اعرض الخريطة فورًا ثم حسّن مركزها عند وصول موقع الجهاز. بهذه الطريقة
+  // لا تبقى الصفحة على مؤشر تحميل إذا تأخر إذن الموقع أو خدمة المتصفح.
+  double? _latitude = 31.5326;
+  double? _longitude = 35.0998;
+  bool _loadingLocation = false;
+  bool _usingApproximateLocation = true;
   String? _locationError;
 
   @override
@@ -2124,19 +1926,24 @@ class NearbyPlacesScreenState extends State<NearbyPlacesScreen> {
     }
 
     try {
-      final position = await LocationService.getCurrentLocation();
+      final position = await LocationService.getCurrentLocation().timeout(
+        const Duration(seconds: 10),
+      );
       if (!mounted) return;
       setState(() {
         _latitude = position.latitude;
         _longitude = position.longitude;
         _loadingLocation = false;
+        _usingApproximateLocation = false;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
+        _latitude = 31.5326;
+        _longitude = 35.0998;
         _loadingLocation = false;
-        _locationError =
-            'تعذر تحديد موقعك. فعّلي GPS واسمحي لتطبيق بركة باستخدام الموقع.';
+        _usingApproximateLocation = true;
+        _locationError = null;
       });
     }
   }
@@ -2162,7 +1969,9 @@ class NearbyPlacesScreenState extends State<NearbyPlacesScreen> {
   }
 
   double? _distanceFor(Map<String, dynamic> data) {
-    if (_latitude == null || _longitude == null) return null;
+    if (_usingApproximateLocation || _latitude == null || _longitude == null) {
+      return null;
+    }
     final coordinates = _coordinates(data);
     if (coordinates == null) return null;
     return LocationService.distanceBetween(
@@ -2194,37 +2003,49 @@ class NearbyPlacesScreenState extends State<NearbyPlacesScreen> {
     List<QueryDocumentSnapshot<Map<String, dynamic>>> places,
   ) {
     final current = LatLng(_latitude!, _longitude!);
+    final placeCoordinates = places
+        .map((place) => _coordinates(place.data()))
+        .whereType<({double latitude, double longitude})>()
+        .map((point) => LatLng(point.latitude, point.longitude))
+        .toList();
+    final cameraCoordinates =
+        placeCoordinates.isEmpty ? <LatLng>[current] : placeCoordinates;
     final markers = <Marker>[
-      Marker(
-        point: current,
-        width: 48,
-        height: 48,
-        child: const Icon(
-          Icons.my_location_rounded,
-          color: Colors.blue,
-          size: 34,
+      if (!_usingApproximateLocation)
+        Marker(
+          point: current,
+          width: 48,
+          height: 48,
+          child: const Icon(
+            Icons.my_location_rounded,
+            color: Colors.blue,
+            size: 34,
+          ),
         ),
-      ),
       ...places.map((place) {
-        final coordinates = _coordinates(place.data())!;
+        final data = place.data();
+        final coordinates = _coordinates(data)!;
+        final label =
+            (data['nameAr'] ?? data['name'] ?? data['title'] ?? 'مكان من بركة')
+                .toString();
         return Marker(
           point: LatLng(coordinates.latitude, coordinates.longitude),
-          width: 54,
-          height: 64,
+          width: 124,
+          height: 78,
           child: GestureDetector(
             onTap: () => _openPlace(place),
-            child: const Icon(
-              Icons.location_on_rounded,
-              color: Colors.red,
-              size: 48,
-            ),
+            child: ArabicMapMarker(label: label),
           ),
         );
       }),
     ];
 
+    final mapHeight =
+        (MediaQuery.sizeOf(context).height * .56).clamp(390.0, 620.0);
+    final mapKey = places.map((place) => place.id).join('|');
+
     return Container(
-      height: 300,
+      height: mapHeight,
       margin: const EdgeInsets.fromLTRB(16, 14, 16, 4),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
@@ -2232,13 +2053,21 @@ class NearbyPlacesScreenState extends State<NearbyPlacesScreen> {
         border: Border.all(color: AppTheme.navy.withOpacity(.15)),
       ),
       child: FlutterMap(
-        options: MapOptions(initialCenter: current, initialZoom: 13),
-        children: [
-          TileLayer(
-            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-            userAgentPackageName: 'com.barakah.market',
+        key: ValueKey('barakah-places-$mapKey'),
+        options: MapOptions(
+          initialCenter: current,
+          initialZoom: 13,
+          initialCameraFit: CameraFit.coordinates(
+            coordinates: cameraCoordinates,
+            padding: const EdgeInsets.all(72),
+            maxZoom: 14,
+            minZoom: 8,
           ),
+        ),
+        children: [
+          arabicMapTileLayer(),
           MarkerLayer(markers: markers),
+          const ArabicMapAttribution(),
         ],
       ),
     );
@@ -2247,9 +2076,16 @@ class NearbyPlacesScreenState extends State<NearbyPlacesScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
-          title: const Text('الوسيطات الأقرب إليك'),
+          title: const Text('أماكن قريبة منك'),
           centerTitle: true,
           actions: [
+            IconButton(
+                tooltip: 'وسيطات بركة',
+                icon: const Icon(Icons.people_outline),
+                onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const MediatorsScreen()))),
             IconButton(
               tooltip: 'تحديث موقعي',
               onPressed: _loadingLocation ? null : _loadLocation,
@@ -2307,16 +2143,19 @@ class NearbyPlacesScreenState extends State<NearbyPlacesScreen> {
                           .collection('items')
                           .snapshots(),
                       builder: (context, snapshot) {
-                        if (snapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return const Center(
-                              child: CircularProgressIndicator());
-                        }
-
                         final places = (snapshot.data?.docs ?? []).where((doc) {
                           final data = doc.data();
-                          return data['kind']?.toString() == 'agent' &&
-                              _distanceFor(data) != null;
+                          final type =
+                              data['type']?.toString().toLowerCase().trim() ??
+                                  '';
+                          final kind =
+                              data['kind']?.toString().toLowerCase().trim() ??
+                                  '';
+                          final isStore = kind != 'product' &&
+                              (type == 'restaurant' ||
+                                  type == 'market' ||
+                                  type == 'barber');
+                          return isStore && _coordinates(data) != null;
                         }).toList();
 
                         places.sort((a, b) {
@@ -2333,6 +2172,28 @@ class NearbyPlacesScreenState extends State<NearbyPlacesScreen> {
                             return Column(
                               children: [
                                 _placesMap(places),
+                                if (!snapshot.hasData)
+                                  const LinearProgressIndicator(minHeight: 3),
+                                if (_usingApproximateLocation)
+                                  Container(
+                                    width: double.infinity,
+                                    margin:
+                                        const EdgeInsets.fromLTRB(18, 8, 18, 2),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 9),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.coolYellow,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: const Text(
+                                      'تعذر تحديد موقعك. نعرض الأماكن المسجلة؛ فعّلي الموقع لترتيبها حسب القرب.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: AppTheme.navy,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
                                 Padding(
                                   padding:
                                       const EdgeInsets.fromLTRB(18, 8, 18, 2),
@@ -2342,7 +2203,7 @@ class NearbyPlacesScreenState extends State<NearbyPlacesScreen> {
                                           color: AppTheme.navy),
                                       const SizedBox(width: 7),
                                       Text(
-                                        '${places.length} وسيطة مرتبة من الأقرب إلى الأبعد',
+                                        '${places.length} مكان من بركة على الخريطة',
                                         style: const TextStyle(
                                           color: AppTheme.navy,
                                           fontWeight: FontWeight.w900,
@@ -2357,7 +2218,7 @@ class NearbyPlacesScreenState extends State<NearbyPlacesScreen> {
                                           child: Padding(
                                             padding: EdgeInsets.all(30),
                                             child: Text(
-                                              'لا توجد وسيطات بإحداثيات مسجلة حاليًا.',
+                                              'الخريطة جاهزة، لكن لا توجد متاجر بإحداثيات مسجلة حالياً.',
                                               textAlign: TextAlign.center,
                                               style: TextStyle(
                                                 color: AppTheme.navy,
@@ -2459,6 +2320,8 @@ class NearbyPlacesScreenState extends State<NearbyPlacesScreen> {
 
 enum _SpecialOfferKind { delivery, discount }
 
+// Kept as an alternative compact entry point for responsive layouts.
+// ignore: unused_element
 class _SpecialCategoryTile extends StatelessWidget {
   const _SpecialCategoryTile({
     required this.title,
@@ -2640,24 +2503,17 @@ class _HomeCategoryTile extends StatelessWidget {
               ),
         onTap: () {
           AnalyticsService.instance.recordCategoryView(title);
-
-          final normalizedTitle =
-              title.replaceAll(RegExp(r"\s+"), "").toLowerCase();
-          final isAgentCategory = normalizedTitle.contains("وسيط");
-
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => isAgentCategory
-                  ? const NearbyPlacesScreen()
-                  : CategoriesScreen(
-                      title: title,
-                      image: image.isEmpty
-                          ? "assets/images/categories/restaurant.jpg"
-                          : image,
-                      description: description,
-                      itemType: "restaurant",
-                    ),
+              builder: (_) => CategoriesScreen(
+                title: title,
+                image: image.isEmpty
+                    ? 'assets/images/categories/restaurant.jpg'
+                    : image,
+                description: description,
+                itemType: 'restaurant',
+              ),
             ),
           );
         },
@@ -2731,7 +2587,7 @@ class _BarakahAuctionScreenState extends State<BarakahAuctionScreen> {
     String requestId,
     Map<String, dynamic> data,
   ) async {
-    var user = FirebaseAuth.instance.currentUser;
+    final user = FirebaseAuth.instance.currentUser;
 
     if (user == null) {
       final shouldLogin = await showDialog<bool>(
@@ -2762,16 +2618,13 @@ class _BarakahAuctionScreenState extends State<BarakahAuctionScreen> {
             builder: (_) => const AuthenticationScreen(),
           ),
         );
-        user = FirebaseAuth.instance.currentUser;
       }
-      if (user == null) return;
+      return;
     }
-    if (!mounted) return;
-    final buyer = user;
 
     final sellerId = data['userId']?.toString().trim() ?? '';
 
-    if (sellerId == buyer.uid) {
+    if (sellerId == user.uid) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('لا يمكنك شراء إعلانك الخاص.'),
@@ -2839,22 +2692,13 @@ class _BarakahAuctionScreenState extends State<BarakahAuctionScreen> {
           throw Exception('تم حجز هذه السلعة بالفعل.');
         }
 
-        final freshRawPrice = freshData['startingPrice'];
-        final freshPrice = freshRawPrice is num
-            ? freshRawPrice.toDouble()
-            : double.tryParse(freshRawPrice?.toString() ?? '') ?? 0;
-        if (freshPrice <= 0) {
-          throw Exception('سعر هذه السلعة غير صالح.');
-        }
-        final freshCommission = freshPrice * commissionRate / 100;
-
         transaction.update(requestRef, {
-          'buyerId': buyer.uid,
-          'buyerEmail': buyer.email ?? '',
+          'buyerId': user.uid,
+          'buyerEmail': user.email ?? '',
           'saleStatus': 'pending_commission',
-          'salePrice': freshPrice,
+          'salePrice': price,
           'commissionRate': commissionRate,
-          'commissionAmount': freshCommission,
+          'commissionAmount': commissionAmount,
           'commissionPaid': false,
           'reservedAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
@@ -2865,23 +2709,19 @@ class _BarakahAuctionScreenState extends State<BarakahAuctionScreen> {
         transaction.set(saleRef, {
           'auctionRequestId': requestId,
           'sellerId': freshData['userId'] ?? '',
-          'buyerId': buyer.uid,
-          'buyerEmail': buyer.email ?? '',
+          'buyerId': user.uid,
+          'buyerEmail': user.email ?? '',
           'itemName': freshData['itemName'] ?? '',
           'image': freshData['image'] ?? '',
-          'salePrice': freshPrice,
+          'salePrice': price,
           'commissionRate': commissionRate,
-          'commissionAmount': freshCommission,
+          'commissionAmount': commissionAmount,
           'commissionPaid': false,
           'status': 'pending_commission',
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         });
       });
-      await AdminSubmissionNotificationService.notify(
-        type: 'auction_sale',
-        documentId: requestId,
-      );
 
       if (!mounted) return;
 
@@ -3182,7 +3022,7 @@ class _BarakahAuctionScreenState extends State<BarakahAuctionScreen> {
                               if (itemName.text.trim().isEmpty ||
                                   description.text.trim().isEmpty ||
                                   price == null ||
-                                  price <= 0 ||
+                                  price < 0 ||
                                   area.text.trim().isEmpty ||
                                   phone.text.trim().isEmpty) {
                                 ScaffoldMessenger.of(sheetContext).showSnackBar(
@@ -3217,20 +3057,17 @@ class _BarakahAuctionScreenState extends State<BarakahAuctionScreen> {
                                   );
                                 }
 
-                                final firestore = FirebaseFirestore.instance;
-                                final auctionRequest = firestore
+                                final auctionRequest = await FirebaseFirestore
+                                    .instance
                                     .collection('auction_requests')
-                                    .doc();
-                                final privateDetails = firestore
-                                    .collection('auction_private')
-                                    .doc(auctionRequest.id);
-                                final batch = firestore.batch();
-                                batch.set(auctionRequest, {
+                                    .add({
                                   'userId': user.uid,
+                                  'userEmail': user.email ?? '',
                                   'itemName': itemName.text.trim(),
                                   'description': description.text.trim(),
                                   'startingPrice': price,
                                   'area': area.text.trim(),
+                                  'contactPhone': phone.text.trim(),
                                   'condition': condition,
 
                                   // صور الإعلان
@@ -3241,14 +3078,6 @@ class _BarakahAuctionScreenState extends State<BarakahAuctionScreen> {
                                   'createdAt': FieldValue.serverTimestamp(),
                                   'updatedAt': FieldValue.serverTimestamp(),
                                 });
-                                batch.set(privateDetails, {
-                                  'userId': user.uid,
-                                  'userEmail': user.email ?? '',
-                                  'contactPhone': phone.text.trim(),
-                                  'createdAt': FieldValue.serverTimestamp(),
-                                  'updatedAt': FieldValue.serverTimestamp(),
-                                });
-                                await batch.commit();
                                 await AdminSubmissionNotificationService.notify(
                                   type: 'auction_request',
                                   documentId: auctionRequest.id,
@@ -3325,32 +3154,6 @@ class _BarakahAuctionScreenState extends State<BarakahAuctionScreen> {
       appBar: AppBar(
         title: const Text('مزاد بركة'),
         centerTitle: true,
-        actions: [
-          IconButton(
-            tooltip: 'عملياتي في المزاد',
-            onPressed: () async {
-              if (FirebaseAuth.instance.currentUser == null) {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const AuthenticationScreen(),
-                  ),
-                );
-              }
-              if (!context.mounted ||
-                  FirebaseAuth.instance.currentUser == null) {
-                return;
-              }
-              await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const AuctionActivityScreen(),
-                ),
-              );
-            },
-            icon: const Icon(Icons.receipt_long_rounded),
-          ),
-        ],
       ),
       body: BarakahBrandBackdrop(
         child: Column(

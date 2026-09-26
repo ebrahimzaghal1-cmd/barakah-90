@@ -3,6 +3,8 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../widgets/arabic_map_layer.dart';
+
 class LocationPickerScreen extends StatefulWidget {
   const LocationPickerScreen({super.key, this.latitude, this.longitude});
 
@@ -58,17 +60,18 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                 initialZoom: 13,
                 onTap: (_, point) => setState(() => _selected = point)),
             children: [
-              TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.barakah90.app'),
+              arabicMapTileLayer(),
               MarkerLayer(markers: [
                 Marker(
                     point: _selected,
-                    width: 52,
-                    height: 52,
-                    child: const Icon(Icons.location_pin,
-                        color: Colors.red, size: 52))
+                    width: 124,
+                    height: 78,
+                    child: const ArabicMapMarker(
+                      label: 'الموقع المحدد',
+                      icon: Icons.location_pin,
+                    ))
               ]),
+              const ArabicMapAttribution(),
             ],
           )),
           Padding(

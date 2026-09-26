@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    @font-face { font-family: "CairoLocal"; src: url("Cairo-Regular.ttf") format("truetype"); font-display: swap; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 1080px; height: 1920px; overflow: hidden; }
+    body { font-family: "CairoLocal", "Geeza Pro", sans-serif; background: #fff4de; }
+    .poster { position: relative; width: 1080px; height: 1920px; overflow: hidden; isolation: isolate; }
+    .bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: -4; filter: saturate(.92) contrast(1.03); }
+    .wash { position: absolute; inset: 0; z-index: -3; background: radial-gradient(circle at 50% 58%, transparent 25%, rgba(2,17,43,.08) 78%), linear-gradient(180deg, rgba(255,255,255,.02), transparent 56%, rgba(4,18,43,.16)); }
+    .brand { position: absolute; z-index: 8; top: 46px; right: 58px; height: 86px; padding: 9px 23px 9px 11px; display: flex; align-items: center; gap: 15px; border: 1px solid rgba(255,218,92,.72); border-radius: 26px; background: linear-gradient(145deg,rgba(5,24,58,.98),rgba(12,46,91,.95)); color: white; box-shadow: 0 16px 38px rgba(4,18,43,.28); font-size: 28px; font-weight: 900; }
+    .brand img { width: 66px; height: 66px; border-radius: 18px; box-shadow: 0 0 0 2px #f4c84a; }
+    .copy { position: absolute; z-index: 5; top: 160px; left: 62px; right: 62px; min-height: 405px; padding: 34px 44px 38px; border: 2px solid rgba(255,218,92,.72); border-radius: 46px; text-align: center; color: white; background: linear-gradient(145deg,rgba(5,24,58,.97),rgba(13,50,98,.91)); box-shadow: 0 28px 60px rgba(4,18,43,.30), inset 0 1px 0 rgba(255,255,255,.15); }
+    .eyebrow { display: inline-block; padding: 10px 30px; margin-bottom: 15px; border-radius: 999px; background: linear-gradient(135deg,#ffe570,#f1b928); color: #071939; font-size: 27px; line-height: 1.35; font-weight: 900; box-shadow: 0 10px 26px rgba(0,0,0,.16); }
+    h1 { margin: 0; font-size: 68px; line-height: 1.14; font-weight: 900; letter-spacing: -1px; }
+    .subtitle { width: 820px; margin: 17px auto 0; color: #fff8dc; font-size: 29px; line-height: 1.55; font-weight: 700; }
+    .phone { position: absolute; left: 50%; top: 600px; width: 570px; height: 1060px; transform: translateX(-50%) rotate(var(--tilt)); padding: 20px; border: 3px solid rgba(255,213,80,.88); border-radius: 79px; background: linear-gradient(145deg,#111d32,#010205,#344156); box-shadow: 0 43px 75px rgba(3,14,38,.40), inset 0 0 0 3px rgba(255,255,255,.2); }
+    .phone::before { content: ""; position: absolute; z-index: 4; top: 16px; left: 50%; transform: translateX(-50%); width: 174px; height: 45px; border-radius: 26px; background: #05070a; box-shadow: inset 0 -3px 8px rgba(255,255,255,.08); }
+    .screen { width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 59px; background: white; }
+    .shine { position: absolute; inset: 20px; border-radius: 59px; pointer-events: none; background: linear-gradient(115deg,rgba(255,255,255,.16),transparent 25%,transparent 72%,rgba(255,255,255,.08)); }
+    .mascot { position: absolute; z-index: 6; width: var(--mascotW); left: var(--mascotL); right: var(--mascotR); bottom: var(--mascotB); filter: drop-shadow(0 25px 20px rgba(7,25,57,.28)); }
+    .badge { position: absolute; z-index: 7; left: 58px; bottom: 63px; max-width: 520px; padding: 18px 28px; border: 1px solid rgba(255,216,88,.75); border-radius: 24px; background: linear-gradient(145deg,rgba(5,24,58,.97),rgba(11,44,87,.94)); color: white; font-size: 25px; line-height: 1.4; font-weight: 800; box-shadow: 0 18px 45px rgba(7,25,57,.28); }
+    .spark { color: #ffd94a; }
+    .layout-left .phone { left: 42%; }
+    .layout-right .phone { left: 58%; }
+    .layout-right .badge { left: auto; right: 62px; }
+  </style>
+</head>
+<body>
+  <main id="poster" class="poster">
+    <img id="bg" class="bg" alt="">
+    <div class="wash"></div>
+    <div class="brand"><span>بركة <bdi>Barakah</bdi></span><img src="app-icon.png" alt=""></div>
+    <section class="copy">
+      <div id="eyebrow" class="eyebrow"></div>
+      <h1 id="title"></h1>
+      <p id="subtitle" class="subtitle"></p>
+    </section>
+    <div class="phone"><img id="screen" class="screen" alt=""><div class="shine"></div></div>
+    <img id="mascot" class="mascot" alt="">
+    <div id="badge" class="badge"></div>
+  </main>
+  <script>
+    const slides = [
+      { bg:'bg-01.png', screen:'screen-home.jpg', mascot:'bunny-standing.png', eyebrow:'أهلًا بك في بركة', title:'كل البركة\nبجيبك', subtitle:'مطاعم، ماركت، عروض وأكثر… كل اللي تحتاجه في تطبيق واحد', badge:'<span class="spark">✦</span> تجربة عربية سهلة ومشرقة', ink:'#071939', pill:'#ffd83d', pillText:'#071939', tilt:'-2deg', mascotW:'330px', mascotR:'-46px', mascotL:'auto', mascotB:'24px', layout:'' },
+      { bg:'bg-02.png', screen:'screen-market.jpg', mascot:'bunny-shopping.png', eyebrow:'سوق بركة', title:'تسوّق\nبسهولة', subtitle:'اكتشف المنتجات والعروض القريبة منك واختر كل شيء بسرعة', badge:'كل اختياراتك… بلمسة واحدة', ink:'#54102f', pill:'#ffffff', pillText:'#e31f63', tilt:'2deg', mascotW:'300px', mascotL:'-26px', mascotR:'auto', mascotB:'44px', layout:'layout-right' },
+      { bg:'bg-03.png', screen:'screen-home.jpg', mascot:'bunny-offers.png', eyebrow:'خصومات يومية', title:'عروض\nتفرّحك', subtitle:'وفّر أكثر مع عروض حصرية ومتجددة من مجتمع بركة', badge:'<span class="spark">% </span>لا تفوّت أفضل الأسعار', ink:'#4a126f', pill:'#ffdf37', pillText:'#4a126f', tilt:'-2deg', mascotW:'305px', mascotR:'-30px', mascotL:'auto', mascotB:'54px', layout:'layout-left' },
+      { bg:'bg-04.png', screen:'screen-cart.jpg', mascot:'bunny-delivery.png', eyebrow:'الطلب على كيفك', title:'اطلبها\nبطريقتك', subtitle:'اختر التوصيل السريع أو الاستلام من المتجر بكل راحة', badge:'من السلة إلى بابك بسهولة', ink:'#07366c', pill:'#ffb51b', pillText:'#07366c', tilt:'2deg', mascotW:'330px', mascotL:'-35px', mascotR:'auto', mascotB:'35px', layout:'layout-right' },
+      { bg:'bg-05.png', screen:'screen-cart.jpg', mascot:'bunny-order.png', eyebrow:'كل خطوة واضحة', title:'تابع طلبك\nبسهولة', subtitle:'اعرف حالة طلبك من التأكيد وحتى وصوله إليك', badge:'<span class="spark">●</span> متابعة مريحة وموثوقة', ink:'#063a2d', pill:'#ffe23f', pillText:'#063a2d', tilt:'-2deg', mascotW:'300px', mascotR:'-18px', mascotL:'auto', mascotB:'46px', layout:'layout-left' },
+      { bg:'bg-06.png', screen:'screen-profile.jpg', mascot:'bunny-favorites.png', eyebrow:'اختياراتك محفوظة', title:'احفظ\nمفضلاتك', subtitle:'ارجع للمطاعم والمنتجات اللي بتحبها بأي وقت', badge:'كل الأشياء الحلوة بمكان واحد', ink:'#6d1649', pill:'#7d2cff', pillText:'#ffffff', tilt:'2deg', mascotW:'295px', mascotL:'-24px', mascotR:'auto', mascotB:'52px', layout:'layout-right' },
+      { bg:'bg-07.png', screen:'screen-profile.jpg', mascot:'bunny-happy.png', eyebrow:'معك كل يوم', title:'بركة معك\nدائمًا', subtitle:'تجربة تسوّق ممتعة، سهلة وآمنة مع أرنب بركة', badge:'<span class="spark">✦</span> حمّل بركة وابدأ رحلتك', ink:'#07305e', pill:'#ffffff', pillText:'#ef6a2f', tilt:'-2deg', mascotW:'345px', mascotR:'-42px', mascotL:'auto', mascotB:'28px', layout:'layout-left' }
+    ];
+    const n = Math.max(1, Math.min(7, Number(new URLSearchParams(location.search).get('slide') || 1)));
+    const s = slides[n - 1];
+    const poster = document.getElementById('poster');
+    if (s.layout) poster.classList.add(s.layout);
+    for (const key of ['ink','pill','pillText','tilt','mascotW','mascotL','mascotR','mascotB']) poster.style.setProperty('--' + key, s[key]);
+    document.getElementById('bg').src = s.bg;
+    document.getElementById('screen').src = s.screen;
+    document.getElementById('mascot').src = s.mascot;
+    document.getElementById('eyebrow').textContent = s.eyebrow;
+    document.getElementById('title').innerHTML = s.title.replace(/\n/g,'<br>');
+    document.getElementById('subtitle').textContent = s.subtitle;
+    document.getElementById('badge').innerHTML = s.badge;
+  </script>
+</body>
+</html>

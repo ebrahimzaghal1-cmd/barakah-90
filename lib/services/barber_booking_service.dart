@@ -1,11 +1,16 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
 
 class BarberBookingService {
   BarberBookingService._();
 
   static final instance = BarberBookingService._();
   final _firestore = FirebaseFirestore.instance;
+  static const _apiBase =
+      'https://barakah-secure-api.ebrahimzaghal1.workers.dev';
 
   Stream<QuerySnapshot<Map<String, dynamic>>> watchLocks({
     required String businessId,
@@ -39,53 +44,20 @@ class BarberBookingService {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) throw StateError('يجب تسجيل الدخول لحجز موعد.');
 
-    final dateKey = _dateKey(start);
-    final startMinutes = start.hour * 60 + start.minute;
-    final endMinutes = startMinutes + durationMinutes;
-    final lockId = '${businessId}_${dateKey}_$startMinutes';
-    final lockRef = _firestore.collection('barber_slot_locks').doc(lockId);
-
-    await _firestore.runTransaction((transaction) async {
-      final existing = await transaction.get(lockRef);
-      if (existing.exists) throw StateError('هذا الوقت محجوز.');
-      transaction.set(lockRef, {
-        'businessId': businessId,
-        'dateKey': dateKey,
-        'startMinutes': startMinutes,
-        'endMinutes': endMinutes,
-        'status': 'reserved',
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+    // السعر والمدة واسم الخدمة معروضات للعميل فقط؛ الخادم يعيد قراءتها
+    // من سجل المحل ولا يثق بهذه القيم القادمة من الشاشة.
+    final result = await _post('/v1/appointments', {
+      'businessId': businessId,
+      'serviceId': serviceId,
+      'startMillis': start.millisecondsSinceEpoch,
+      'customerName': customerName.trim(),
+      'customerPhone': customerPhone.trim(),
     });
-
-    try {
-      final commission = double.parse((price * .1).toStringAsFixed(2));
-      final booking = await _firestore.collection('barber_bookings').add({
-        'businessId': businessId,
-        'serviceId': serviceId,
-        'serviceTitle': serviceTitle,
-        'customerId': user.uid,
-        'customerName': customerName.trim(),
-        'customerPhone': customerPhone.trim(),
-        'dateKey': dateKey,
-        'startMinutes': startMinutes,
-        'endMinutes': endMinutes,
-        'scheduledAt': Timestamp.fromDate(start),
-        'price': price,
-        'commissionRate': 10,
-        'commissionAmount': commission,
-        'businessNetAmount':
-            double.parse((price - commission).toStringAsFixed(2)),
-        'status': 'pending',
-        'orderType': 'barber_booking',
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-      return booking.id;
-    } catch (_) {
-      await lockRef.delete();
-      rethrow;
+    final bookingId = result['bookingId']?.toString();
+    if (bookingId == null || bookingId.isEmpty) {
+      throw StateError('تعذر إنشاء الموعد الآن.');
     }
+    return bookingId;
   }
 
   Future<void> updateBookingStatus({
@@ -95,20 +67,33 @@ class BarberBookingService {
     String? dateKey,
     int? startMinutes,
   }) async {
-    await _firestore.collection('barber_bookings').doc(bookingId).update({
-      'status': status,
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-    if (status == 'cancelled' && dateKey != null && startMinutes != null) {
-      await _firestore
-          .collection('barber_slot_locks')
-          .doc('${businessId}_${dateKey}_$startMinutes')
-          .update({'status': 'cancelled'});
-    }
+    await _post('/v1/appointments/$bookingId/status', {'status': status});
   }
 
-  static String _dateKey(DateTime date) =>
-      '${date.year.toString().padLeft(4, '0')}-'
-      '${date.month.toString().padLeft(2, '0')}-'
-      '${date.day.toString().padLeft(2, '0')}';
+  Future<Map<String, dynamic>> _post(
+      String path, Map<String, dynamic> body) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw StateError('يجب تسجيل الدخول أولاً.');
+    final token = await user.getIdToken();
+    if (token == null || token.isEmpty) {
+      throw StateError('انتهت جلسة الدخول. سجّل الدخول مجددًا.');
+    }
+    final response = await http
+        .post(Uri.parse('$_apiBase$path'),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json; charset=utf-8',
+            },
+            body: jsonEncode(body))
+        .timeout(const Duration(seconds: 25));
+    final decoded = response.body.isEmpty ? const <String, dynamic>{} : jsonDecode(response.body);
+    final data = decoded is Map
+        ? Map<String, dynamic>.from(decoded)
+        : const <String, dynamic>{};
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw StateError(data['message']?.toString() ?? 'تعذر حفظ الموعد الآن.');
+    }
+    return data;
+  }
+
 }

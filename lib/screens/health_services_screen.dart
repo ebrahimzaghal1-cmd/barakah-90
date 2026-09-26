@@ -7,6 +7,7 @@ import 'package:latlong2/latlong.dart';
 import '../theme/app_theme.dart';
 import '../widgets/favorite_button.dart';
 import '../widgets/medical_disclaimer.dart';
+import '../widgets/arabic_map_layer.dart';
 import 'doctor_clinic_screen.dart';
 
 class HealthServicesScreen extends StatefulWidget {
@@ -74,14 +75,18 @@ class _HealthServicesScreenState extends State<HealthServicesScreen> {
                 final lat = (data['latitude'] as num?)?.toDouble();
                 final lng = (data['longitude'] as num?)?.toDouble();
                 if (lat == null || lng == null) return null;
+                final label = (data['nameAr'] ??
+                        data['name'] ??
+                        data['title'] ??
+                        'طبيب من بركة')
+                    .toString();
                 return Marker(
                   point: LatLng(lat, lng),
-                  width: 54,
-                  height: 64,
+                  width: 124,
+                  height: 78,
                   child: GestureDetector(
                     onTap: () => _openDoctor(context, doctor),
-                    child: const Icon(Icons.location_on_rounded,
-                        color: Colors.red, size: 48),
+                    child: ArabicMapMarker(label: label),
                   ),
                 );
               })
@@ -124,11 +129,9 @@ class _HealthServicesScreenState extends State<HealthServicesScreen> {
                 child: FlutterMap(
                   options: MapOptions(initialCenter: _center, initialZoom: 9),
                   children: [
-                    TileLayer(
-                        urlTemplate:
-                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        userAgentPackageName: 'com.barakah.market'),
+                    arabicMapTileLayer(),
                     MarkerLayer(markers: markers),
+                    const ArabicMapAttribution(),
                   ],
                 ),
               ),

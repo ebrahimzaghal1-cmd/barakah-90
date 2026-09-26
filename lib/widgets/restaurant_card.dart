@@ -25,6 +25,8 @@ class RestaurantCard extends StatelessWidget {
     final businessId =
         restaurant is DocumentSnapshot ? restaurant.id : data['id']?.toString();
     final isProduct = data['kind']?.toString() == 'product';
+    final isComingSoon =
+        !isProduct && data['businessStatus']?.toString() == 'coming_soon';
     final discount = (data['discountPercent'] as num?)?.toDouble() ?? 0;
     final deliveryFee = data['deliveryFee'];
     final category = data['category']?.toString() ?? 'بركة';
@@ -70,6 +72,40 @@ class RestaurantCard extends StatelessWidget {
                   item: data,
                   iconSize: 18,
                 )),
+            if (isComingSoon)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: const BoxDecoration(
+                      color: Color(0x66071B3C),
+                    ),
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 9,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppTheme.navy.withOpacity(.94),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: AppTheme.coolYellow,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: const Text(
+                          'قريبًا',
+                          style: TextStyle(
+                            color: AppTheme.coolYellow,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             if (!isProduct && discount > 0)
               Positioned(
                 top: 8,
@@ -204,8 +240,12 @@ class RestaurantCard extends StatelessWidget {
                     alignment: Alignment.center,
                     child: Text(
                       deliveryFee == null || deliveryFee == 0
-                          ? 'توصيل مجاني'
-                          : 'توصيل $deliveryFee شيكل',
+                          ? (isComingSoon
+                              ? 'سيتم الافتتاح قريبًا'
+                              : 'توصيل مجاني')
+                          : (isComingSoon
+                              ? 'سيتم الافتتاح قريبًا'
+                              : 'توصيل $deliveryFee شيكل'),
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 9,

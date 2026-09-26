@@ -2040,6 +2040,33 @@ class _OrderInvoiceScreen extends StatelessWidget {
                                         fontWeight: FontWeight.w700,
                                       ),
                                     ),
+                                    if (item['optionName']
+                                            ?.toString()
+                                            .trim()
+                                            .isNotEmpty ==
+                                        true)
+                                      Text(
+                                        'الخيار: ${item['optionName']}',
+                                        style: const TextStyle(
+                                          color: Colors.black54,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    if (item['note']
+                                            ?.toString()
+                                            .trim()
+                                            .isNotEmpty ==
+                                        true)
+                                      Text(
+                                        'ملاحظة: ${item['note']}',
+                                        maxLines: 3,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: Colors.black54,
+                                          fontSize: 12,
+                                        ),
+                                      ),
                                   ],
                                 ),
                               ),

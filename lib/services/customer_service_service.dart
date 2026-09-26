@@ -7,8 +7,7 @@ import 'package:http/http.dart' as http;
 import 'admin_submission_notification_service.dart';
 
 class CustomerServiceService {
-  static const _supportMessagesEndpoint =
-      'https://barakah-secure-api.ebrahimzaghal1.workers.dev/v1/support/messages';
+  static const _apiBase = 'https://barakah-secure-api.ebrahimzaghal1.workers.dev';
 
   CustomerServiceService({
     FirebaseFirestore? firestore,
@@ -65,87 +64,51 @@ class CustomerServiceService {
     );
   }
 
-  Future<DocumentReference<Map<String, dynamic>>> ensureCustomerThread() async {
+  String customerThreadId(String customerId, {String? businessId}) {
+    final target = businessId?.trim() ?? '';
+    return target.isEmpty ? customerId : '${customerId}_business_$target';
+  }
+
+  Future<DocumentReference<Map<String, dynamic>>> ensureCustomerThread({
+    String? businessId,
+    String? businessTitle,
+    String? merchantId,
+  }) async {
     final user = _auth.currentUser;
     if (user == null) throw StateError('سجّل الدخول أولاً.');
 
-    final reference = _firestore.collection('support_threads').doc(user.uid);
-    final snapshot = await reference.get();
-    if (snapshot.exists &&
-        (snapshot.data()?['assignedAgentId']?.toString() ?? '').isEmpty) {
-      final availableAgents = await _firestore
-          .collection('customer_service_presence')
-          .where('isAvailable', isEqualTo: true)
-          .limit(1)
-          .get();
-      if (availableAgents.docs.isNotEmpty) {
-        final agent = availableAgents.docs.first;
-        await reference.update({
-          'assignedAgentId': agent.id,
-          'assignedAgentName':
-              agent.data()['displayName']?.toString() ?? 'موظف بركة',
-          'status': 'assigned',
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-      }
-    }
-    if (!snapshot.exists) {
-      String assignedAgentId = '';
-      String assignedAgentName = '';
-      final availableAgents = await _firestore
-          .collection('customer_service_presence')
-          .where('isAvailable', isEqualTo: true)
-          .limit(1)
-          .get();
-      if (availableAgents.docs.isNotEmpty) {
-        final agent = availableAgents.docs.first;
-        assignedAgentId = agent.id;
-        assignedAgentName =
-            agent.data()['displayName']?.toString() ?? 'موظف بركة';
-      }
-      await reference.set({
-        'customerId': user.uid,
-        'customerName': (user.displayName ?? '').trim().isEmpty
-            ? 'عميل بركة'
-            : user.displayName!.trim(),
-        'customerEmail': user.email ?? '',
-        'status': assignedAgentId.isEmpty ? 'open' : 'assigned',
-        'assignedAgentId': assignedAgentId,
-        'assignedAgentName': assignedAgentName,
-        'lastMessage': '',
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-    }
-    return reference;
+    final targetBusinessId = businessId?.trim() ?? '';
+    final isBusiness = targetBusinessId.isNotEmpty;
+    final result = await _post('/v1/support/threads', {
+      if (isBusiness) 'businessId': targetBusinessId,
+    });
+    final threadId = result['threadId']?.toString();
+    if (threadId == null || threadId.isEmpty) throw StateError('تعذر فتح المحادثة.');
+    return _firestore.collection('support_threads').doc(threadId);
   }
 
-  Future<void> sendCustomerMessage(String text) async {
+  Future<void> sendCustomerMessage(
+    String text, {
+    String? businessId,
+    String? businessTitle,
+    String? merchantId,
+  }) async {
     final user = _auth.currentUser;
     if (user == null) throw StateError('سجّل الدخول أولاً.');
     final message = text.trim();
     if (message.isEmpty) return;
-    final thread = await ensureCustomerThread();
+    final thread = await ensureCustomerThread(
+      businessId: businessId,
+      businessTitle: businessTitle,
+      merchantId: merchantId,
+    );
     await _postSupportMessage(thread.id, message);
   }
 
   Future<void> claimThread(String threadId, String displayName) async {
     final user = _auth.currentUser;
     if (user == null) throw StateError('سجّل الدخول أولاً.');
-    final reference = _firestore.collection('support_threads').doc(threadId);
-    await _firestore.runTransaction((transaction) async {
-      final snapshot = await transaction.get(reference);
-      final assigned = snapshot.data()?['assignedAgentId']?.toString() ?? '';
-      if (assigned.isNotEmpty && assigned != user.uid) {
-        throw StateError('هذه المحادثة استلمها موظف آخر.');
-      }
-      transaction.update(reference, {
-        'assignedAgentId': user.uid,
-        'assignedAgentName': displayName.trim(),
-        'status': 'active',
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-    });
+    await _post('/v1/support/threads/$threadId/claim', const {});
   }
 
   Future<void> setAgentAvailability(String displayName, bool value) async {
@@ -196,6 +159,14 @@ class CustomerServiceService {
     await _postSupportMessage(threadId, message);
   }
 
+  Future<void> sendMerchantMessage(String threadId, String text) async {
+    final user = _auth.currentUser;
+    if (user == null) throw StateError('سجّل الدخول أولاً.');
+    final message = text.trim();
+    if (message.isEmpty) return;
+    await _postSupportMessage(threadId, message);
+  }
+
   Future<void> _postSupportMessage(String threadId, String message) async {
     final user = _auth.currentUser;
     if (user == null) throw StateError('سجّل الدخول أولاً.');
@@ -205,7 +176,7 @@ class CustomerServiceService {
     }
     final response = await http
         .post(
-          Uri.parse(_supportMessagesEndpoint),
+          Uri.parse('$_apiBase/v1/support/messages'),
           headers: {
             'Authorization': 'Bearer $token',
             'Content-Type': 'application/json; charset=utf-8',
@@ -224,5 +195,18 @@ class CustomerServiceService {
       if (decoded is Map) errorMessage = decoded['message']?.toString();
     } catch (_) {}
     throw StateError(errorMessage ?? 'تعذر إرسال الرسالة الآن.');
+  }
+
+  Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body) async {
+    final user = _auth.currentUser;
+    if (user == null) throw StateError('سجّل الدخول أولاً.');
+    final token = await user.getIdToken();
+    if (token == null || token.isEmpty) throw StateError('انتهت جلسة الدخول.');
+    final response = await http.post(Uri.parse('$_apiBase$path'),
+        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json; charset=utf-8'}, body: jsonEncode(body)).timeout(const Duration(seconds: 25));
+    final decoded = response.body.isEmpty ? const <String, dynamic>{} : jsonDecode(utf8.decode(response.bodyBytes));
+    final data = decoded is Map ? Map<String, dynamic>.from(decoded) : const <String, dynamic>{};
+    if (response.statusCode < 200 || response.statusCode >= 300) throw StateError(data['message']?.toString() ?? 'تعذر تنفيذ العملية.');
+    return data;
   }
 }

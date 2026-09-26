@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 
 import 'foreground_notification_presenter.dart';
 
@@ -23,6 +25,8 @@ class AdminNotificationService {
   AdminNotificationService._();
 
   static final instance = AdminNotificationService._();
+  static const _deviceTokenEndpoint =
+      'https://barakah-secure-api.ebrahimzaghal1.workers.dev/v1/notifications/device-token';
 
   StreamSubscription<User?>? _authSubscription;
   StreamSubscription<String>? _tokenSubscription;
@@ -147,11 +151,59 @@ class AdminNotificationService {
     }
   }
 
-  Future<void> _saveToken(String uid, String token) =>
-      FirebaseFirestore.instance.collection('users').doc(uid).set({
-        'fcmTokens': FieldValue.arrayUnion([token]),
-        'fcmTokenUpdatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+  Future<void> _saveToken(String uid, String token) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.uid != uid) return;
+    final idToken = await user.getIdToken();
+    if (idToken == null || idToken.isEmpty) return;
+    final response = await http
+        .post(
+          Uri.parse(_deviceTokenEndpoint),
+          headers: {
+            'Authorization': 'Bearer $idToken',
+            'Content-Type': 'application/json; charset=utf-8',
+          },
+          body: jsonEncode({'token': token, 'enabled': true}),
+        )
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw StateError('تعذر ربط إشعارات هذا الجهاز بالحساب الحالي.');
+    }
+  }
+
+  Future<void> unregisterCurrentDevice() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      if (kIsWeb && !await FirebaseMessaging.instance.isSupported()) return;
+      final token = await _getToken();
+      final idToken = await user.getIdToken();
+      if (token == null ||
+          token.isEmpty ||
+          idToken == null ||
+          idToken.isEmpty) {
+        return;
+      }
+      final response = await http
+          .post(
+            Uri.parse(_deviceTokenEndpoint),
+            headers: {
+              'Authorization': 'Bearer $idToken',
+              'Content-Type': 'application/json; charset=utf-8',
+            },
+            body: jsonEncode({'token': token, 'enabled': false}),
+          )
+          .timeout(const Duration(seconds: 20));
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+          'fcmTokens': FieldValue.arrayRemove([token]),
+          'fcmTokenUpdatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
+    } catch (error) {
+      debugPrint('تعذر إلغاء ربط إشعارات الجهاز عند تسجيل الخروج: $error');
+    }
+  }
 
   Future<bool> requestPermissionForCurrentUser() async {
     _permissionFailureMessage = null;

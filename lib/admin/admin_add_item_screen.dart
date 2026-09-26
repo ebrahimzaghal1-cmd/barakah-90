@@ -32,6 +32,8 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
   final TextEditingController discountController = TextEditingController();
   final TextEditingController deliveryFeeController = TextEditingController();
   final TextEditingController ownerEmailController = TextEditingController();
+  final TextEditingController mediatorFeeController =
+      TextEditingController(text: '0');
   final TextEditingController agentPhoneController = TextEditingController();
   final TextEditingController agentLocationController = TextEditingController();
   final TextEditingController facebookController = TextEditingController();
@@ -48,12 +50,11 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
   final ImagePicker _imagePicker = ImagePicker();
 
   String selectedType = 'restaurant';
-  String selectedBusinessStatus = 'open';
   String? selectedCategory;
   bool isLoading = false;
   bool hasDeliveryOffer = false;
   bool isTrending = false;
-  bool isNewInBarakah = false;
+  bool isComingSoon = false;
   File? selectedImage;
   double? latitude;
   double? longitude;
@@ -81,6 +82,7 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
     discountController.dispose();
     deliveryFeeController.dispose();
     ownerEmailController.dispose();
+    mediatorFeeController.dispose();
     agentPhoneController.dispose();
     agentLocationController.dispose();
     facebookController.dispose();
@@ -128,14 +130,6 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
       return;
     }
 
-    if (_isAgentCategory && (latitude == null || longitude == null)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text("يجب اختيار موقع الوسيطة على الخريطة قبل الحفظ.")),
-      );
-      return;
-    }
-
     setState(() {
       isLoading = true;
     });
@@ -177,8 +171,7 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
         'discountPercent': num.tryParse(discountController.text.trim()) ?? 0,
         'hasDeliveryOffer': hasDeliveryOffer,
         'isTrending': isTrending,
-        'isNewInBarakah': isNewInBarakah,
-        'businessStatus': selectedBusinessStatus,
+        'businessStatus': isComingSoon ? 'coming_soon' : 'open',
         'preparationMinutes':
             int.tryParse(preparationController.text.trim()) ?? 30,
         if (_isDoctor) ...{
@@ -197,16 +190,23 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
         'createdAt': Timestamp.now(),
         if (latitude != null && longitude != null) 'latitude': latitude,
         if (latitude != null && longitude != null) 'longitude': longitude,
-        if (_isAgentCategory) 'agentPhone': agentPhoneController.text.trim(),
+        if (_isAgentCategory)
+          'mediatorFee': double.parse(mediatorFeeController.text.trim()),
         if (_isAgentCategory)
           'agentLocation': agentLocationController.text.trim(),
         if (_isAgentCategory) 'facebookUrl': facebookController.text.trim(),
         if (_isAgentCategory) 'instagramUrl': instagramController.text.trim(),
-        if (_isAgentCategory) 'whatsappUrl': whatsappController.text.trim(),
         if (_isAgentCategory) 'websiteUrl': websiteController.text.trim(),
         if (owner != null) 'ownerId': owner.id,
-        if (owner != null) 'ownerEmail': ownerEmail,
+        if (owner != null && !_isAgentCategory) 'ownerEmail': ownerEmail,
       });
+      if (_isAgentCategory) {
+        batch
+            .set(firestore.collection('mediator_private').doc(businessRef.id), {
+          'phone': agentPhoneController.text.trim(),
+          'updatedAt': FieldValue.serverTimestamp()
+        });
+      }
       if (owner != null) {
         batch.set(
           owner.reference,
@@ -247,14 +247,13 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
 
       setState(() {
         selectedType = 'restaurant';
-        selectedBusinessStatus = 'open';
         selectedCategory = null;
         selectedImage = null;
         latitude = null;
         longitude = null;
         hasDeliveryOffer = false;
         isTrending = false;
-        isNewInBarakah = false;
+        isComingSoon = false;
       });
     } catch (e) {
       if (!mounted) return;
@@ -374,32 +373,6 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
                   },
                 ),
                 const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: selectedBusinessStatus,
-                  decoration: InputDecoration(
-                    labelText: 'ظهور المحل',
-                    prefixIcon: const Icon(Icons.visibility_outlined),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  items: const [
-                    DropdownMenuItem(
-                      value: 'open',
-                      child: Text('جاهز — يظهر ويستقبل الطلبات'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'coming_soon',
-                      child: Text('قريبًا — يظهر دون استقبال طلبات'),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) {
-                      setState(() => selectedBusinessStatus = value);
-                    }
-                  },
-                ),
-                const SizedBox(height: 16),
                 TextFormField(
                   controller: titleController,
                   decoration: InputDecoration(
@@ -502,6 +475,18 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
                         setState(() => selectedCategory = value),
                   ),
                 if (_isAgentCategory) ...[
+                  TextFormField(
+                      controller: mediatorFeeController,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                          labelText: 'أجرة الوسيطة بالشيكل'),
+                      validator: (v) {
+                        final n = double.tryParse(v ?? '');
+                        return n == null || !n.isFinite || n < 0 || n > 100000
+                            ? 'أدخل أجرة صحيحة'
+                            : null;
+                      }),
                   const SizedBox(height: 16),
                   TextFormField(
                     controller: agentPhoneController,
@@ -695,13 +680,18 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
                 ),
                 SwitchListTile.adaptive(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('إضافة إلى شريط جديد في بركة'),
-                  subtitle: const Text('يظهر المحل في شريط المتاجر الجديدة'),
-                  secondary: const Icon(Icons.new_releases_rounded),
-                  value: isNewInBarakah,
+                  title: const Text('قريبًا — سيتم افتتاحه قريبًا'),
+                  subtitle: const Text(
+                    'تظهر كلمة «قريبًا» على بطاقة المحل ولا يمكن الطلب منه حتى تغييره إلى مفتوح.',
+                  ),
+                  secondary: const Icon(
+                    Icons.upcoming_rounded,
+                    color: AppTheme.deepYellow,
+                  ),
+                  value: isComingSoon,
                   onChanged: isLoading
                       ? null
-                      : (value) => setState(() => isNewInBarakah = value),
+                      : (value) => setState(() => isComingSoon = value),
                 ),
                 const SizedBox(height: 12),
                 OutlinedButton.icon(

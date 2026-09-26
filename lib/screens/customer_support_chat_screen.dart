@@ -9,10 +9,14 @@ import 'authentication_screen.dart';
 class CustomerSupportChatScreen extends StatefulWidget {
   const CustomerSupportChatScreen({
     super.key,
-    this.initialMessage,
+    this.businessId,
+    this.businessTitle,
+    this.merchantId,
   });
 
-  final String? initialMessage;
+  final String? businessId;
+  final String? businessTitle;
+  final String? merchantId;
 
   @override
   State<CustomerSupportChatScreen> createState() =>
@@ -22,12 +26,6 @@ class CustomerSupportChatScreen extends StatefulWidget {
 class _CustomerSupportChatScreenState extends State<CustomerSupportChatScreen> {
   final _message = TextEditingController();
   bool _sending = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _message.text = widget.initialMessage?.trim() ?? '';
-  }
 
   @override
   void dispose() {
@@ -41,7 +39,12 @@ class _CustomerSupportChatScreenState extends State<CustomerSupportChatScreen> {
     final text = _message.text;
     _message.clear();
     try {
-      await CustomerServiceService().sendCustomerMessage(text);
+      await CustomerServiceService().sendCustomerMessage(
+        text,
+        businessId: widget.businessId,
+        businessTitle: widget.businessTitle,
+        merchantId: widget.merchantId,
+      );
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -72,19 +75,34 @@ class _CustomerSupportChatScreenState extends State<CustomerSupportChatScreen> {
       );
     }
 
-    final thread =
-        FirebaseFirestore.instance.collection('support_threads').doc(user.uid);
+    final service = CustomerServiceService();
+    final isBusiness = widget.businessId?.trim().isNotEmpty == true;
+    final thread = FirebaseFirestore.instance.collection('support_threads').doc(
+          service.customerThreadId(
+            user.uid,
+            businessId: widget.businessId,
+          ),
+        );
     return Scaffold(
       backgroundColor: const Color(0xFFF7F8FA),
       appBar: AppBar(
         backgroundColor: AppTheme.navy,
         foregroundColor: Colors.white,
-        title: const Column(
+        title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('خدمة عملاء بركة',
-                style: TextStyle(fontWeight: FontWeight.w900)),
-            Text('محادثة خاصة وآمنة', style: TextStyle(fontSize: 11)),
+            Text(
+              isBusiness
+                  ? 'مراسلة ${widget.businessTitle ?? 'المحل'}'
+                  : 'خدمة عملاء بركة',
+              style: const TextStyle(fontWeight: FontWeight.w900),
+            ),
+            Text(
+              isBusiness
+                  ? 'يراها صاحب المحل وإدارة بركة فقط'
+                  : 'يراها أدمن بركة فقط',
+              style: const TextStyle(fontSize: 11),
+            ),
           ],
         ),
       ),
@@ -102,9 +120,11 @@ class _CustomerSupportChatScreenState extends State<CustomerSupportChatScreen> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
                 child: Text(
-                  agent.isEmpty
-                      ? 'بانتظار موظف خدمة عملاء متاح'
-                      : 'يتابع معك الآن: $agent',
+                  isBusiness
+                      ? 'الرسائل خاصة بينك وبين صاحب المحل وإدارة بركة'
+                      : agent.isEmpty
+                          ? 'سيجيبك أدمن بركة من لوحة الإدارة'
+                          : 'يتابع معك الآن: $agent',
                   style: const TextStyle(fontWeight: FontWeight.w900),
                 ),
               );

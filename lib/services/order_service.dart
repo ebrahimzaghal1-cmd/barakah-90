@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'order_fields.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
@@ -27,32 +29,6 @@ class OrderService {
 
   Stream<QuerySnapshot<Map<String, dynamic>>> allOrders() =>
       _firestore.collection('orders').snapshots();
-
-  Future<List<Map<String, dynamic>>> supervisorOrders() async {
-    final user = _auth.currentUser;
-    if (user == null) throw StateError('سجّل الدخول أولًا.');
-    final token = await user.getIdToken();
-    if (token == null || token.isEmpty) {
-      throw StateError('انتهت جلسة الدخول.');
-    }
-    final response = await http.get(
-      Uri.parse('$_apiBase/v1/order-supervisor/orders'),
-      headers: {'Authorization': 'Bearer $token'},
-    ).timeout(const Duration(seconds: 25));
-    final decoded = response.body.isEmpty
-        ? <String, dynamic>{}
-        : jsonDecode(utf8.decode(response.bodyBytes));
-    final data = decoded is Map
-        ? Map<String, dynamic>.from(decoded)
-        : <String, dynamic>{};
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw StateError(data['message']?.toString() ?? 'تعذر تحميل الطلبات.');
-    }
-    return (data['orders'] as List? ?? const [])
-        .whereType<Map>()
-        .map((item) => Map<String, dynamic>.from(item))
-        .toList();
-  }
 
   Future<Map<String, dynamic>> _post(
     String path,
@@ -253,16 +229,7 @@ class OrderService {
     final key = '${user.uid}-${DateTime.now().microsecondsSinceEpoch}-'
         '${secureRandom.nextInt(1 << 31)}';
     final safeItems = items
-        .map((item) => {
-              'productId': item['productId']?.toString(),
-              'quantity': item['quantity'] ?? 1,
-              if (item['selectedOptions'] is List)
-                'selectedOptions': item['selectedOptions'],
-              if (item['specialNote']?.toString().trim().isNotEmpty == true)
-                'specialNote': item['specialNote'].toString().trim(),
-              if (item['image']?.toString().trim().isNotEmpty == true)
-                'image': item['image'].toString().trim(),
-            })
+        .map(orderRequestItem)
         .where((item) => (item['productId'] as String?)?.isNotEmpty == true)
         .toList();
     if (safeItems.isEmpty) throw StateError('السلة لا تحتوي أصنافًا صالحة.');

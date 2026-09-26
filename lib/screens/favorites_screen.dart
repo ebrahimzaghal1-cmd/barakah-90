@@ -6,6 +6,7 @@ import '../services/favorites_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/barakah_brand.dart';
 import 'restaurant_details_screen.dart';
+import 'product_details_screen.dart';
 
 class FavoritesScreen extends StatelessWidget {
   FavoritesScreen({super.key, required this.user});
@@ -127,7 +128,22 @@ class _FavoriteTile extends StatelessWidget {
       child: ListTile(
         contentPadding: const EdgeInsets.all(9),
         onTap: isProduct
-            ? null
+            ? () async {
+                final snapshot = await FirebaseFirestore.instance
+                    .collection('items')
+                    .doc(entry.id)
+                    .get();
+                if (!context.mounted) return;
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ProductDetailsScreen(
+                      productId: entry.id,
+                      product: snapshot.data() ?? data,
+                    ),
+                  ),
+                );
+              }
             : () => Navigator.push(
                   context,
                   MaterialPageRoute(

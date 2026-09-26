@@ -31,9 +31,16 @@ class LocationService {
       throw Exception('الصلاحية مرفوضة نهائيًا');
     }
 
-    // جلب الموقع
-    return await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-    );
+    // لا نترك شاشة الخريطة عالقة إذا تأخر GPS أو المتصفح في الرد.
+    final lastKnown = await Geolocator.getLastKnownPosition();
+    try {
+      return await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 10),
+      );
+    } catch (_) {
+      if (lastKnown != null) return lastKnown;
+      rethrow;
+    }
   }
 }

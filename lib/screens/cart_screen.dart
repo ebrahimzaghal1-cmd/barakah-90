@@ -802,6 +802,25 @@ class _CartLineTile extends StatelessWidget {
                         fontSize: 12,
                       ),
                     ),
+                  if (item.optionName.isNotEmpty && item.optionName != 'عادي')
+                    Text(
+                      'الخيار: ${item.optionName}',
+                      style: const TextStyle(
+                        color: Colors.black54,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  if (item.note.isNotEmpty)
+                    Text(
+                      'ملاحظة: ${item.note}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.black54,
+                        fontSize: 12,
+                      ),
+                    ),
                   const SizedBox(height: 5),
                   Text(
                     '${item.lineTotal} ₪',

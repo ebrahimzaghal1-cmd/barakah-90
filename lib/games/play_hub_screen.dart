@@ -9,6 +9,7 @@ import '../services/firebase_state.dart';
 import '../services/order_service.dart';
 import '../services/play_rewards_service.dart';
 import '../services/play_task_session_service.dart';
+import '../config/app_features.dart';
 import '../theme/app_theme.dart';
 import '../widgets/barakah_brand.dart';
 import 'gold_worm_game.dart';
@@ -124,7 +125,7 @@ class _PlayHubScreenState extends State<PlayHubScreen> {
     };
 
     final modeText = rewardMode
-        ? 'هذه مهمة مرافقة للطلب. لديك حتى 30 دقيقة بعد إكمال أو تسليم الطلب. عند إكمال 5 جولات ناجحة في المهمة تحصل على نقطتين، وتُحتسب المكافأة مرة واحدة فقط للطلب.'
+        ? 'هذه مهمة مرافقة للطلب. لديك حتى 30 دقيقة من وقت إنشاء الطلب. عند إكمال 5 جولات ناجحة في المهمة تحصل على نقطتين، وتُحتسب المكافأة مرة واحدة فقط للطلب.'
         : 'أنت الآن في اللعب الحر. يمكنك اللعب بلا حدود، لكن لا تُحتسب نقاط. عند إنشاء طلب تتفعّل مهمة بركة لمدة 30 دقيقة.';
 
     final result = await showDialog<bool>(
@@ -290,7 +291,7 @@ class _PlayHubScreenState extends State<PlayHubScreen> {
       ),
       backgroundColor: Colors.transparent,
       body: BarakahBrandBackdrop(
-        child: !FirebaseState.isReady || user == null
+        child: !kLoyaltyRewardsEnabled || !FirebaseState.isReady || user == null
             ? _freePlayContent()
             : StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                 stream: OrderService().customerOrders(),
@@ -306,6 +307,9 @@ class _PlayHubScreenState extends State<PlayHubScreen> {
                     'rejected',
                     'cancelled',
                     'canceled',
+                    'delivered',
+                    'completed',
+                    'finished',
                   };
                   final eligibleOrders = snapshot.data!.docs
                       .where((doc) => !excludedStatuses
@@ -326,15 +330,10 @@ class _PlayHubScreenState extends State<PlayHubScreen> {
                   final completed = _completedTasks(activeOrder.data());
                   final completedCount =
                       _taskIds.where((task) => completed[task] == true).length;
-                  final orderData = activeOrder.data();
-                  final rewardStartedAt =
-                      (orderData['completedAt'] as Timestamp?) ??
-                          (orderData['deliveredAt'] as Timestamp?) ??
-                          (orderData['finishedAt'] as Timestamp?) ??
-                          (orderData['updatedAt'] as Timestamp?) ??
-                          (orderData['createdAt'] as Timestamp?);
+                  final createdAt =
+                      activeOrder.data()['createdAt'] as Timestamp?;
                   final rewardExpiresAt =
-                      rewardStartedAt?.toDate().add(_rewardWindow);
+                      createdAt?.toDate().add(_rewardWindow);
                   final rewardWindowOpen = rewardExpiresAt != null &&
                       rewardExpiresAt.isAfter(DateTime.now());
                   if (completedCount < _taskIds.length && !rewardWindowOpen) {
@@ -391,7 +390,9 @@ class _PlayHubContent extends StatelessWidget {
             border: Border.all(color: AppTheme.deepYellow.withOpacity(.24)),
           ),
           child: const Text(
-            'اطلب، العب، واجمع النقاط… ووفّر أكثر في طلباتك القادمة! 🎁',
+            kLoyaltyRewardsEnabled
+                ? 'اطلب، العب، واجمع النقاط… ووفّر أكثر في طلباتك القادمة! 🎁'
+                : 'سيبدأ احتساب نقاط بركة خلال فترة قريبة. عند بدء الخدمة، سجّل الدخول وأنشئ طلبًا لتبدأ بجمع النقاط 🎁',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: AppTheme.navy,
@@ -467,7 +468,9 @@ class _PlayHubContent extends StatelessWidget {
                     Text(
                       rewardMode
                           ? 'أنهِ المهام الثلاث خلال 10 دقائق لكل مهمة واجمع 6 نقاط.'
-                          : 'الألعاب متاحة للجميع، والنقاط تتفعّل بعد إكمال أو تسليم طلب.',
+                          : kLoyaltyRewardsEnabled
+                              ? 'الألعاب متاحة للجميع، والنقاط تتفعّل تلقائيًا عند إنشاء طلب.'
+                              : 'الألعاب متاحة الآن مجانًا. سيبدأ احتساب نقاط بركة خلال فترة قريبة، بعد التسجيل وإنشاء طلب.',
                       style: TextStyle(
                         color: Colors.white.withOpacity(.78),
                         height: 1.5,
@@ -575,7 +578,9 @@ class _PlayHubContent extends StatelessWidget {
                 child: Text(
                   rewardMode
                       ? 'تعليمات اللعب: أكمل 5 جولات ناجحة في المهمة لتحصل على نقطتين. لديك 30 دقيقة من وقت إنشاء الطلب، ويمكنك إعادة المحاولة عند الفشل ما دام الوقت لم ينتهِ. تُحتسب المكافأة مرة واحدة فقط للطلب.'
-                      : 'تعليمات اللعب: اختر أي لعبة واستمتع بها مجانًا. اللعب الحر لا يمنح نقاطًا. عند إنشاء طلب تتفعّل مهمة بركة لمدة 30 دقيقة.',
+                      : kLoyaltyRewardsEnabled
+                          ? 'تعليمات اللعب: اختر أي لعبة واستمتع بها مجانًا. اللعب الحر لا يمنح نقاطًا. عند إنشاء طلب تتفعّل مهمة بركة لمدة 30 دقيقة.'
+                          : 'تعليمات اللعب: اختر أي لعبة واستمتع بها مجانًا. سيبدأ احتساب نقاط بركة خلال فترة قريبة؛ وعند بدء الخدمة يلزم التسجيل وإنشاء طلب لتفعيل المهمة.',
                   style: const TextStyle(
                     color: AppTheme.navy,
                     height: 1.55,

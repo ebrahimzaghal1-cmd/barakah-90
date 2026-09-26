@@ -10,7 +10,7 @@ import '../screens/cart_screen.dart';
 import '../screens/orders_screen.dart';
 import '../screens/profile_screen.dart';
 import '../screens/customer_support_chat_screen.dart';
-import '../screens/coming_soon_screen.dart';
+import '../games/play_hub_screen.dart';
 import '../widgets/barakah_waiting_screen.dart';
 import '../services/app_hours_service.dart';
 import '../services/firebase_state.dart';
@@ -61,7 +61,7 @@ class _MainNavBarState extends State<MainNavBar> {
     screens = [
       const RestaurantsScreen(),
       const MarketScreen(),
-      const ComingSoonScreen(),
+      const PlayHubScreen(),
       const CartScreen(),
       const OrdersScreen(),
       const ProfileScreen(),
@@ -190,10 +190,9 @@ class _MainNavBarState extends State<MainNavBar> {
                       activeIcon: Icon(Icons.storefront_rounded, size: 30),
                       label: 'ماركت'),
                   const BottomNavigationBarItem(
-                    icon: _ComingSoonNavIcon(selected: false),
-                    activeIcon: _ComingSoonNavIcon(selected: true),
-                    label: '',
-                  ),
+                      icon: Icon(Icons.card_giftcard_outlined, size: 25),
+                      activeIcon: Icon(Icons.card_giftcard_rounded, size: 31),
+                      label: 'قريباً'),
                   const BottomNavigationBarItem(
                       icon: Icon(
                         Icons.shopping_cart_outlined,
@@ -246,32 +245,6 @@ class _MainNavBarState extends State<MainNavBar> {
       ),
     );
   }
-}
-
-class _ComingSoonNavIcon extends StatelessWidget {
-  const _ComingSoonNavIcon({required this.selected});
-
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            selected ? Icons.upcoming_rounded : Icons.upcoming_outlined,
-            size: selected ? 27 : 23,
-          ),
-          const SizedBox(height: 1),
-          Text(
-            'قريبًا',
-            style: TextStyle(
-              fontSize: selected ? 15 : 14,
-              height: 1,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      );
 }
 
 class _BarakahContactButton extends StatefulWidget {

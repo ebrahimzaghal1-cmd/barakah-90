@@ -1,9 +1,7 @@
-import 'dart:convert';
-import 'dart:math';
-
-import 'package:crypto/crypto.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 class BarakahCardProvisionResult {
   const BarakahCardProvisionResult({
@@ -15,15 +13,6 @@ class BarakahCardProvisionResult {
   final String? initialPin;
 }
 
-class AdminAccess {
-  const AdminAccess({required this.isOwner, required this.canManageOrders});
-
-  final bool isOwner;
-  final bool canManageOrders;
-
-  bool get canOpenAdmin => isOwner || canManageOrders;
-}
-
 class UserProfileService {
   UserProfileService({FirebaseFirestore? firestore})
       : _firestore = firestore ?? FirebaseFirestore.instance;
@@ -31,7 +20,7 @@ class UserProfileService {
   final FirebaseFirestore _firestore;
 
   static const int signupGiftPoints = 50;
-  static const String primaryAdminUid = 'Y3YeLin9gYTbqN4if72o3iTrUSn2';
+  static const _apiBase = 'https://barakah-secure-api.ebrahimzaghal1.workers.dev';
 
   Future<bool> claimSignupGift(User user) async {
     final reference = _firestore.collection('users').doc(user.uid);
@@ -78,59 +67,21 @@ class UserProfileService {
     return true;
   }
 
-  String _generateCardNumber() {
-    final random = Random.secure();
-    String block() => List.generate(4, (_) => random.nextInt(10)).join();
-    return 'BRK-${block()}-${block()}-${block()}';
-  }
-
-  String _generatePin() {
-    final random = Random.secure();
-    return random.nextInt(10000).toString().padLeft(4, '0');
-  }
-
-  String _hashPin({
-    required String uid,
-    required String salt,
-    required String pin,
-  }) {
-    return sha256.convert(utf8.encode('$uid:$salt:$pin')).toString();
-  }
-
   Future<BarakahCardProvisionResult> _ensureBarakahCard(
     User user,
     DocumentReference<Map<String, dynamic>> reference,
     Map<String, dynamic>? existingData,
   ) async {
-    final existingCard =
-        (existingData?['barakahCardNumber'] ?? '').toString().trim();
-
-    if (existingCard.isNotEmpty) {
-      return BarakahCardProvisionResult(cardNumber: existingCard);
+    final token = await user.getIdToken();
+    if (token == null || token.isEmpty) throw StateError('انتهت جلسة الدخول.');
+    final response = await http.post(Uri.parse('$_apiBase/v1/profile/ensure'),
+        headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+        body: jsonEncode({'displayName': user.displayName ?? ''}));
+    final data = response.body.isEmpty ? const <String, dynamic>{} : jsonDecode(response.body);
+    if (response.statusCode < 200 || response.statusCode >= 300 || data is! Map) {
+      throw StateError('تعذر إعداد بطاقة بركة.');
     }
-
-    final pin = _generatePin();
-    final salt =
-        '${DateTime.now().microsecondsSinceEpoch}-${Random.secure().nextInt(1 << 31)}';
-    final cardNumber = _generateCardNumber();
-
-    await reference.set({
-      'barakahCardNumber': cardNumber,
-      'barakahPinHash': _hashPin(
-        uid: user.uid,
-        salt: salt,
-        pin: pin,
-      ),
-      'barakahPinSalt': salt,
-      'barakahCardActive': true,
-      'barakahCardCreatedAt': FieldValue.serverTimestamp(),
-      'loyaltyPoints': (existingData?['loyaltyPoints'] as num?)?.toInt() ?? 0,
-    }, SetOptions(merge: true));
-
-    return BarakahCardProvisionResult(
-      cardNumber: cardNumber,
-      initialPin: pin,
-    );
+    return BarakahCardProvisionResult(cardNumber: data['cardNumber']?.toString() ?? '', initialPin: data['initialPin']?.toString());
   }
 
   Future<BarakahCardProvisionResult> createCustomerProfile(
@@ -139,37 +90,7 @@ class UserProfileService {
   }) async {
     final reference = _firestore.collection('users').doc(user.uid);
 
-    await reference.set({
-      'email': user.email,
-      'phone': user.phoneNumber ?? '',
-      'displayName': displayName?.trim() ?? '',
-      'address': '',
-      'gender': '',
-      'agentNumber': '',
-      'agentLocation': '',
-      'agentLatitude': null,
-      'agentLongitude': null,
-      'facebookUrl': '',
-      'instagramUrl': '',
-      'tiktokUrl': '',
-      'language': 'ar',
-      'role': 'customer',
-      'loyaltyPoints': signupGiftPoints,
-      'signupGiftClaimed': true,
-      'signupGiftPoints': signupGiftPoints,
-      'signupGiftClaimedAt': FieldValue.serverTimestamp(),
-      'joinedAt': FieldValue.serverTimestamp(),
-      'createdAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-
-    final createdSnapshot = await reference.get();
-    final createdData = createdSnapshot.data() ?? <String, dynamic>{};
-
-    return _ensureBarakahCard(
-      user,
-      reference,
-      createdData,
-    );
+    return _ensureBarakahCard(user, reference, null);
   }
 
   Future<BarakahCardProvisionResult> ensureCustomerProfile(User user,
@@ -178,21 +99,7 @@ class UserProfileService {
     final existing = await reference.get();
     if (existing.exists) {
       final currentData = existing.data() ?? <String, dynamic>{};
-      final authenticatedName = (displayName ?? user.displayName ?? '').trim();
-      final legacyJoinDate = currentData['createdAt'] ??
-          currentData['registeredAt'] ??
-          currentData['timestamp'];
       final updates = <String, dynamic>{
-        // مزامنة بيانات Firebase Auth للحسابات القديمة التي أُنشئت قبل
-        // إضافة حقول البريد والهاتف إلى مجموعة users.
-        if ((user.email ?? '').trim().isNotEmpty) 'email': user.email!.trim(),
-        if ((user.phoneNumber ?? '').trim().isNotEmpty)
-          'phone': user.phoneNumber!.trim(),
-        if (authenticatedName.isNotEmpty &&
-            (currentData['displayName'] ?? '').toString().trim().isEmpty)
-          'displayName': authenticatedName,
-        if (currentData['joinedAt'] == null && legacyJoinDate != null)
-          'joinedAt': legacyJoinDate,
         'lastLoginAt': FieldValue.serverTimestamp(),
       };
       await reference.set(updates, SetOptions(merge: true));
@@ -211,23 +118,12 @@ class UserProfileService {
   }
 
   Future<bool> isAdmin(String uid) async {
-    return (await adminAccess(uid)).isOwner;
-  }
-
-  Future<AdminAccess> adminAccess(String uid) async {
     final profile = await _firestore
         .collection('users')
         .doc(uid)
         .get(const GetOptions(source: Source.server));
-    final data = profile.data() ?? const <String, dynamic>{};
-    final permissions = data['adminPermissions'];
-    final canManageOrders = data['role']?.toString() == 'order_supervisor' &&
-        permissions is Map &&
-        permissions['manageOrders'] == true;
-    return AdminAccess(
-      isOwner: uid == primaryAdminUid && data['role']?.toString() == 'admin',
-      canManageOrders: canManageOrders,
-    );
+
+    return profile.data()?['role']?.toString() == 'admin';
   }
 
   Future<void> updateCustomerProfile(String uid, Map<String, dynamic> data) {

@@ -1,17 +1,10 @@
-import { createFirestoreStore } from './security/store.js';
-import { createAppointment, updateAppointment } from './security/appointments.js';
-import { createTaxiOrder, updateTaxiOrder } from './security/taxi.js';
+import mediatorActionCore from '../../../functions/mediator-core.cjs';
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
 // src/index.js
 var JSON_HEADERS = { "content-type": "application/json; charset=utf-8" };
 var MAX_ITEMS = 50;
-var PRIMARY_ADMIN_UID = "Y3YeLin9gYTbqN4if72o3iTrUSn2";
-function isPrimaryAdmin(user, actor) {
-  return user?.uid === PRIMARY_ADMIN_UID && actor?.role === "admin";
-}
-__name(isPrimaryAdmin, "isPrimaryAdmin");
 var index_default = {
   async fetch(request, env) {
     const cors = corsHeaders(request, env);
@@ -31,139 +24,28 @@ var index_default = {
         );
       }
       const user = await authenticate(request, env);
-      if (request.method === "POST" && url.pathname === "/v1/barber-bookings") {
-        const store = createFirestoreStore({ baseUrl: firestoreBase(env), token: await serviceToken(env) });
-        return json(await createAppointment(store, user, await readJson(request), { primaryAdminUid: PRIMARY_ADMIN_UID }), 201, cors);
+      if (request.method === 'POST' && url.pathname === '/v1/mediator/action') {
+        return json(await runMediatorAction(request, env, user), 200, cors);
       }
-      const appointmentStatusMatch = url.pathname.match(/^\/v1\/barber-bookings\/([^/]+)\/status$/);
-      if (request.method === "POST" && appointmentStatusMatch) {
-        const store = createFirestoreStore({ baseUrl: firestoreBase(env), token: await serviceToken(env) });
-        const input = await readJson(request);
-        return json(await updateAppointment(store, user, decodeURIComponent(appointmentStatusMatch[1]), input.status, { primaryAdminUid: PRIMARY_ADMIN_UID }), 200, cors);
+      if (request.method === "POST" && url.pathname === "/v1/notifications/device-token") {
+        return json(await syncNotificationDeviceToken(request, env, user), 200, cors);
       }
-
-      if (request.method === "POST" && url.pathname === "/v1/taxi-orders") {
-    const serviceTokenValue = await serviceToken(env);
-    const store = createFirestoreStore({
-      baseUrl: firestoreBase(env),
-      token: serviceTokenValue
-    });
-
-    const result = await createTaxiOrder(
-      store,
-      user,
-      await readJson(request),
-      { primaryAdminUid: PRIMARY_ADMIN_UID }
-    );
-
-    try {
-      await notifyTaxiOrderEvent(
-        env,
-        serviceTokenValue,
-        result.orderId,
-        "created"
-      );
-    } catch (error) {
-      console.error(
-        "taxi_notification_failed",
-        "created",
-        error?.message || String(error)
-      );
-    }
-
-    return json(result, 201, cors);
-  }
-
-  const taxiOrderActionMatch = url.pathname.match(
-    /^\/v1\/taxi-orders\/([^/]+)\/action$/
-  );
-
-  if (request.method === "POST" && taxiOrderActionMatch) {
-    const orderId = decodeURIComponent(
-      taxiOrderActionMatch[1]
-    );
-
-    const input = await readJson(request);
-    const serviceTokenValue = await serviceToken(env);
-
-    const store = createFirestoreStore({
-      baseUrl: firestoreBase(env),
-      token: serviceTokenValue
-    });
-
-    const result = await updateTaxiOrder(
-      store,
-      user,
-      orderId,
-      input,
-      { primaryAdminUid: PRIMARY_ADMIN_UID }
-    );
-
-    const notificationActions = new Set([
-      "dispatch",
-      "complete",
-      "confirm",
-      "cancel"
-    ]);
-
-    if (notificationActions.has(input?.action)) {
-      try {
-        await notifyTaxiOrderEvent(
-          env,
-          serviceTokenValue,
-          orderId,
-          input.action
-        );
-      } catch (error) {
-        console.error(
-          "taxi_notification_failed",
-          input?.action,
-          error?.message || String(error)
-        );
+      if (request.method === "POST" && url.pathname === "/v1/profile/ensure") {
+        return json(await ensureCustomerProfile(request, env, user), 200, cors);
       }
-    }
-
-    return json(result, 200, cors);
-  }
-
-  if (request.method === "POST" && url.pathname === "/v1/support/messages") {
+      if (request.method === "POST" && url.pathname === "/v1/support/messages") {
         return json(await sendSupportMessage(request, env, user), 201, cors);
       }
-
-      if (
-        request.method === "POST" &&
-        url.pathname === "/v1/admin/communications/campaigns"
-      ) {
-        return json(
-          await createCommunicationCampaign(request, env, user),
-          201,
-          cors
-        );
+      if (request.method === "POST" && url.pathname === "/v1/support/threads") {
+        return json(await ensureSupportThread(request, env, user), 200, cors);
       }
-
-      if (
-        request.method === "POST" &&
-        url.pathname === "/v1/admin/communications/campaigns/process"
-      ) {
-        return json(
-          await processCommunicationCampaign(request, env, user),
-          200,
-          cors
-        );
-      }
-      if (request.method === "GET" && url.pathname === "/v1/order-supervisor/orders") {
-        return json(await listOrderSupervisorOrders(env, user), 200, cors);
+      const supportClaimMatch = url.pathname.match(/^\/v1\/support\/threads\/([^/]+)\/claim$/);
+      if (request.method === "POST" && supportClaimMatch) {
+        return json(await claimSupportThread(env, user, decodeURIComponent(supportClaimMatch[1])), 200, cors);
       }
       if (request.method === "POST" && url.pathname === "/v1/admin/new-request") {
         return json(
           await notifyAdminsAboutVerifiedRequest(request, env, user),
-          200,
-          cors
-        );
-      }
-      if (request.method === "POST" && url.pathname === "/v1/admin/auction/status-notification") {
-        return json(
-          await notifyAuctionStatus(request, env, user),
           200,
           cors
         );
@@ -227,7 +109,6 @@ var index_default = {
       if (request.method === "POST" && url.pathname === "/v1/admin/account/delete") {
         const body = await readJson(request);
         const targetUid = String(body?.userId || "").trim();
-        const directAdminDelete = body?.directAdminDelete === true;
 
         if (!targetUid) {
           fail(400, "missing-user-id", "معرّف المستخدم مطلوب.");
@@ -240,12 +121,8 @@ var index_default = {
           `users/${encodeURIComponent(user.uid)}`
         );
 
-        if (!isPrimaryAdmin(user, actor)) {
+        if (actor?.role !== "admin") {
           fail(403, "permission-denied", "غير مسموح بتنفيذ حذف الحسابات.");
-        }
-
-        if (targetUid === user.uid) {
-          fail(403, "admin-account-protected", "لا يمكن للأدمن حذف حسابه من لوحة المستخدمين.");
         }
 
         const deletionRequest = await firestoreGet(
@@ -255,12 +132,9 @@ var index_default = {
         );
 
         if (
-          !directAdminDelete &&
-          (
-            !deletionRequest ||
-            deletionRequest.userId !== targetUid ||
-            deletionRequest.status !== "pending"
-          )
+          !deletionRequest ||
+          deletionRequest.userId !== targetUid ||
+          deletionRequest.status !== "pending"
         ) {
           fail(
             409,
@@ -290,24 +164,24 @@ var index_default = {
           cors
         );
       }
+      if (request.method === "POST" && url.pathname === "/v1/appointments") {
+        return json(await createAppointment(request, env, user), 201, cors);
+      }
+      const appointmentStatusMatch = url.pathname.match(
+        /^\/v1\/appointments\/([^/]+)\/status$/
+      );
+      if (request.method === "POST" && appointmentStatusMatch) {
+        return json(await updateAppointmentStatus(
+          request,
+          env,
+          user,
+          decodeURIComponent(appointmentStatusMatch[1])
+        ), 200, cors);
+      }
       if (request.method === "POST" && url.pathname === "/v1/merchant/products") {
         return json(
           await createMerchantProduct(request, env, user),
           201,
-          cors
-        );
-      }
-      if (request.method === "POST" && url.pathname === "/v1/merchant/managers") {
-        return json(
-          await updateBusinessManager(request, env, user),
-          200,
-          cors
-        );
-      }
-      if (request.method === "POST" && url.pathname === "/v1/admin/taxi/drivers/assign") {
-        return json(
-          await assignTaxiDriver(request, env, user),
-          200,
           cors
         );
       }
@@ -343,123 +217,7 @@ var index_default = {
       if (request.method === "POST" && url.pathname === "/v1/orders") {
         return json(await createOrder(request, env, user), 201, cors);
       }
-      if (request.method === "POST" && url.pathname === "/v1/agent-orders") {
-        return json(await createAgentOrder(request, env, user), 201, cors);
-      }
-
-    const agentOrderAcceptMatch = url.pathname.match(
-      /^\/v1\/agent-orders\/([^/]+)\/accept$/
-    );
-    if (request.method === "POST" && agentOrderAcceptMatch) {
-      return json(
-        await updateAgentOrderStatus(
-          env,
-          user,
-          decodeURIComponent(agentOrderAcceptMatch[1]),
-          "accepted"
-        ),
-        200,
-        cors
-      );
-    }
-
-    const agentOrderRejectMatch = url.pathname.match(
-      /^\/v1\/agent-orders\/([^/]+)\/reject$/
-    );
-    if (request.method === "POST" && agentOrderRejectMatch) {
-      return json(
-        await updateAgentOrderStatus(
-          env,
-          user,
-          decodeURIComponent(agentOrderRejectMatch[1]),
-          "rejected"
-        ),
-        200,
-        cors
-      );
-    }
-
-  
-    const agentOrderDeliveryCodeMatch = url.pathname.match(
-      /^\/v1\/agent-orders\/([^/]+)\/delivery-code$/
-    );
-    if (request.method === "GET" && agentOrderDeliveryCodeMatch) {
-      return json(
-        await getAgentOrderDeliveryCode(
-          env,
-          user,
-          decodeURIComponent(agentOrderDeliveryCodeMatch[1])
-        ),
-        200,
-        cors
-      );
-    }
-
-
-    const agentOrderDisputeMatch = url.pathname.match(
-      /^\/v1\/agent-orders\/([^/]+)\/dispute$/
-    );
-    if (request.method === "POST" && agentOrderDisputeMatch) {
-      return json(
-        await createAgentOrderDispute(
-          request,
-          env,
-          user,
-          decodeURIComponent(agentOrderDisputeMatch[1])
-        ),
-        201,
-        cors
-      );
-    }
-
-    const agentOrderResolveDisputeMatch = url.pathname.match(
-      /^\/v1\/agent-orders\/([^/]+)\/resolve-dispute$/
-    );
-    if (request.method === "POST" && agentOrderResolveDisputeMatch) {
-      return json(
-        await resolveAgentOrderDispute(
-          request,
-          env,
-          user,
-          decodeURIComponent(agentOrderResolveDisputeMatch[1])
-        ),
-        200,
-        cors
-      );
-    }
-
-    const agentOrderSettleMatch = url.pathname.match(
-      /^\/v1\/agent-orders\/([^/]+)\/settle$/
-    );
-    if (request.method === "POST" && agentOrderSettleMatch) {
-      return json(
-        await settleAgentOrderEarning(
-          env,
-          user,
-          decodeURIComponent(agentOrderSettleMatch[1])
-        ),
-        200,
-        cors
-      );
-    }
-
-    const agentOrderCompleteMatch = url.pathname.match(
-      /^\/v1\/agent-orders\/([^/]+)\/complete$/
-    );
-    if (request.method === "POST" && agentOrderCompleteMatch) {
-      return json(
-        await completeAgentOrder(
-          request,
-          env,
-          user,
-          decodeURIComponent(agentOrderCompleteMatch[1])
-        ),
-        200,
-        cors
-      );
-    }
-
-    if (request.method === "GET" && url.pathname === "/v1/driver/orders/available") {
+      if (request.method === "GET" && url.pathname === "/v1/driver/orders/available") {
         return json(
           await listAvailableDriverOrders(env, user),
           200,
@@ -576,37 +334,12 @@ function fail(status, code, message) {
 }
 __name(fail, "fail");
 async function readJson(request) {
-  const maxBytes = 128e3;
   const length = Number(request.headers.get("content-length") || 0);
-  if (length > maxBytes) fail(413, "payload-too-large", "الطلب كبير جدًا.");
-  const reader = request.body?.getReader();
-  if (!reader) fail(400, "invalid-json", "بيانات الطلب غير صحيحة.");
-  const chunks = [];
-  let totalBytes = 0;
+  if (length > 128e3) fail(413, "payload-too-large", "\u0627\u0644\u0637\u0644\u0628 \u0643\u0628\u064A\u0631 \u062C\u062F\u064B\u0627.");
   try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      totalBytes += value.byteLength;
-      if (totalBytes > maxBytes) {
-        await reader.cancel().catch(() => {});
-        fail(413, "payload-too-large", "الطلب كبير جدًا.");
-      }
-      chunks.push(value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  const bytes = new Uint8Array(totalBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  try {
-    return JSON.parse(new TextDecoder().decode(bytes));
+    return await request.json();
   } catch (_) {
-    fail(400, "invalid-json", "بيانات الطلب غير صحيحة.");
+    fail(400, "invalid-json", "\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0637\u0644\u0628 \u063A\u064A\u0631 \u0635\u062D\u064A\u062D\u0629.");
   }
 }
 __name(readJson, "readJson");
@@ -782,14 +515,17 @@ async function firestoreCommit(env, token, writes) {
   if (response.status === 409 || response.status === 412) {
     console.error(
       "firestore_commit_conflict",
-      response.status
+      response.status,
+      responseText
     );
     return null;
   }
   if (!response.ok) {
     console.error(
       "firestore_commit_failed",
-      response.status
+      response.status,
+      responseText,
+      JSON.stringify(writes)
     );
     fail(
       502,
@@ -801,7 +537,7 @@ async function firestoreCommit(env, token, writes) {
 }
 __name(firestoreCommit, "firestoreCommit");
 async function firestoreQuery(env, token, collectionId, filters = []) {
-  const where = filters.length === 0 ? null : filters.length === 1 ? filters[0] : {
+  const where = filters.length === 1 ? filters[0] : {
     compositeFilter: { op: "AND", filters }
   };
   const response = await fetch(`${firestoreBase(env)}:runQuery`, {
@@ -809,7 +545,7 @@ async function firestoreQuery(env, token, collectionId, filters = []) {
     headers: { ...JSON_HEADERS, authorization: `Bearer ${token}` },
     body: JSON.stringify({ structuredQuery: {
       from: [{ collectionId }],
-      ...(where ? { where } : {}),
+      where,
       limit: 100
     } })
   });
@@ -826,214 +562,121 @@ function fieldArrayContains(fieldPath, value) {
   return { fieldFilter: { field: { fieldPath }, op: "ARRAY_CONTAINS", value: encodeValue(value) } };
 }
 __name(fieldArrayContains, "fieldArrayContains");
-async function listOrderSupervisorOrders(env, user) {
+async function syncNotificationDeviceToken(request, env, user) {
+  const body = await readJson(request);
+  const deviceToken = String(body?.token || "").trim();
+  const enabled = body?.enabled !== false;
+  if (deviceToken.length < 20 || deviceToken.length > 4096) {
+    fail(400, "invalid-device-token", "رمز جهاز الإشعارات غير صالح.");
+  }
+
   const token = await serviceToken(env);
-  const actor = await firestoreGet(
+  const profiles = await firestoreQuery(
     env,
     token,
-    `users/${encodeURIComponent(user.uid)}`
+    "users",
+    [fieldArrayContains("fcmTokens", deviceToken)]
   );
-  const allowed = isPrimaryAdmin(user, actor) ||
-    (actor?.role === "order_supervisor" && actor?.adminPermissions?.manageOrders === true);
-  if (!allowed) {
-    fail(403, "permission-denied", "غير مسموح بعرض طلبات الإشراف.");
-  }
-  const orders = await firestoreQuery(env, token, "orders");
-  orders.sort((left, right) => Date.parse(right.createdAt || 0) - Date.parse(left.createdAt || 0));
-  return {
-    orders: orders.map((order) => ({
-      id: order.id,
-      orderNumber: order.orderNumber || null,
-      status: order.status || "new",
-      deliveryMethod: order.deliveryMethod || "delivery",
-      customerName: order.customerName || order.customerEmail || "عميل بركة",
-      customerPhone: order.customerPhone || "",
-      deliveryAddress: order.deliveryAddress || "",
-      businessTitle: order.businessTitle || "",
-      createdAt: order.createdAt || null,
-      items: (Array.isArray(order.items) ? order.items : []).map((item) => ({
-        title: item?.title || "صنف",
-        quantity: Number(item?.quantity || 1),
-        specialNote: String(item?.specialNote || "").trim()
-      }))
-    }))
-  };
-}
-__name(listOrderSupervisorOrders, "listOrderSupervisorOrders");
-async function sendPushToTokens(
-  env,
-  token,
-  deviceTokens,
-  { title, body, data = {} }
-) {
-  const recipients = [];
-  const seenTokens = new Set();
-
-  for (const value of deviceTokens || []) {
-    const recipient =
-      typeof value === "string"
-        ? { uid: null, token: value, updateTime: null }
-        : {
-            uid:
-              typeof value?.uid === "string"
-                ? value.uid
-                : null,
-            token:
-              typeof value?.token === "string"
-                ? value.token
-                : "",
-            updateTime: value?.updateTime || null
-          };
-
-    if (
-      recipient.token.length <= 20 ||
-      seenTokens.has(recipient.token)
-    ) {
-      continue;
-    }
-
-    seenTokens.add(recipient.token);
-    recipients.push(recipient);
-
-    if (recipients.length >= 100) break;
+  const current = profiles.find((profile) => profile.id === user.uid) ||
+    await firestoreGet(env, token, `users/${encodeURIComponent(user.uid)}`);
+  if (!current) {
+    fail(404, "user-not-found", "حساب المستخدم غير موجود.");
   }
 
-  if (!recipients.length) return;
-
-  const isUrgentOrder =
-    data.type === "new_order" ||
-    data.type === "driver_order_available";
-
-  const deadRecipients = [];
-
-  const sendOne = async (recipient) => {
-    const response = await fetch(
-      `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/messages:send`,
+  const writes = [];
+  for (const profile of profiles) {
+    if (profile.id === user.uid && enabled) continue;
+    writes.push(updateWrite(
+      env,
+      `users/${encodeURIComponent(profile.id)}`,
       {
-        method: "POST",
-        headers: {
-          ...JSON_HEADERS,
-          authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          message: {
-            token: recipient.token,
-            notification: {
-              title,
-              body
-            },
-            data,
-            android: {
-              priority: "HIGH",
+        fcmTokens: (Array.isArray(profile.fcmTokens) ? profile.fcmTokens : [])
+          .filter((value) => value !== deviceToken),
+        fcmTokenUpdatedAt: new Date()
+      },
+      profile.updateTime
+    ));
+  }
+  if (enabled && !profiles.some((profile) => profile.id === user.uid)) {
+    writes.push(updateWrite(
+      env,
+      `users/${encodeURIComponent(user.uid)}`,
+      {
+        fcmTokens: [
+          ...new Set([
+            ...(Array.isArray(current.fcmTokens) ? current.fcmTokens : []),
+            deviceToken
+          ])
+        ],
+        fcmTokenUpdatedAt: new Date()
+      },
+      current.updateTime
+    ));
+  }
+  if (writes.length) await firestoreCommit(env, token, writes);
+  return { ok: true, enabled };
+}
+__name(syncNotificationDeviceToken, "syncNotificationDeviceToken");
+async function sendPushToTokens(env, token, deviceTokens, { title, body, data = {} }) {
+  const uniqueTokens = [...new Set((deviceTokens || []).filter((value) => typeof value === "string" && value.length > 20))];
+  if (!uniqueTokens.length) return;
+  await Promise.all(
+    uniqueTokens.slice(0, 100).map(async (deviceToken) => {
+      const response = await fetch(
+        `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/messages:send`,
+        {
+          method: "POST",
+          headers: {
+            ...JSON_HEADERS,
+            authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            message: {
+              token: deviceToken,
               notification: {
-                sound: "default",
-                channel_id: isUrgentOrder
-                  ? "barakah_urgent_orders_v3"
-                  : "barakah_orders",
-                notification_priority: isUrgentOrder
-                  ? "PRIORITY_MAX"
-                  : "PRIORITY_HIGH",
-                default_vibrate_timings: true,
-                visibility: "PUBLIC",
-                sticky: isUrgentOrder
-              }
-            },
-            apns: {
-              headers: {
-                "apns-priority": "10"
+                title,
+                body
               },
-              payload: {
-                aps: {
+              data,
+              android: {
+                priority: "HIGH",
+                notification: {
                   sound: "default",
-                  badge: 1,
-                  "interruption-level": isUrgentOrder
-                    ? "time-sensitive"
-                    : "active"
+                  channel_id: "barakah_orders"
+                }
+              },
+              apns: {
+                payload: {
+                  aps: {
+                    sound: "default",
+                    badge: 1
+                  }
+                }
+              },
+              webpush: {
+                notification: {
+                  icon: "/icons/Icon-192.png",
+                  badge: "/icons/Icon-192.png",
+                  dir: "rtl",
+                  lang: "ar"
+                },
+                fcm_options: {
+                  link: "https://barakah-new.web.app/"
                 }
               }
-            },
-            webpush: {
-              notification: {
-                icon: "/icons/Icon-192.png",
-                badge: "/icons/Icon-192.png",
-                dir: "rtl",
-                lang: "ar"
-              },
-              fcm_options: {
-                link: "https://barakah-new.web.app/"
-              }
             }
-          }
-        })
+          })
+        }
+      );
+      if (!response.ok) {
+        console.error(
+          "push_notification_failed",
+          response.status,
+          (await response.text()).substring(0, 300)
+        );
       }
-    );
-
-    const responseText = await response.text();
-
-    if (response.ok) {
-      return;
-    }
-
-    let isUnregistered = false;
-
-    if (response.status === 404) {
-      try {
-        const parsed = JSON.parse(responseText);
-        isUnregistered =
-          parsed?.error?.status === "NOT_FOUND" &&
-          (
-            parsed?.error?.message === "NotRegistered" ||
-            parsed?.error?.message === "Device unregistered." ||
-            parsed?.error?.details?.some(
-              (detail) =>
-                detail?.errorCode === "UNREGISTERED"
-            )
-          );
-      } catch (_) {
-        isUnregistered = false;
-      }
-    }
-
-    if (isUnregistered && recipient.uid) {
-      deadRecipients.push(recipient);
-
-      console.warn("push_token_unregistered", {
-        uid: recipient.uid
-      });
-
-      return;
-    }
-
-    console.error(
-      "push_notification_failed",
-      response.status,
-      responseText.substring(0, 300)
-    );
-  };
-
-  const concurrency = 4;
-
-  for (
-    let offset = 0;
-    offset < recipients.length;
-    offset += concurrency
-  ) {
-    const batch = recipients.slice(
-      offset,
-      offset + concurrency
-    );
-
-    await Promise.all(batch.map(sendOne));
-  }
-
-  // Do not mutate Firestore while delivering transactional pushes.
-// UNREGISTERED tokens are counted here and can be cleaned separately,
-// avoiding extra subrequests in order and taxi request flows.
-
-console.log("PUSH_DELIVERY_RESULT", {
-    attempted: recipients.length,
-    unregistered: deadRecipients.length
-  });
+    })
+  );
 }
 __name(sendPushToTokens, "sendPushToTokens");
 async function userPushTokens(env, token, uid) {
@@ -1046,31 +689,6 @@ async function userPushTokens(env, token, uid) {
   return Array.isArray(profile?.fcmTokens) ? profile.fcmTokens : [];
 }
 __name(userPushTokens, "userPushTokens");
-
-async function userPushRecipients(env, token, uid) {
-  if (!uid) return [];
-
-  const profile = await firestoreGet(
-    env,
-    token,
-    `users/${encodeURIComponent(uid)}`
-  );
-
-  if (!profile || !Array.isArray(profile.fcmTokens)) return [];
-
-  return profile.fcmTokens
-    .filter(
-      (deviceToken) =>
-        typeof deviceToken === "string" && deviceToken.length > 20
-    )
-    .map((deviceToken) => ({
-      uid,
-      token: deviceToken,
-      updateTime: profile.updateTime
-    }));
-}
-__name(userPushRecipients, "userPushRecipients");
-
 async function notifyCustomerOrderStatus(env, token, order, orderId, status) {
   const labels = {
     accepted: "\u062A\u0645 \u0642\u0628\u0648\u0644 \u0637\u0644\u0628\u0643 \u2705",
@@ -1109,114 +727,43 @@ async function notifyCustomerOrderStatus(env, token, order, orderId, status) {
 }
 __name(notifyCustomerOrderStatus, "notifyCustomerOrderStatus");
 async function notifyAdminsAboutOrder(env, token, orderId, order) {
-  const [ownerRecipients, supervisors] = await Promise.all([
-    userPushRecipients(env, token, PRIMARY_ADMIN_UID),
-    firestoreQuery(env, token, "users", [
-      fieldEquals("role", "order_supervisor")
-    ])
-  ]);
-
-  const adminRecipients = [
-    ...ownerRecipients,
-    ...supervisors
-      .filter(
-        (supervisor) =>
-          supervisor.adminPermissions?.manageOrders === true
-      )
-      .flatMap((supervisor) =>
-        (Array.isArray(supervisor.fcmTokens)
-          ? supervisor.fcmTokens
-          : []
-        )
-          .filter(
-            (deviceToken) =>
-              typeof deviceToken === "string" &&
-              deviceToken.length > 20
-          )
-          .map((deviceToken) => ({
-            uid: supervisor.id,
-            token: deviceToken,
-            updateTime: supervisor.updateTime
-          }))
-      )
-  ];
-
-  let merchantRecipients = [];
-
+  const admins = await firestoreQuery(
+    env,
+    token,
+    "users",
+    [fieldEquals("role", "admin")]
+  );
+  const adminTokens = admins.flatMap(
+    (admin) => Array.isArray(admin.fcmTokens) ? admin.fcmTokens : []
+  );
+  let merchantTokens = [];
   if (order.businessId) {
-    const [
-      business,
-      directlyLinkedMerchants,
-      managedBusinessMerchants
-    ] = await Promise.all([
-      firestoreGet(
+    const business = await firestoreGet(
+      env,
+      token,
+      `items/${encodeURIComponent(order.businessId)}`
+    );
+    if (business?.ownerId) {
+      merchantTokens = await userPushTokens(
         env,
         token,
-        `items/${encodeURIComponent(order.businessId)}`
-      ),
-      firestoreQuery(env, token, "users", [
-        fieldEquals("merchantBusinessId", order.businessId)
-      ]),
-      firestoreQuery(env, token, "users", [
-        fieldArrayContains("managedBusinessIds", order.businessId)
-      ])
-    ]);
-
-    const merchantUserIds = [
-      business?.ownerId,
-      ...(Array.isArray(business?.managerIds)
-        ? business.managerIds
-        : [])
-    ].filter(Boolean);
-
-    merchantRecipients = (
-      await Promise.all(
-        [...new Set(merchantUserIds)].map((uid) =>
-          userPushRecipients(env, token, uid)
-        )
-      )
-    ).flat();
-
-    const linkedProfiles = [
-      ...directlyLinkedMerchants,
-      ...managedBusinessMerchants
-    ];
-
-    merchantRecipients.push(
-      ...linkedProfiles.flatMap((profile) =>
-        (Array.isArray(profile.fcmTokens)
-          ? profile.fcmTokens
-          : []
-        )
-          .filter(
-            (deviceToken) =>
-              typeof deviceToken === "string" &&
-              deviceToken.length > 20
-          )
-          .map((deviceToken) => ({
-            uid: profile.id,
-            token: deviceToken,
-            updateTime: profile.updateTime
-          }))
-      )
-    );
+        business.ownerId
+      );
+    }
   }
-
   const orderLabel = String(
-    order.orderNumber ||
-      orderId.substring(0, 6).toUpperCase()
+    order.orderNumber || orderId.substring(0, 6).toUpperCase()
   );
-
   await sendPushToTokens(
     env,
     token,
     [
-      ...adminRecipients,
-      ...merchantRecipients
+      ...adminTokens,
+      ...merchantTokens
     ],
     {
-      title: "طلب جديد في بركة",
-      body: `الطلب #${orderLabel} من ${order.businessTitle || "أحد المحلات"} بقيمة ${order.total} ₪`,
+      title: "\u0637\u0644\u0628 \u062C\u062F\u064A\u062F \u0641\u064A \u0628\u0631\u0643\u0629",
+      body: `\u0627\u0644\u0637\u0644\u0628 #${orderLabel} \u0645\u0646 ${order.businessTitle || "\u0623\u062D\u062F \u0627\u0644\u0645\u062D\u0644\u0627\u062A"} \u0628\u0642\u064A\u0645\u0629 ${order.total} \u20AA`,
       data: {
         type: "new_order",
         orderId,
@@ -1246,12 +793,7 @@ async function createPartnerApplication(request, env) {
   }
   const latitude = Number(data.latitude);
   const longitude = Number(data.longitude);
-  if (data.latitude === null || data.longitude === null ||
-      data.latitude === "" || data.longitude === "" ||
-      !["number", "string"].includes(typeof data.latitude) ||
-      !["number", "string"].includes(typeof data.longitude) ||
-      !Number.isFinite(latitude) || !Number.isFinite(longitude) ||
-      latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
     fail(400, "invalid-location", "موقع المحل غير صالح.");
   }
   if (data.acceptedPartnerAgreement !== true || data.acceptedPrivacyPolicy !== true) {
@@ -1269,7 +811,6 @@ async function createPartnerApplication(request, env) {
     nationalId: text(data.nationalId, 80),
     activityType: text(data.activityType, 80),
     businessCategory: text(data.businessCategory, 120),
-    requestedBusinessStatus: data.requestedBusinessStatus === "coming_soon" ? "coming_soon" : "open",
     barberServices: Array.isArray(data.barberServices)
       ? data.barberServices.slice(0, 30).map((service) => ({
         title: text(service?.title, 120),
@@ -1318,7 +859,13 @@ async function createPartnerApplication(request, env) {
     record
   );
 
-  const adminTokens = await adminPushTokens(env, token);
+  const [roleAdmins, flagAdmins] = await Promise.all([
+    firestoreQuery(env, token, "users", [fieldEquals("role", "admin")]),
+    firestoreQuery(env, token, "users", [fieldEquals("isAdmin", true)])
+  ]);
+  const adminTokens = [...roleAdmins, ...flagAdmins].flatMap(
+    (admin) => Array.isArray(admin.fcmTokens) ? admin.fcmTokens : []
+  );
   // The application is already committed at this point. A push notification is
   // best-effort and must never make the applicant see a failed submission (or
   // submit duplicates) when FCM is temporarily unavailable.
@@ -1338,12 +885,13 @@ async function createPartnerApplication(request, env) {
 }
 __name(createPartnerApplication, "createPartnerApplication");
 async function adminPushTokens(env, token) {
-  const owner = await firestoreGet(
-    env,
-    token,
-    `users/${encodeURIComponent(PRIMARY_ADMIN_UID)}`
+  const [roleAdmins, flagAdmins] = await Promise.all([
+    firestoreQuery(env, token, "users", [fieldEquals("role", "admin")]),
+    firestoreQuery(env, token, "users", [fieldEquals("isAdmin", true)])
+  ]);
+  return [...roleAdmins, ...flagAdmins].flatMap(
+    (admin) => Array.isArray(admin.fcmTokens) ? admin.fcmTokens : []
   );
-  return Array.isArray(owner?.fcmTokens) ? owner.fcmTokens : [];
 }
 __name(adminPushTokens, "adminPushTokens");
 async function notifyAdminsAboutVerifiedRequest(request, env, user) {
@@ -1357,30 +905,14 @@ async function notifyAdminsAboutVerifiedRequest(request, env, user) {
     auction_request: {
       collection: "auction_requests",
       title: "طلب مزاد جديد 🔨",
-      label: (record) => record.itemName || "إعلان مزاد جديد",
-      ownerField: "userId",
-      expectedStatus: "pending"
-    },
-    auction_sale: {
-      collection: "auction_sales",
-      title: "حجز جديد في المزاد 🛍️",
-      label: (record) => record.itemName || "سلعة مزاد",
-      ownerField: "buyerId",
-      expectedStatus: "pending_commission"
+      label: (record) => record.itemName || "إعلان مزاد جديد"
     },
     driver_application: {
       collection: "driver_applications",
       title: "طلب انضمام سائق جديد 🚗",
       label: (record) => record.fullName || "متقدم جديد"
     },
-    taxi_driver_application: {
-    collection: "taxi_driver_applications",
-    title: "طلب انضمام سائق تكسي بركة جديد 🚕",
-    label: (record) => record.fullName || "متقدم جديد",
-    ownerField: "userId",
-    expectedStatus: "pending"
-  },
-  customer_service_application: {
+    customer_service_application: {
       collection: "customer_service_applications",
       title: "طلب توظيف خدمة عملاء جديد 🎧",
       label: (record) => record.fullName || "متقدم جديد"
@@ -1401,11 +933,7 @@ async function notifyAdminsAboutVerifiedRequest(request, env, user) {
     token,
     `${definition.collection}/${encodeURIComponent(documentId)}`
   );
-  if (
-    !record ||
-    record[definition.ownerField || "userId"] !== user.uid ||
-    record.status !== (definition.expectedStatus || "pending")
-  ) {
+  if (!record || record.userId !== user.uid || record.status !== "pending") {
     fail(403, "request-not-owned", "تعذر التحقق من الطلب الجديد.");
   }
   const tokens = await adminPushTokens(env, token);
@@ -1420,60 +948,49 @@ async function notifyAdminsAboutVerifiedRequest(request, env, user) {
   return { ok: true, type: requestType, documentId };
 }
 __name(notifyAdminsAboutVerifiedRequest, "notifyAdminsAboutVerifiedRequest");
-async function notifyAuctionStatus(request, env, user) {
-  const body = await readJson(request);
-  const saleId = String(body?.saleId || "").trim();
-  const status = String(body?.status || "").trim();
-  if (!/^[A-Za-z0-9_-]{1,128}$/.test(saleId)) {
-    fail(400, "invalid-sale-id", "معرّف عملية المزاد غير صالح.");
-  }
-  if (!["commission_paid", "completed", "cancelled"].includes(status)) {
-    fail(400, "invalid-sale-status", "حالة عملية المزاد غير مدعومة.");
-  }
+async function ensureSupportThread(request, env, user) {
+  const data = await readJson(request);
+  const businessId = String(data.businessId || "").trim();
   const token = await serviceToken(env);
-  const actor = await firestoreGet(
-    env,
-    token,
-    `users/${encodeURIComponent(user.uid)}`
-  );
-  if (!isPrimaryAdmin(user, actor)) {
-    fail(403, "permission-denied", "هذه العملية متاحة للأدمن فقط.");
+  const customer = await firestoreGet(env, token, `users/${encodeURIComponent(user.uid)}`);
+  if (!customer) fail(404, "customer-missing", "الحساب غير موجود.");
+  let business = null;
+  if (businessId) {
+    business = await firestoreGet(env, token, `items/${encodeURIComponent(businessId)}`);
+    if (!business?.ownerId) fail(404, "business-not-found", "المحل غير متاح للمراسلة.");
   }
-  const sale = await firestoreGet(
-    env,
-    token,
-    `auction_sales/${encodeURIComponent(saleId)}`
-  );
-  if (!sale || sale.status !== status) {
-    fail(409, "sale-status-mismatch", "لم يتم تأكيد حالة البيع الجديدة.");
+  const threadId = businessId ? `${user.uid}_business_${businessId}` : user.uid;
+  const existing = await firestoreGet(env, token, `support_threads/${encodeURIComponent(threadId)}`);
+  if (!existing) {
+    const now = new Date();
+    await firestoreCommit(env, token, [createWrite(env, `support_threads/${encodeURIComponent(threadId)}`, {
+      customerId: user.uid,
+      customerName: String(customer.displayName || "عميل بركة").slice(0, 120),
+      customerEmail: String(user.email || customer.email || "").slice(0, 180),
+      status: "open", assignedAgentId: "", assignedAgentName: "",
+      targetType: business ? "business" : "barakah_admin",
+      businessId: businessId, businessTitle: business ? String(business.title || "").slice(0, 160) : "",
+      merchantId: business ? String(business.ownerId) : "", lastMessage: "", createdAt: now, updatedAt: now
+    })]);
   }
-  const labels = {
-    commission_paid: {
-      title: "تم تأكيد عمولة المزاد ✅",
-      body: "يمكن الآن متابعة تسليم السلعة مع إدارة بركة."
-    },
-    completed: {
-      title: "اكتملت عملية المزاد 🎉",
-      body: "تم تسجيل بيع السلعة بنجاح."
-    },
-    cancelled: {
-      title: "أُلغي حجز المزاد",
-      body: "أعيدت السلعة للعرض ويمكن حجزها من جديد."
-    }
-  };
-  const targetIds = [...new Set([sale.buyerId, sale.sellerId].filter(Boolean))];
-  const tokenGroups = await Promise.all(
-    targetIds.map((uid) => userPushTokens(env, token, uid))
-  );
-  const message = labels[status];
-  await sendPushToTokens(env, token, tokenGroups.flat(), {
-    title: message.title,
-    body: message.body,
-    data: { type: "auction_status", saleId, status }
-  });
-  return { ok: true, saleId, status };
+  return {threadId};
 }
-__name(notifyAuctionStatus, "notifyAuctionStatus");
+async function claimSupportThread(env, user, threadId) {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(threadId)) fail(400, "invalid-thread", "معرّف المحادثة غير صالح.");
+  const token = await serviceToken(env);
+  const [agent, contract, presence, thread] = await Promise.all([
+    firestoreGet(env, token, `users/${encodeURIComponent(user.uid)}`),
+    firestoreGet(env, token, `employment_contracts/${encodeURIComponent(user.uid)}`),
+    firestoreGet(env, token, `customer_service_presence/${encodeURIComponent(user.uid)}`),
+    firestoreGet(env, token, `support_threads/${encodeURIComponent(threadId)}`)
+  ]);
+  if (!thread) fail(404, "support-thread-not-found", "المحادثة غير موجودة.");
+  if (agent?.role !== "customer_service" || agent.customerServiceEnabled !== true || contract?.status !== "accepted" || presence?.isAvailable !== true) fail(403, "agent-not-available", "يجب أن يكون الموظف مفعّلًا ومتعاقدًا ومتاحًا لاستلام المحادثة.");
+  if (thread.assignedAgentId && thread.assignedAgentId !== user.uid) fail(409, "thread-already-assigned", "استلم موظف آخر هذه المحادثة.");
+  const committed = await firestoreCommit(env, token, [updateWrite(env, `support_threads/${encodeURIComponent(threadId)}`, {assignedAgentId: user.uid, assignedAgentName: String(agent.displayName || "موظف بركة").slice(0, 120), status: "active", updatedAt: new Date()}, thread.updateTime)]);
+  if (!committed) fail(409, "support-thread-changed", "تغيرت المحادثة؛ حاول مجددًا.");
+  return {ok: true, threadId};
+}
 async function sendSupportMessage(request, env, user) {
   const body = await readJson(request);
   const threadId = String(body?.threadId || "").trim();
@@ -1496,47 +1013,44 @@ async function sendSupportMessage(request, env, user) {
   let senderName;
   let recipientTokens = [];
   let notificationTitle;
+  const targetType = thread.targetType === "business" ? "business" : "barakah_admin";
   if (thread.customerId === user.uid) {
     senderRole = "customer";
     senderName = String(actor.displayName || thread.customerName || "عميل بركة");
-    notificationTitle = "رسالة جديدة لخدمة العملاء 💬";
-    if (thread.assignedAgentId) {
-      recipientTokens.push(
-        ...await userPushTokens(env, token, thread.assignedAgentId)
-      );
-    } else {
-      const agents = await firestoreQuery(
+    if (targetType === "business") {
+      const business = await firestoreGet(
         env,
         token,
-        "users",
-        [fieldEquals("role", "customer_service")]
+        `items/${encodeURIComponent(String(thread.businessId || ""))}`
       );
+      if (!business || !thread.merchantId || business.ownerId !== thread.merchantId) {
+        fail(409, "invalid-business-thread", "صفحة المحل المرتبطة بالمحادثة غير صالحة.");
+      }
+      notificationTitle = `رسالة جديدة إلى ${String(thread.businessTitle || business.title || "المحل")} 💬`;
       recipientTokens.push(
-        ...agents.filter((agent) => agent.customerServiceEnabled === true).flatMap(
-          (agent) => Array.isArray(agent.fcmTokens) ? agent.fcmTokens : []
-        )
+        ...await userPushTokens(env, token, thread.merchantId)
       );
+    } else {
+      notificationTitle = "رسالة جديدة لخدمة عملاء بركة 💬";
     }
     recipientTokens.push(...await adminPushTokens(env, token));
   } else if (
-    actor.role === "customer_service" &&
-    actor.customerServiceEnabled === true &&
-    thread.assignedAgentId === user.uid
+    actor.role === "merchant" &&
+    targetType === "business" &&
+    thread.merchantId === user.uid
   ) {
-    // Match Firestore's isCustomerService gate. Server writes bypass rules.
-    const contract = await firestoreGet(
-      env,
-      token,
-      `employment_contracts/${encodeURIComponent(user.uid)}`
-    );
-    if (contract?.status !== "accepted") {
-      fail(403, "support-contract-required", "يجب قبول عقد العمل قبل إرسال رسائل خدمة العملاء.");
-    }
+    senderRole = "merchant";
+    senderName = String(actor.displayName || thread.businessTitle || "صاحب المحل");
+    notificationTitle = `رد جديد من ${String(thread.businessTitle || "المحل")} 💬`;
+    recipientTokens = await userPushTokens(env, token, thread.customerId);
+  } else if (actor.role === "customer_service" && actor.customerServiceEnabled === true && thread.assignedAgentId === user.uid) {
+    const contract = await firestoreGet(env, token, `employment_contracts/${encodeURIComponent(user.uid)}`);
+    if (contract?.status !== "accepted") fail(403, "support-permission-denied", "عقد الموظف غير فعّال.");
     senderRole = "customer_service";
-    senderName = String(actor.displayName || "خدمة عملاء بركة");
+    senderName = String(actor.displayName || "موظف بركة");
     notificationTitle = "رد جديد من خدمة عملاء بركة 💬";
     recipientTokens = await userPushTokens(env, token, thread.customerId);
-  } else if (isPrimaryAdmin(user, actor)) {
+  } else if (actor.role === "admin" || actor.isAdmin === true) {
     senderRole = "admin";
     senderName = String(actor.displayName || "إدارة بركة");
     notificationTitle = "رد جديد من إدارة بركة 💬";
@@ -1621,454 +1135,6 @@ async function sendSupportMessage(request, env, user) {
   return { ok: true, threadId, messageId };
 }
 __name(sendSupportMessage, "sendSupportMessage");
-function canManageCommunications(user, actor) {
-  return isPrimaryAdmin(user, actor) ||
-    actor?.role === "admin" ||
-    actor?.isAdmin === true;
-}
-
-function communicationAudienceMatches(profile, audience) {
-  if (!profile || typeof profile !== "object") return false;
-
-  const role = String(profile.role || "").trim();
-  const isAdminAccount =
-    role === "admin" || profile.isAdmin === true;
-
-  const isTaxiDriver =
-    profile.taxiDriverEnabled === true &&
-    String(profile.taxiBusinessId || "").trim().length > 0;
-
-  const isAgent =
-    String(profile.agentNumber || "").trim().length > 0;
-
-  switch (audience) {
-    case "all":
-      return !isAdminAccount;
-
-    case "customers":
-      return role === "customer" &&
-        !isTaxiDriver &&
-        !isAgent;
-
-    case "merchants":
-      return role === "merchant";
-
-    case "delivery_drivers":
-      return role === "driver";
-
-    case "taxi_drivers":
-      return isTaxiDriver;
-
-    case "agents":
-      return isAgent;
-
-    case "customer_service":
-      return role === "customer_service" &&
-        profile.customerServiceEnabled === true;
-
-    default:
-      return false;
-  }
-}
-
-async function firestoreListCollectionPage(
-  env,
-  token,
-  collectionId,
-  pageSize = 12,
-  pageToken = ""
-) {
-  const url = new URL(
-    `${firestoreBase(env)}/${encodeURIComponent(collectionId)}`
-  );
-
-  url.searchParams.set(
-    "pageSize",
-    String(Math.max(1, Math.min(12, pageSize)))
-  );
-
-  url.searchParams.set("orderBy", "__name__");
-
-  if (pageToken) {
-    url.searchParams.set("pageToken", pageToken);
-  }
-
-  const response = await fetch(url.toString(), {
-    headers: {
-      authorization: `Bearer ${token}`
-    }
-  });
-
-  if (!response.ok) {
-    console.error(
-      "communication_users_page_failed",
-      response.status
-    );
-
-    fail(
-      502,
-      "firestore-read-failed",
-      "تعذر قراءة قائمة المستخدمين."
-    );
-  }
-
-  const payload = await response.json();
-
-  return {
-    documents: Array.isArray(payload.documents)
-      ? payload.documents.map(decodeDocument)
-      : [],
-    nextPageToken:
-      typeof payload.nextPageToken === "string"
-        ? payload.nextPageToken
-        : ""
-  };
-}
-
-async function createCommunicationCampaign(
-  request,
-  env,
-  user
-) {
-  const body = await readJson(request);
-
-  const title = String(body?.title || "").trim();
-  const messageBody = String(body?.body || "").trim();
-  const audience = String(body?.audience || "").trim();
-  const type = String(body?.type || "").trim();
-
-  const allowedAudiences = new Set([
-    "all",
-    "customers",
-    "merchants",
-    "delivery_drivers",
-    "taxi_drivers",
-    "agents",
-    "customer_service"
-  ]);
-
-  const allowedTypes = new Set([
-    "message",
-    "offer",
-    "ad",
-    "alert"
-  ]);
-
-  if (!title || title.length > 120) {
-    fail(
-      400,
-      "invalid-campaign-title",
-      "عنوان الرسالة غير صالح."
-    );
-  }
-
-  if (!messageBody || messageBody.length > 1500) {
-    fail(
-      400,
-      "invalid-campaign-body",
-      "محتوى الرسالة فارغ أو طويل جدًا."
-    );
-  }
-
-  if (!allowedAudiences.has(audience)) {
-    fail(
-      400,
-      "invalid-campaign-audience",
-      "الجمهور المحدد غير صالح."
-    );
-  }
-
-  if (!allowedTypes.has(type)) {
-    fail(
-      400,
-      "invalid-campaign-type",
-      "نوع الرسالة غير صالح."
-    );
-  }
-
-  const token = await serviceToken(env);
-
-  const actor = await firestoreGet(
-    env,
-    token,
-    `users/${encodeURIComponent(user.uid)}`
-  );
-
-  if (!canManageCommunications(user, actor)) {
-    fail(
-      403,
-      "permission-denied",
-      "هذه الميزة متاحة لإدارة بركة فقط."
-    );
-  }
-
-  const campaignId =
-    crypto.randomUUID().replace(/-/g, "");
-
-  const now = new Date();
-
-  await firestoreCreate(
-    env,
-    token,
-    "communication_campaigns",
-    campaignId,
-    {
-      title,
-      body: messageBody,
-      audience,
-      type,
-      status: "sending",
-      createdBy: user.uid,
-      senderName: String(
-        actor?.displayName || "إدارة بركة"
-      ),
-      recipientCount: 0,
-      scannedCount: 0,
-      pushTargetCount: 0,
-      pageCount: 0,
-      nextPageToken: "",
-      createdAt: now,
-      updatedAt: now
-    }
-  );
-
-  return {
-    ok: true,
-    campaignId,
-    status: "sending"
-  };
-}
-
-
-async function processCommunicationCampaign(
-  request,
-  env,
-  user
-) {
-  const body = await readJson(request);
-
-  const campaignId =
-    String(body?.campaignId || "").trim();
-
-  if (!/^[A-Za-z0-9_-]{1,128}$/.test(campaignId)) {
-    fail(
-      400,
-      "invalid-campaign-id",
-      "معرّف الحملة غير صالح."
-    );
-  }
-
-  const token = await serviceToken(env);
-
-  const [actor, campaign] = await Promise.all([
-    firestoreGet(
-      env,
-      token,
-      `users/${encodeURIComponent(user.uid)}`
-    ),
-    firestoreGet(
-      env,
-      token,
-      `communication_campaigns/${encodeURIComponent(campaignId)}`
-    )
-  ]);
-
-  if (!canManageCommunications(user, actor)) {
-    fail(
-      403,
-      "permission-denied",
-      "هذه الميزة متاحة لإدارة بركة فقط."
-    );
-  }
-
-  if (!campaign) {
-    fail(
-      404,
-      "campaign-not-found",
-      "الحملة غير موجودة."
-    );
-  }
-
-  if (campaign.status === "completed") {
-    return {
-      ok: true,
-      campaignId,
-      complete: true,
-      recipientCount:
-        Number(campaign.recipientCount || 0),
-      scannedCount:
-        Number(campaign.scannedCount || 0),
-      pushTargetCount:
-        Number(campaign.pushTargetCount || 0),
-      pageCount:
-        Number(campaign.pageCount || 0)
-    };
-  }
-
-  const page = await firestoreListCollectionPage(
-    env,
-    token,
-    "users",
-    12,
-    String(campaign.nextPageToken || "")
-  );
-
-  const recipients = page.documents.filter(
-    (profile) =>
-      profile?.id &&
-      communicationAudienceMatches(
-        profile,
-        campaign.audience
-      )
-  );
-
-  const now = new Date();
-  const writes = [];
-
-  for (const profile of recipients) {
-    writes.push(
-      createWrite(
-        env,
-        `user_inbox/${encodeURIComponent(profile.id)}/messages/${encodeURIComponent(campaignId)}`,
-        {
-          campaignId,
-          recipientId: profile.id,
-          title: String(campaign.title || ""),
-          body: String(campaign.body || ""),
-          type: String(
-            campaign.type || "message"
-          ),
-          audience: String(
-            campaign.audience || "all"
-          ),
-          senderId: String(
-            campaign.createdBy || ""
-          ),
-          senderName: String(
-            campaign.senderName ||
-              "إدارة بركة"
-          ),
-          createdAt: now
-        }
-      )
-    );
-  }
-
-  const pushRecipients = recipients.flatMap(
-    (profile) =>
-      (Array.isArray(profile.fcmTokens)
-        ? profile.fcmTokens
-        : [])
-        .filter(
-          (deviceToken) =>
-            typeof deviceToken === "string" &&
-            deviceToken.length > 20
-        )
-        .map((deviceToken) => ({
-          uid: profile.id,
-          token: deviceToken,
-          updateTime:
-            profile.updateTime || null
-        }))
-  );
-
-  const recipientCount =
-    Number(campaign.recipientCount || 0) +
-    recipients.length;
-
-  const scannedCount =
-    Number(campaign.scannedCount || 0) +
-    page.documents.length;
-
-  const pushTargetCount =
-    Number(campaign.pushTargetCount || 0) +
-    pushRecipients.length;
-
-  const pageCount =
-    Number(campaign.pageCount || 0) + 1;
-
-  const complete =
-    !page.nextPageToken;
-
-  writes.push(
-    updateWrite(
-      env,
-      `communication_campaigns/${encodeURIComponent(campaignId)}`,
-      {
-        status:
-          complete ? "completed" : "sending",
-        recipientCount,
-        scannedCount,
-        pushTargetCount,
-        pageCount,
-        nextPageToken:
-          page.nextPageToken,
-        updatedAt: now,
-        ...(complete
-          ? { completedAt: now }
-          : {})
-      },
-      campaign.updateTime
-    )
-  );
-
-  const commit = await firestoreCommit(
-    env,
-    token,
-    writes
-  );
-
-  if (!commit) {
-    fail(
-      409,
-      "campaign-changed",
-      "تم تحديث الحملة من جلسة أخرى. حاول مرة أخرى."
-    );
-  }
-
-  if (pushRecipients.length > 0) {
-    try {
-      await sendPushToTokens(
-        env,
-        token,
-        pushRecipients,
-        {
-          title: String(
-            campaign.title || "بركة"
-          ),
-          body: String(
-            campaign.body || ""
-          ).slice(0, 220),
-          data: {
-            type: "barakah_campaign",
-            campaignId,
-            campaignType: String(
-              campaign.type || "message"
-            )
-          }
-        }
-      );
-    } catch (error) {
-      console.error(
-        "communication_campaign_push_failed",
-        campaignId,
-        error?.message || String(error)
-      );
-    }
-  }
-
-  return {
-    ok: true,
-    campaignId,
-    complete,
-    recipientCount,
-    scannedCount,
-    pushTargetCount,
-    pageCount
-  };
-}
-
-
 function documentName(env, path) {
   return `projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/databases/(default)/documents/${path}`;
 }
@@ -2174,93 +1240,6 @@ function encodeValue(value) {
   return { stringValue: String(value) };
 }
 __name(encodeValue, "encodeValue");
-
-function normalizeProductOptionGroups(rawGroups) {
-  if (rawGroups === void 0 || rawGroups === null) return [];
-
-  if (!Array.isArray(rawGroups)) {
-    fail(400, "invalid-option-groups", "خيارات المنتج غير صالحة.");
-  }
-
-  if (rawGroups.length > 12) {
-    fail(400, "too-many-option-groups", "الحد الأقصى لمجموعات الخيارات هو 12.");
-  }
-
-  const usedGroupIds = new Set();
-
-  return rawGroups.map((rawGroup, groupIndex) => {
-    if (!rawGroup || typeof rawGroup !== "object" || Array.isArray(rawGroup)) {
-      fail(400, "invalid-option-group", "إحدى مجموعات الخيارات غير صالحة.");
-    }
-
-    const name = String(rawGroup.name || "").trim();
-    const required = rawGroup.required === true;
-    let id = String(rawGroup.id || "").trim() || `group_${groupIndex + 1}`;
-
-    if (!name || name.length > 80) {
-      fail(400, "invalid-option-group-name", "اسم مجموعة الخيارات غير صالح.");
-    }
-
-    if (id.length > 100 || usedGroupIds.has(id)) {
-      fail(400, "invalid-option-group-id", "معرف مجموعة الخيارات غير صالح أو مكرر.");
-    }
-
-    usedGroupIds.add(id);
-
-    const rawOptions = rawGroup.options;
-
-    if (!Array.isArray(rawOptions) || rawOptions.length === 0) {
-      fail(400, "missing-product-options", `أضف خيارًا داخل مجموعة "${name}".`);
-    }
-
-    if (rawOptions.length > 30) {
-      fail(400, "too-many-product-options", `خيارات "${name}" أكثر من الحد المسموح.`);
-    }
-
-    const usedOptionIds = new Set();
-
-    const options = rawOptions.map((rawOption, optionIndex) => {
-      if (!rawOption || typeof rawOption !== "object" || Array.isArray(rawOption)) {
-        fail(400, "invalid-product-option", `خيار داخل "${name}" غير صالح.`);
-      }
-
-      const optionName = String(rawOption.name || "").trim();
-      let optionId =
-        String(rawOption.id || "").trim() || `option_${optionIndex + 1}`;
-
-      const priceDelta = Number(rawOption.priceDelta || 0);
-
-      if (!optionName || optionName.length > 120) {
-        fail(400, "invalid-product-option-name", `اسم خيار داخل "${name}" غير صالح.`);
-      }
-
-      if (optionId.length > 100 || usedOptionIds.has(optionId)) {
-        fail(400, "invalid-product-option-id", "معرف الخيار غير صالح أو مكرر.");
-      }
-
-      if (!Number.isFinite(priceDelta) || priceDelta < 0 || priceDelta > 1e6) {
-        fail(400, "invalid-option-price", `سعر الخيار "${optionName}" غير صالح.`);
-      }
-
-      usedOptionIds.add(optionId);
-
-      return {
-        id: optionId,
-        name: optionName,
-        priceDelta: Math.round(priceDelta * 100) / 100
-      };
-    });
-
-    return {
-      id,
-      name,
-      required,
-      selectionType: "single",
-      options
-    };
-  });
-}
-__name(normalizeProductOptionGroups, "normalizeProductOptionGroups");
 async function deleteCurrentAccount(env, user, targetUid = user.uid, adminDelete = false) {
   // Firebase considers deletion sensitive. Require a recent sign-in so a
   // stolen long-lived session cannot permanently remove an account.
@@ -2284,7 +1263,7 @@ async function deleteCurrentAccount(env, user, targetUid = user.uid, adminDelete
     `users/${encodeURIComponent(targetUid)}`
   );
 
-  if (profile?.role === "admin" || profile?.role === "order_supervisor" || profile?.isAdmin === true) {
+  if (profile?.role === "admin") {
     fail(
       403,
       "admin-account-protected",
@@ -2541,7 +1520,51 @@ async function sha256Hex(value) {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 __name(sha256Hex, "sha256Hex");
-async function verifyBarakahPin(userId, customer, pin) {
+function barakahCardNumber() {
+  const digits = () => Array.from(crypto.getRandomValues(new Uint8Array(4)), (n) => String(n % 10)).join("");
+  return `BRK-${digits()}-${digits()}-${digits()}`;
+}
+function barakahPin() {
+  return String(crypto.getRandomValues(new Uint32Array(1))[0] % 10000).padStart(4, "0");
+}
+async function ensureCustomerProfile(request, env, user) {
+  const data = await readJson(request);
+  const displayName = String(data.displayName || "").trim().slice(0, 120);
+  const token = await serviceToken(env);
+  const profilePath = `users/${encodeURIComponent(user.uid)}`;
+  const existing = await firestoreGet(env, token, profilePath);
+  if (existing && existing.role !== "customer") {
+    return {cardNumber: String(existing.barakahCardNumber || ""), initialPin: null, role: existing.role};
+  }
+  const secretPath = `barakah_card_secrets/${encodeURIComponent(user.uid)}`;
+  const secret = await firestoreGet(env, token, secretPath);
+  const needsCard = !existing?.barakahCardNumber;
+  const initialPin = needsCard ? barakahPin() : null;
+  const cardNumber = needsCard ? barakahCardNumber() : String(existing.barakahCardNumber);
+  const now = new Date();
+  const profile = {
+    ...(existing ? {} : {role: "customer", loyaltyPoints: 50, signupGiftClaimed: true, signupGiftPoints: 50, signupGiftClaimedAt: now, createdAt: now}),
+    ...(displayName ? {displayName} : {}),
+    ...(user.email ? {email: user.email} : {}), ...(user.phone ? {phone: user.phone} : {}),
+    language: existing?.language || "ar", lastLoginAt: now, updatedAt: now,
+    ...(needsCard ? {barakahCardNumber: cardNumber, barakahCardActive: true, barakahCardCreatedAt: now} : {})
+  };
+  const writes = [existing ? updateWrite(env, profilePath, profile, existing.updateTime) : createWrite(env, profilePath, profile)];
+  if (needsCard) {
+    const salt = crypto.randomUUID().replace(/-/g, "");
+    writes.push(createWrite(env, secretPath, {pinHash: await sha256Hex(`${user.uid}:${salt}:${initialPin}`), pinSalt: salt, failedAttempts: 0, createdAt: now, updatedAt: now}));
+  }
+  const committed = await firestoreCommit(env, token, writes);
+  if (!committed) fail(409, "profile-changed", "تغير الحساب أثناء الإعداد؛ حاول مجددًا.");
+  return {cardNumber, initialPin, role: "customer"};
+}
+__name(ensureCustomerProfile, "ensureCustomerProfile");
+async function cardSecret(env, token, userId) {
+  const secret = await firestoreGet(env, token, `barakah_card_secrets/${encodeURIComponent(userId)}`);
+  if (!secret) fail(409, "barakah-card-migration-required", "تحتاج بطاقة بركة القديمة إلى تحديث آمن قبل استخدام PIN.");
+  return secret;
+}
+async function verifyBarakahPin(env, token, userId, customer, pin) {
   if (customer.barakahCardActive !== true) {
     fail(409, "barakah-card-inactive", "\u0628\u0637\u0627\u0642\u0629 \u0628\u0631\u0643\u0629 \u063A\u064A\u0631 \u0645\u0641\u0639\u0644\u0629.");
   }
@@ -2552,8 +1575,11 @@ async function verifyBarakahPin(userId, customer, pin) {
       "\u0623\u062F\u062E\u0644 \u0627\u0644\u0631\u0642\u0645 \u0627\u0644\u0633\u0631\u064A \u0627\u0644\u0645\u0643\u0648\u0651\u0646 \u0645\u0646 4 \u0623\u0631\u0642\u0627\u0645."
     );
   }
-  const salt = String(customer.barakahPinSalt || "").trim();
-  const storedHash = String(customer.barakahPinHash || "").trim().toLowerCase();
+  const secret = await cardSecret(env, token, userId);
+  const lockedUntil = Date.parse(String(secret.lockedUntil || ""));
+  if (Number.isFinite(lockedUntil) && lockedUntil > Date.now()) fail(429, "barakah-pin-locked", "تم إيقاف PIN مؤقتًا بسبب محاولات خاطئة متكررة.");
+  const salt = String(secret.pinSalt || "").trim();
+  const storedHash = String(secret.pinHash || "").trim().toLowerCase();
   if (!salt || !storedHash) {
     fail(
       409,
@@ -2563,12 +1589,16 @@ async function verifyBarakahPin(userId, customer, pin) {
   }
   const calculatedHash = await sha256Hex(`${userId}:${salt}:${pin}`);
   if (calculatedHash !== storedHash) {
+    const attempts = Math.max(0, Number(secret.failedAttempts || 0)) + 1;
+    const update = {failedAttempts: attempts, updatedAt: new Date(), ...(attempts >= 5 ? {lockedUntil: new Date(Date.now() + 15 * 60 * 1000)} : {})};
+    await firestoreCommit(env, token, [updateWrite(env, `barakah_card_secrets/${encodeURIComponent(userId)}`, update, secret.updateTime)]);
     fail(
       403,
       "wrong-barakah-pin",
       "\u0627\u0644\u0631\u0642\u0645 \u0627\u0644\u0633\u0631\u064A \u0644\u0628\u0637\u0627\u0642\u0629 \u0628\u0631\u0643\u0629 \u063A\u064A\u0631 \u0635\u062D\u064A\u062D."
     );
   }
+  if (Number(secret.failedAttempts || 0) > 0) await firestoreCommit(env, token, [updateWrite(env, `barakah_card_secrets/${encodeURIComponent(userId)}`, {failedAttempts: 0, lockedUntil: null, updatedAt: new Date()}, secret.updateTime)]);
 }
 __name(verifyBarakahPin, "verifyBarakahPin");
 async function resetBarakahPin(request, env, user) {
@@ -2611,6 +1641,7 @@ async function resetBarakahPin(request, env, user) {
         "\u0628\u0637\u0627\u0642\u0629 \u0628\u0631\u0643\u0629 \u063A\u064A\u0631 \u0645\u0641\u0639\u0644\u0629."
       );
     }
+    const secret = await cardSecret(env, token, user.uid);
     const newSalt = crypto.randomUUID().replace(/-/g, "");
     const newHash = await sha256Hex(
       `${user.uid}:${newSalt}:${newPin}`
@@ -2621,14 +1652,16 @@ async function resetBarakahPin(request, env, user) {
       [
         updateWrite(
           env,
-          `users/${encodeURIComponent(user.uid)}`,
+          `barakah_card_secrets/${encodeURIComponent(user.uid)}`,
           {
-            barakahPinHash: newHash,
-            barakahPinSalt: newSalt,
-            barakahPinResetAt: /* @__PURE__ */ new Date(),
+            pinHash: newHash,
+            pinSalt: newSalt,
+            failedAttempts: 0,
+            lockedUntil: null,
+            pinResetAt: /* @__PURE__ */ new Date(),
             updatedAt: /* @__PURE__ */ new Date()
           },
-          customer.updateTime
+          secret.updateTime
         )
       ]
     );
@@ -2685,11 +1718,8 @@ async function changeBarakahPin(request, env, user) {
         "\u062D\u0633\u0627\u0628 \u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F."
       );
     }
-    await verifyBarakahPin(
-      user.uid,
-      customer,
-      currentPin
-    );
+    await verifyBarakahPin(env, token, user.uid, customer, currentPin);
+    const secret = await cardSecret(env, token, user.uid);
     const newSalt = crypto.randomUUID().replace(/-/g, "");
     const newHash = await sha256Hex(
       `${user.uid}:${newSalt}:${newPin}`
@@ -2700,14 +1730,16 @@ async function changeBarakahPin(request, env, user) {
       [
         updateWrite(
           env,
-          `users/${encodeURIComponent(user.uid)}`,
+          `barakah_card_secrets/${encodeURIComponent(user.uid)}`,
           {
-            barakahPinHash: newHash,
-            barakahPinSalt: newSalt,
-            barakahPinChangedAt: /* @__PURE__ */ new Date(),
+            pinHash: newHash,
+            pinSalt: newSalt,
+            failedAttempts: 0,
+            lockedUntil: null,
+            pinChangedAt: /* @__PURE__ */ new Date(),
             updatedAt: /* @__PURE__ */ new Date()
           },
-          customer.updateTime
+          secret.updateTime
         )
       ]
     );
@@ -2725,587 +1757,6 @@ async function changeBarakahPin(request, env, user) {
   );
 }
 __name(changeBarakahPin, "changeBarakahPin");
-function canManageBusiness(userId, business) {
-  return Boolean(
-    business &&
-      (business.ownerId === userId ||
-        (Array.isArray(business.managerIds) && business.managerIds.includes(userId)))
-  );
-}
-__name(canManageBusiness, "canManageBusiness");
-
-
-async function notifyTaxiOrderEvent(
-  env,
-  serviceTokenValue,
-  orderId,
-  action = "created"
-) {
-  const order = await firestoreGet(
-    env,
-    serviceTokenValue,
-    `taxi_orders/${encodeURIComponent(orderId)}`
-  );
-
-  if (!order) return;
-
-  const businessId = String(order.businessId || "").trim();
-  const customerId = String(order.customerId || "").trim();
-  const driverUid = String(order.driverUid || "").trim();
-  const orderLabel = String(
-    order.orderNumber ||
-      orderId.substring(0, 10).toUpperCase()
-  );
-
-  if (action === "created") {
-    if (!businessId) return;
-
-    const [business, linkedMerchants, managedMerchants] =
-      await Promise.all([
-        firestoreGet(
-          env,
-          serviceTokenValue,
-          `items/${encodeURIComponent(businessId)}`
-        ),
-        firestoreQuery(env, serviceTokenValue, "users", [
-          fieldEquals("merchantBusinessId", businessId)
-        ]),
-        firestoreQuery(env, serviceTokenValue, "users", [
-          fieldArrayContains("managedBusinessIds", businessId)
-        ])
-      ]);
-
-    const managerIds = [
-      business?.ownerId,
-      ...(Array.isArray(business?.managerIds)
-        ? business.managerIds
-        : [])
-    ].filter(Boolean);
-
-    const managerRecipients = (
-      await Promise.all(
-        [...new Set(managerIds)].map((uid) =>
-          userPushRecipients(
-            env,
-            serviceTokenValue,
-            uid
-          )
-        )
-      )
-    ).flat();
-
-    for (const profile of [
-      ...linkedMerchants,
-      ...managedMerchants
-    ]) {
-      for (const deviceToken of Array.isArray(profile.fcmTokens)
-        ? profile.fcmTokens
-        : []) {
-        if (
-          typeof deviceToken === "string" &&
-          deviceToken.length > 20
-        ) {
-          managerRecipients.push({
-            uid: profile.id,
-            token: deviceToken,
-            updateTime: profile.updateTime
-          });
-        }
-      }
-    }
-
-    await sendPushToTokens(
-      env,
-      serviceTokenValue,
-      managerRecipients,
-      {
-        title: "طلب تكسي جديد 🚕",
-        body: `طلب ${orderLabel} جديد في تكسي بركة. افتح لوحة التكسي لإرسال سيارة.`,
-        data: {
-          type: "taxi_order_new",
-          orderId: String(orderId),
-          orderNumber: orderLabel
-        }
-      }
-    );
-
-    return;
-  }
-
-  if (action === "dispatch") {
-    const [driverRecipients, customerRecipients] =
-      await Promise.all([
-        userPushRecipients(
-          env,
-          serviceTokenValue,
-          driverUid
-        ),
-        userPushRecipients(
-          env,
-          serviceTokenValue,
-          customerId
-        )
-      ]);
-
-    await Promise.all([
-      sendPushToTokens(
-        env,
-        serviceTokenValue,
-        driverRecipients,
-        {
-          title: "رحلة تكسي جديدة 🚕",
-          body: `تم تعيينك للطلب ${orderLabel}. افتح لوحة السائق لبدء الرحلة.`,
-          data: {
-            type: "taxi_driver_assigned",
-            orderId: String(orderId),
-            orderNumber: orderLabel
-          }
-        }
-      ),
-      sendPushToTokens(
-        env,
-        serviceTokenValue,
-        customerRecipients,
-        {
-          title: "السيارة في طريقها إليك 🚕",
-          body: `تم إرسال سائق لطلب ${orderLabel}.`,
-          data: {
-            type: "taxi_dispatched",
-            orderId: String(orderId),
-            orderNumber: orderLabel
-          }
-        }
-      )
-    ]);
-
-    return;
-  }
-
-  if (action === "complete") {
-    await sendPushToTokens(
-      env,
-      serviceTokenValue,
-      await userPushRecipients(
-        env,
-        serviceTokenValue,
-        customerId
-      ),
-      {
-        title: "أكد وصولك بأمان",
-        body: `انتهت رحلة ${orderLabel}. افتح تكسي بركة لتأكيد الوصول.`,
-        data: {
-          type: "taxi_confirm_arrival",
-          orderId: String(orderId),
-          orderNumber: orderLabel
-        }
-      }
-    );
-
-    return;
-  }
-
-  if (action === "confirm") {
-    if (!businessId) return;
-
-    const business = await firestoreGet(
-      env,
-      serviceTokenValue,
-      `items/${encodeURIComponent(businessId)}`
-    );
-
-    const targetIds = [
-      business?.ownerId,
-      ...(Array.isArray(business?.managerIds)
-        ? business.managerIds
-        : [])
-    ].filter(Boolean);
-
-    const recipientGroups = await Promise.all(
-      [...new Set(targetIds)].map((uid) =>
-        userPushRecipients(
-          env,
-          serviceTokenValue,
-          uid
-        )
-      )
-    );
-
-    await sendPushToTokens(
-      env,
-      serviceTokenValue,
-      recipientGroups.flat(),
-      {
-        title: "تم تأكيد رحلة التكسي ✅",
-        body: `أكد العميل وصوله للطلب ${orderLabel} وتم تسجيل استحقاق الرحلة.`,
-        data: {
-          type: "taxi_customer_confirmed",
-          orderId: String(orderId),
-          orderNumber: orderLabel
-        }
-      }
-    );
-
-    return;
-  }
-
-  if (action === "cancel") {
-    const cancelledByCustomer =
-      String(order.cancelledBy || "") === customerId;
-
-    const targetIds = [];
-
-    if (cancelledByCustomer) {
-      if (driverUid) {
-        targetIds.push(driverUid);
-      }
-
-      if (businessId) {
-        const business = await firestoreGet(
-          env,
-          serviceTokenValue,
-          `items/${encodeURIComponent(businessId)}`
-        );
-
-        if (business?.ownerId) {
-          targetIds.push(business.ownerId);
-        }
-
-        if (Array.isArray(business?.managerIds)) {
-          targetIds.push(...business.managerIds);
-        }
-      }
-    } else {
-      if (customerId) {
-        targetIds.push(customerId);
-      }
-
-      if (driverUid) {
-        targetIds.push(driverUid);
-      }
-    }
-
-    const recipientGroups = await Promise.all(
-      [...new Set(targetIds.filter(Boolean))].map((uid) =>
-        userPushRecipients(
-          env,
-          serviceTokenValue,
-          uid
-        )
-      )
-    );
-
-    await sendPushToTokens(
-      env,
-      serviceTokenValue,
-      recipientGroups.flat(),
-      {
-        title: "تم إلغاء طلب التكسي",
-        body: `تم إلغاء طلب ${orderLabel}.`,
-        data: {
-          type: "taxi_cancelled",
-          orderId: String(orderId),
-          orderNumber: orderLabel
-        }
-      }
-    );
-  }
-}
-__name(notifyTaxiOrderEvent, "notifyTaxiOrderEvent");
-
-async function assignTaxiDriver(request, env, user) {
-  const data = await readJson(request);
-  const driverUid = String(data.driverUid || "").trim();
-  const businessId = String(data.businessId || "").trim();
-  const action = data.action === "remove" ? "remove" : "assign";
-
-  if (!/^[A-Za-z0-9_-]{1,128}$/.test(driverUid)) {
-    fail(400, "invalid-driver", "رقم السائق غير صالح.");
-  }
-
-  if (
-    action === "assign" &&
-    !/^[A-Za-z0-9_-]{1,128}$/.test(businessId)
-  ) {
-    fail(400, "invalid-business", "رقم مكتب التكسي غير صالح.");
-  }
-
-  const token = await serviceToken(env);
-
-  const actor = await firestoreGet(
-    env,
-    token,
-    `users/${encodeURIComponent(user.uid)}`
-  );
-
-  if (!isPrimaryAdmin(user, actor)) {
-    fail(
-      403,
-      "permission-denied",
-      "أدمن بركة فقط يستطيع ربط السائق بمكتب تكسي."
-    );
-  }
-
-  const driver = await firestoreGet(
-    env,
-    token,
-    `users/${encodeURIComponent(driverUid)}`
-  );
-
-  if (!driver) {
-    fail(
-      404,
-      "driver-not-found",
-      "حساب سائق التكسي غير موجود."
-    );
-  }
-
-  // سائق تكسي بركة مستقل عن سائق التوصيل.
-  // لا يشترط role=driver ولا يمنح أي صلاحية دليفري.
-  // الربط بالمكتب يتطلب طلب تكسي مستقلًا ومعتمدًا بالكامل.
-  let taxiDriverApplication = null;
-
-  if (action === "assign") {
-    taxiDriverApplication = await firestoreGet(
-      env,
-      token,
-      `taxi_driver_applications/${encodeURIComponent(driverUid)}`
-    );
-
-    if (
-      !taxiDriverApplication ||
-      taxiDriverApplication.status !== "approved" ||
-      taxiDriverApplication.identityVerified !== true ||
-      taxiDriverApplication.driverLicenseVerified !== true ||
-      taxiDriverApplication.vehicleDocumentsVerified !== true ||
-      taxiDriverApplication.payoutVerified !== true ||
-      taxiDriverApplication.acceptedDriverTerms !== true ||
-      taxiDriverApplication.acceptedPrivacyPolicy !== true
-    ) {
-      fail(
-        409,
-        "taxi-driver-documents-required",
-        "لا يمكن ربط سائق التكسي بالمكتب قبل اعتماد طلب تكسي بركة والتحقق من جميع الوثائق."
-      );
-    }
-  }
-
-  if (action === "remove") {
-    const result = await firestoreCommit(env, token, [
-      updateWrite(
-        env,
-        `users/${encodeURIComponent(driverUid)}`,
-        {
-          taxiBusinessId: null,
-          taxiBusinessName: null,
-          taxiDriverEnabled: false,
-          taxiRemovedAt: new Date(),
-          taxiRemovedBy: user.uid,
-          updatedAt: new Date()
-        },
-        driver.updateTime
-      )
-    ]);
-
-    if (!result) {
-      fail(
-        409,
-        "driver-changed",
-        "تغيّرت بيانات السائق. حاول مجددًا."
-      );
-    }
-
-    return {
-      ok: true,
-      driverUid,
-      taxiDriverEnabled: false
-    };
-  }
-
-  const business = await firestoreGet(
-    env,
-    token,
-    `items/${encodeURIComponent(businessId)}`
-  );
-
-  if (!business || business.kind === "product") {
-    fail(404, "business-not-found", "مكتب التكسي غير موجود.");
-  }
-
-  const type = String(business.type || "").trim().toLowerCase();
-  const merchantType = String(
-    business.merchantType || ""
-  ).trim().toLowerCase();
-  const category = String(
-    business.category || ""
-  ).trim().toLowerCase();
-  const activity = String(
-    business.activityType || ""
-  ).trim().toLowerCase();
-  const title = String(
-    business.title || business.name || ""
-  ).trim();
-
-  const taxiLike =
-    type === "taxi" ||
-    merchantType === "taxi" ||
-    category.includes("تكسي") ||
-    category.includes("تاكسي") ||
-    category.includes("taxi") ||
-    activity.includes("تكسي") ||
-    activity.includes("تاكسي") ||
-    activity.includes("taxi") ||
-    title.includes("تكسي") ||
-    title.includes("تاكسي");
-
-  if (!taxiLike) {
-    fail(
-      409,
-      "not-taxi-business",
-      "المحل المحدد ليس مكتب تكسي."
-    );
-  }
-
-  if (
-    business.isActive === false ||
-    ["closed", "coming_soon"].includes(
-      String(business.businessStatus || business.status || "")
-        .trim()
-        .toLowerCase()
-    )
-  ) {
-    fail(
-      409,
-      "taxi-business-unavailable",
-      "مكتب التكسي غير متاح حاليًا."
-    );
-  }
-
-  const businessName =
-    title || "مكتب تكسي بركة";
-
-  const result = await firestoreCommit(env, token, [
-    updateWrite(
-      env,
-      `users/${encodeURIComponent(driverUid)}`,
-      {
-        taxiBusinessId: businessId,
-        taxiBusinessName: businessName,
-        taxiDriverEnabled: true,
-        taxiAssignedAt: new Date(),
-        taxiAssignedBy: user.uid,
-        taxiAssignmentAgreementVersion: taxiDriverApplication.agreementVersion,
-        updatedAt: new Date()
-      },
-      driver.updateTime
-    )
-  ]);
-
-  if (!result) {
-    fail(
-      409,
-      "driver-changed",
-      "تغيّرت بيانات السائق. حاول مجددًا."
-    );
-  }
-
-  return {
-    ok: true,
-    driverUid,
-    businessId,
-    businessName,
-    taxiDriverEnabled: true
-  };
-}
-__name(assignTaxiDriver, "assignTaxiDriver");
-
-async function updateBusinessManager(request, env, user) {
-  const data = await readJson(request);
-  const businessId = String(data.businessId || "").trim();
-  const email = String(data.email || "").trim().toLowerCase();
-  const action = data.action === "remove" ? "remove" : "add";
-  if (!/^[A-Za-z0-9_-]{1,128}$/.test(businessId)) {
-    fail(400, "invalid-business", "رقم المحل غير صالح.");
-  }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    fail(400, "invalid-email", "أدخل بريدًا إلكترونيًا صحيحًا.");
-  }
-
-  const token = await serviceToken(env);
-  const [actor, business, matches] = await Promise.all([
-    firestoreGet(env, token, `users/${encodeURIComponent(user.uid)}`),
-    firestoreGet(env, token, `items/${encodeURIComponent(businessId)}`),
-    firestoreQuery(env, token, "users", [fieldEquals("email", email)])
-  ]);
-  if (!business || business.kind === "product") {
-    fail(404, "business-not-found", "المحل غير موجود.");
-  }
-  const mayAssign = isPrimaryAdmin(user, actor) || business.ownerId === user.uid;
-  if (!mayAssign) {
-    fail(403, "permission-denied", "صاحب المحل أو أدمن بركة فقط يستطيع إضافة مديري المحل.");
-  }
-  const target = matches[0];
-  if (!target?.id) {
-    fail(404, "user-not-found", "لا يوجد حساب مسجل بهذا البريد. يجب أن يسجل الشخص في بركة أولًا.");
-  }
-  if (target.id === business.ownerId) {
-    fail(409, "already-owner", "هذا البريد يعود إلى صاحب المحل بالفعل.");
-  }
-  if (["admin", "order_supervisor", "driver", "customer_service"].includes(String(target.role || ""))) {
-    fail(409, "incompatible-role", "هذا الحساب مرتبط بوظيفة أخرى في بركة ولا يمكن إضافته كمدير محل.");
-  }
-
-  const managerIds = Array.isArray(business.managerIds) ? [...business.managerIds] : [];
-  const managerEmails = Array.isArray(business.managerEmails) ? [...business.managerEmails] : [];
-  const managedBusinessIds = Array.isArray(target.managedBusinessIds)
-    ? [...target.managedBusinessIds]
-    : [];
-
-  if (action === "add") {
-    if (!managerIds.includes(target.id)) managerIds.push(target.id);
-    if (!managerEmails.includes(email)) managerEmails.push(email);
-    if (!managedBusinessIds.includes(businessId)) managedBusinessIds.push(businessId);
-  } else {
-    const idIndex = managerIds.indexOf(target.id);
-    if (idIndex >= 0) managerIds.splice(idIndex, 1);
-    const emailIndex = managerEmails.indexOf(email);
-    if (emailIndex >= 0) managerEmails.splice(emailIndex, 1);
-    const businessIndex = managedBusinessIds.indexOf(businessId);
-    if (businessIndex >= 0) managedBusinessIds.splice(businessIndex, 1);
-  }
-
-  const targetUpdates = {
-    managedBusinessIds,
-    merchantBusinessId: managedBusinessIds[0] || null,
-    merchantEnabled: managedBusinessIds.length > 0,
-    updatedAt: new Date()
-  };
-  if (action === "add") {
-    targetUpdates.role = "merchant";
-    if (target.role !== "merchant") {
-      targetUpdates.roleBeforeMerchantManagement = target.role || "customer";
-    }
-    targetUpdates.merchantBusinessId = target.merchantBusinessId || businessId;
-    targetUpdates.merchantEnabled = true;
-  } else if (managedBusinessIds.length === 0) {
-    targetUpdates.role = target.roleBeforeMerchantManagement || "customer";
-    targetUpdates.roleBeforeMerchantManagement = null;
-  }
-
-  const result = await firestoreCommit(env, token, [
-    updateWrite(env, `items/${encodeURIComponent(businessId)}`, {
-      managerIds,
-      managerEmails,
-      updatedAt: new Date()
-    }, business.updateTime),
-    updateWrite(env, `users/${encodeURIComponent(target.id)}`, targetUpdates, target.updateTime)
-  ]);
-  if (!result) {
-    fail(409, "manager-list-changed", "تغيرت قائمة مديري المحل. حاول مجددًا.");
-  }
-  return { ok: true, action, email, managerIds, managerEmails };
-}
-__name(updateBusinessManager, "updateBusinessManager");
-
 async function createMerchantProduct(request, env, user) {
   const data = await readJson(request);
   const businessId = String(data.businessId || "").trim();
@@ -3314,8 +1765,10 @@ async function createMerchantProduct(request, env, user) {
   const image = String(data.image || "").trim();
   const price = Number(data.price);
   const stock = Number(data.stock);
-  const soldOut = data.soldOut === true;
-  const optionGroups = normalizeProductOptionGroups(data.optionGroups);
+  const mealOptions = normalizeMealOptions(data.mealOptions);
+  const addons = normalizeMealOptions(data.addons);
+  const specifications = String(data.specifications || "").trim().slice(0, 2000);
+  if (Array.isArray(data.addons) && addons.length !== data.addons.length) fail(400, "invalid-addons", "إضافات غير صالحة");
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(businessId)) {
     fail(
       400,
@@ -3358,6 +1811,9 @@ async function createMerchantProduct(request, env, user) {
       "\u0643\u0645\u064A\u0629 \u0627\u0644\u0645\u0646\u062A\u062C \u064A\u062C\u0628 \u0623\u0646 \u062A\u0643\u0648\u0646 \u0631\u0642\u0645\u064B\u0627 \u0635\u062D\u064A\u062D\u064B\u0627 \u0645\u0646 0 \u0625\u0644\u0649 999999."
     );
   }
+  if (Array.isArray(data.mealOptions) && mealOptions.length !== data.mealOptions.length) {
+    fail(400, "invalid-meal-options", "أحد خيارات الوجبة أو سعره غير صالح.");
+  }
   const token = await serviceToken(env);
   const [actor, business] = await Promise.all([
     firestoreGet(
@@ -3378,7 +1834,7 @@ async function createMerchantProduct(request, env, user) {
       "\u0647\u0630\u0627 \u0627\u0644\u062D\u0633\u0627\u0628 \u063A\u064A\u0631 \u0645\u0641\u0648\u0636 \u0644\u0625\u062F\u0627\u0631\u0629 \u0645\u062A\u062C\u0631."
     );
   }
-  if (!business || business.kind === "product" || !canManageBusiness(user.uid, business)) {
+  if (!business || business.kind === "product" || business.ownerId !== user.uid) {
     fail(
       403,
       "business-not-owned",
@@ -3397,11 +1853,10 @@ async function createMerchantProduct(request, env, user) {
     type: String(business.type || ""),
     price: Math.round(price * 100) / 100,
     stock,
-    soldOut,
-    optionGroups,
-    ownerId: String(business.ownerId || user.uid),
-    ownerEmail: business.ownerEmail || user.email || null,
-    createdBy: user.uid,
+    soldOut: stock <= 0,
+    mealOptions, addons, specifications,
+    ownerId: user.uid,
+    ownerEmail: user.email || null,
     isActive: true,
     createdAt: /* @__PURE__ */ new Date(),
     updatedAt: /* @__PURE__ */ new Date()
@@ -3451,7 +1906,7 @@ async function requireOwnedMerchantProduct(env, token, user, productId) {
       "\u0647\u0630\u0627 \u0627\u0644\u062D\u0633\u0627\u0628 \u063A\u064A\u0631 \u0645\u0641\u0648\u0636 \u0644\u0625\u062F\u0627\u0631\u0629 \u0645\u062A\u062C\u0631."
     );
   }
-  if (!product || product.kind !== "product") {
+  if (!product || product.kind !== "product" || product.ownerId !== user.uid) {
     fail(
       403,
       "product-not-owned",
@@ -3463,7 +1918,7 @@ async function requireOwnedMerchantProduct(env, token, user, productId) {
     token,
     `items/${encodeURIComponent(product.businessId || "")}`
   );
-  if (!business || !canManageBusiness(user.uid, business)) {
+  if (!business || business.ownerId !== user.uid) {
     fail(
       403,
       "business-not-owned",
@@ -3480,7 +1935,10 @@ async function updateMerchantProduct(request, env, user, productId) {
   const image = String(data.image || "").trim();
   const price = Number(data.price);
   const stock = Number(data.stock);
-  const soldOut = data.soldOut === true;
+  const mealOptions = normalizeMealOptions(data.mealOptions);
+  const addons = normalizeMealOptions(data.addons);
+  const specifications = String(data.specifications || "").trim().slice(0, 2000);
+  if (Array.isArray(data.addons) && addons.length !== data.addons.length) fail(400, "invalid-addons", "إضافات غير صالحة");
   if (title.length < 2 || title.length > 120) {
     fail(
       400,
@@ -3516,6 +1974,9 @@ async function updateMerchantProduct(request, env, user, productId) {
       "\u0643\u0645\u064A\u0629 \u0627\u0644\u0645\u0646\u062A\u062C \u064A\u062C\u0628 \u0623\u0646 \u062A\u0643\u0648\u0646 \u0631\u0642\u0645\u064B\u0627 \u0635\u062D\u064A\u062D\u064B\u0627 \u0645\u0646 0 \u0625\u0644\u0649 999999."
     );
   }
+  if (Array.isArray(data.mealOptions) && mealOptions.length !== data.mealOptions.length) {
+    fail(400, "invalid-meal-options", "أحد خيارات الوجبة أو سعره غير صالح.");
+  }
   const token = await serviceToken(env);
   const { product, business } = await requireOwnedMerchantProduct(
     env,
@@ -3523,10 +1984,6 @@ async function updateMerchantProduct(request, env, user, productId) {
     user,
     productId
   );
-  const optionGroups =
-    data.optionGroups === void 0
-      ? normalizeProductOptionGroups(product.optionGroups || [])
-      : normalizeProductOptionGroups(data.optionGroups);
   const result = await firestoreCommit(
     env,
     token,
@@ -3540,13 +1997,13 @@ async function updateMerchantProduct(request, env, user, productId) {
           image,
           price: Math.round(price * 100) / 100,
           stock,
-          soldOut,
-          optionGroups,
+          soldOut: stock <= 0,
+          mealOptions, addons, specifications,
           businessId: product.businessId,
           businessTitle: String(business.title || ""),
           category: String(business.category || ""),
           type: String(business.type || ""),
-          ownerId: String(business.ownerId || product.ownerId || user.uid),
+          ownerId: user.uid,
           kind: "product",
           updatedAt: /* @__PURE__ */ new Date()
         },
@@ -3563,8 +2020,7 @@ async function updateMerchantProduct(request, env, user, productId) {
   }
   console.log("MERCHANT_PRODUCT_UPDATED", {
     productId,
-    merchantUid: user.uid,
-    businessOwnerUid: String(business.ownerId || "")
+    merchantUid: user.uid
   });
   return {
     ok: true,
@@ -3574,7 +2030,7 @@ async function updateMerchantProduct(request, env, user, productId) {
 __name(updateMerchantProduct, "updateMerchantProduct");
 async function deleteMerchantProduct(env, user, productId) {
   const token = await serviceToken(env);
-  const { product, business } = await requireOwnedMerchantProduct(
+  const { product } = await requireOwnedMerchantProduct(
     env,
     token,
     user,
@@ -3607,8 +2063,7 @@ async function deleteMerchantProduct(env, user, productId) {
   await response.body?.cancel();
   console.log("MERCHANT_PRODUCT_DELETED", {
     productId,
-    merchantUid: user.uid,
-    businessOwnerUid: String(business.ownerId || "")
+    merchantUid: user.uid
   });
   return {
     ok: true,
@@ -3616,931 +2071,6 @@ async function deleteMerchantProduct(env, user, productId) {
   };
 }
 __name(deleteMerchantProduct, "deleteMerchantProduct");
-async function createAgentOrder(request, env, user) {
-  const data = await readJson(request);
-  const agentId = String(data.agentId || "").trim();
-  const details = String(data.details || "").trim().slice(0, 2e3);
-  const customerPhone = String(data.customerPhone || "").trim().slice(0, 40);
-  const deliveryAddress = String(data.deliveryAddress || "").trim().slice(0, 300);
-  const paymentMethod = data.paymentMethod === "cash" ? "cash" : "card";
-  if (!/^[A-Za-z0-9_-]{1,128}$/.test(agentId)) {
-    fail(400, "invalid-agent", "الوسيطة المحددة غير صالحة.");
-  }
-  if (details.length < 3 || customerPhone.length < 6 || deliveryAddress.length < 3) {
-    fail(400, "missing-field", "أكمل تفاصيل الطلب ورقم الهاتف وعنوان التسليم.");
-  }
-  if (paymentMethod !== "cash") {
-    fail(409, "card-payment-unavailable", "الدفع ببطاقة Visa غير متاح قبل ربط بوابة الدفع الآمنة.");
-  }
-
-  const token = await serviceToken(env);
-  const agent = await firestoreGet(env, token, `items/${encodeURIComponent(agentId)}`);
-  if (!agent || agent.kind !== "agent") {
-    fail(404, "agent-not-found", "الوسيطة غير موجودة.");
-  }
-  const rawAgentFee = Number(
-    agent.agentFee ?? agent.serviceFee ?? agent.fee ?? 0
-  );
-  const agentFee = Number.isFinite(rawAgentFee)
-    ? Math.round(Math.max(0, rawAgentFee) * 100) / 100
-    : 0;
-
-  const requestId = crypto.randomUUID().replace(/-/g, "");
-  const record = {
-    agentId,
-    agentName: String(agent.title || "الوسيطة"),
-    customerId: user.uid,
-    customerEmail: user.email || null,
-    customerPhone,
-    deliveryAddress,
-    details,
-    paymentMethod: "cash",
-    paymentStatus: "cash_on_delivery",
-    agentFee,
-    earningStatus: "none",
-    status: "pending",
-    createdAt: new Date(),
-    updatedAt: new Date()
-  };
-  await firestoreCreate(env, token, "agent_orders", requestId, record);
-
-  const recipients = [
-    agent.ownerId,
-    ...(Array.isArray(agent.managerIds) ? agent.managerIds : []),
-    PRIMARY_ADMIN_UID
-  ].filter(Boolean);
-  try {
-    const pushTokens = (await Promise.all(
-      [...new Set(recipients)].map((uid) => userPushTokens(env, token, uid))
-    )).flat();
-    await sendPushToTokens(env, token, pushTokens, {
-      title: "طلب جديد للوسيطة",
-      body: `طلب جديد إلى ${record.agentName}`,
-      data: { type: "agent_order", requestId, agentId }
-    });
-  } catch (error) {
-    console.error("agent_order_notification_failed", error.message);
-  }
-  return { ok: true, requestId, status: "pending" };
-}
-__name(createAgentOrder, "createAgentOrder");
-
-async function updateAgentOrderStatus(env, user, requestId, nextStatus) {
-  if (!/^[A-Za-z0-9_-]{1,128}$/.test(requestId)) {
-    fail(
-      400,
-      "invalid-agent-order",
-      "رقم طلب الوسيطة غير صالح."
-    );
-  }
-
-  if (
-    nextStatus !== "accepted" &&
-    nextStatus !== "rejected"
-  ) {
-    fail(
-      400,
-      "invalid-agent-status",
-      "حالة طلب الوسيطة غير صالحة."
-    );
-  }
-
-  const token = await serviceToken(env);
-
-  const [actor, order] = await Promise.all([
-    firestoreGet(
-      env,
-      token,
-      `users/${encodeURIComponent(user.uid)}`
-    ),
-    firestoreGet(
-      env,
-      token,
-      `agent_orders/${encodeURIComponent(requestId)}`
-    )
-  ]);
-
-  if (!order) {
-    fail(
-      404,
-      "agent-order-not-found",
-      "طلب الوسيطة غير موجود."
-    );
-  }
-
-  const agent = await firestoreGet(
-    env,
-    token,
-    `items/${encodeURIComponent(order.agentId)}`
-  );
-
-  if (!agent || agent.kind !== "agent") {
-    fail(
-      404,
-      "agent-not-found",
-      "بيانات الوسيطة غير موجودة."
-    );
-  }
-
-  const allowed =
-    isPrimaryAdmin(user, actor) ||
-    canManageBusiness(user.uid, agent);
-
-  if (!allowed) {
-    fail(
-      403,
-      "permission-denied",
-      "غير مسموح لك بإدارة طلبات هذه الوسيطة."
-    );
-  }
-
-  if (order.status !== "pending") {
-    fail(
-      409,
-      "agent-order-already-handled",
-      "تم التعامل مع هذا الطلب مسبقًا."
-    );
-  }
-
-  const now = new Date();
-
-  const patch = {
-    status: nextStatus,
-    updatedAt: now
-  };
-
-  let deliveryCode = null;
-
-  if (nextStatus === "accepted") {
-    patch.acceptedBy = user.uid;
-    patch.acceptedAt = now;
-
-    deliveryCode = String(
-      crypto.getRandomValues(new Uint32Array(1))[0] % 1000000
-    ).padStart(6, "0");
-  } else {
-    patch.rejectedBy = user.uid;
-    patch.rejectedAt = now;
-  }
-
-  const writes = [
-    updateWrite(
-      env,
-      `agent_orders/${encodeURIComponent(requestId)}`,
-      patch,
-      order.updateTime
-    )
-  ];
-
-  if (nextStatus === "accepted") {
-    writes.push(
-      createWrite(
-        env,
-        `agent_order_secrets/${encodeURIComponent(requestId)}`,
-        {
-          orderId: requestId,
-          customerId: order.customerId,
-          agentId: order.agentId,
-          code: deliveryCode,
-          attempts: 0,
-          used: false,
-          createdAt: now,
-          updatedAt: now
-        }
-      )
-    );
-  }
-
-  const result = await firestoreCommit(
-    env,
-    token,
-    writes
-  );
-
-  if (!result) {
-    fail(
-      409,
-      "agent-order-changed",
-      "تغيّرت حالة الطلب أثناء العملية. حدّث الصفحة."
-    );
-  }
-
-  return {
-    ok: true,
-    requestId,
-    status: nextStatus
-  };
-}
-
-__name(
-  updateAgentOrderStatus,
-  "updateAgentOrderStatus"
-);
-
-async function getAgentOrderDeliveryCode(env, user, requestId) {
-  if (!/^[A-Za-z0-9_-]{1,128}$/.test(requestId)) {
-    fail(400, "invalid-agent-order", "رقم طلب الوسيطة غير صالح.");
-  }
-
-  const token = await serviceToken(env);
-
-  const [order, secret] = await Promise.all([
-    firestoreGet(
-      env,
-      token,
-      `agent_orders/${encodeURIComponent(requestId)}`
-    ),
-    firestoreGet(
-      env,
-      token,
-      `agent_order_secrets/${encodeURIComponent(requestId)}`
-    )
-  ]);
-
-  if (!order) {
-    fail(404, "agent-order-not-found", "طلب الوسيطة غير موجود.");
-  }
-
-  if (order.customerId !== user.uid) {
-    fail(
-      403,
-      "permission-denied",
-      "رمز التسليم متاح لصاحب الطلب فقط."
-    );
-  }
-
-  if (order.status !== "accepted") {
-    fail(
-      409,
-      "delivery-code-unavailable",
-      "رمز التسليم يظهر بعد قبول الوسيطة للطلب."
-    );
-  }
-
-  if (!secret || secret.used === true) {
-    fail(
-      409,
-      "delivery-code-unavailable",
-      "رمز التسليم غير متاح لهذا الطلب."
-    );
-  }
-
-  return {
-    ok: true,
-    requestId,
-    code: String(secret.code || "")
-  };
-}
-
-__name(
-  getAgentOrderDeliveryCode,
-  "getAgentOrderDeliveryCode"
-);
-
-
-async function completeAgentOrder(request, env, user, requestId) {
-  if (!/^[A-Za-z0-9_-]{1,128}$/.test(requestId)) {
-    fail(400, "invalid-agent-order", "رقم طلب الوسيطة غير صالح.");
-  }
-
-  const data = await readJson(request);
-  const code = String(data.code || "").trim();
-
-  if (!/^[0-9]{6}$/.test(code)) {
-    fail(
-      400,
-      "invalid-delivery-code",
-      "أدخل رمز التسليم المكوّن من 6 أرقام."
-    );
-  }
-
-  const token = await serviceToken(env);
-
-  const [actor, order, secret] = await Promise.all([
-    firestoreGet(
-      env,
-      token,
-      `users/${encodeURIComponent(user.uid)}`
-    ),
-    firestoreGet(
-      env,
-      token,
-      `agent_orders/${encodeURIComponent(requestId)}`
-    ),
-    firestoreGet(
-      env,
-      token,
-      `agent_order_secrets/${encodeURIComponent(requestId)}`
-    )
-  ]);
-
-  if (!order) {
-    fail(404, "agent-order-not-found", "طلب الوسيطة غير موجود.");
-  }
-
-  if (!secret) {
-    fail(
-      409,
-      "delivery-code-not-created",
-      "لم يتم إنشاء رمز تسليم لهذا الطلب."
-    );
-  }
-
-  const agent = await firestoreGet(
-    env,
-    token,
-    `items/${encodeURIComponent(order.agentId)}`
-  );
-
-  if (!agent || agent.kind !== "agent") {
-    fail(404, "agent-not-found", "بيانات الوسيطة غير موجودة.");
-  }
-
-  const allowed =
-    isPrimaryAdmin(user, actor) ||
-    canManageBusiness(user.uid, agent);
-
-  if (!allowed) {
-    fail(
-      403,
-      "permission-denied",
-      "غير مسموح لك بإتمام هذا الطلب."
-    );
-  }
-
-  if (order.status !== "accepted") {
-    fail(
-      409,
-      "invalid-agent-order-status",
-      "لا يمكن إتمام الطلب في حالته الحالية."
-    );
-  }
-
-  if (secret.used === true) {
-    fail(
-      409,
-      "delivery-code-used",
-      "تم استخدام رمز التسليم مسبقًا."
-    );
-  }
-
-  const attempts = Number(secret.attempts || 0);
-
-  if (attempts >= 5) {
-    fail(
-      429,
-      "delivery-code-locked",
-      "تم تجاوز عدد محاولات رمز التسليم."
-    );
-  }
-
-  if (String(secret.code || "") !== code) {
-    const failed = await firestoreCommit(
-      env,
-      token,
-      [
-        updateWrite(
-          env,
-          `agent_order_secrets/${encodeURIComponent(requestId)}`,
-          {
-            attempts: attempts + 1,
-            updatedAt: new Date()
-          },
-          secret.updateTime
-        )
-      ]
-    );
-
-    if (!failed) {
-      fail(
-        409,
-        "delivery-code-changed",
-        "تغيّرت بيانات رمز التسليم. حاول مجددًا."
-      );
-    }
-
-    fail(
-      409,
-      "wrong-delivery-code",
-      "رمز التسليم غير صحيح."
-    );
-  }
-
-  const now = new Date();
-
-  const rawFee = Number(order.agentFee || 0);
-  const agentFee = Number.isFinite(rawFee)
-    ? Math.round(Math.max(0, rawFee) * 100) / 100
-    : 0;
-
-  const writes = [
-    updateWrite(
-      env,
-      `agent_orders/${encodeURIComponent(requestId)}`,
-      {
-        status: "completed",
-        completedBy: user.uid,
-        completedAt: now,
-        earningStatus: "due",
-        updatedAt: now
-      },
-      order.updateTime
-    ),
-
-    updateWrite(
-      env,
-      `agent_order_secrets/${encodeURIComponent(requestId)}`,
-      {
-        used: true,
-        usedAt: now,
-        updatedAt: now
-      },
-      secret.updateTime
-    ),
-
-    createWrite(
-      env,
-      `agent_earnings/${encodeURIComponent(requestId)}`,
-      {
-        earningId: requestId,
-        orderId: requestId,
-        agentId: order.agentId,
-        agentName: order.agentName || "الوسيطة",
-        customerId: order.customerId,
-        amount: agentFee,
-        status: "due",
-        frozen: false,
-        disputeId: null,
-        createdAt: now,
-        updatedAt: now
-      }
-    )
-  ];
-
-  const result = await firestoreCommit(
-    env,
-    token,
-    writes
-  );
-
-  if (!result) {
-    fail(
-      409,
-      "agent-order-changed",
-      "تغيّرت بيانات الطلب أثناء تأكيد التسليم. حاول مجددًا."
-    );
-  }
-
-  return {
-    ok: true,
-    requestId,
-    status: "completed",
-    earningStatus: "due",
-    agentFee
-  };
-}
-
-__name(
-  completeAgentOrder,
-  "completeAgentOrder"
-);
-
-
-
-
-async function createAgentOrderDispute(request, env, user, requestId) {
-  if (!/^[A-Za-z0-9_-]{1,128}$/.test(requestId)) {
-    fail(400, "invalid-agent-order", "رقم طلب الوسيطة غير صالح.");
-  }
-
-  const data = await readJson(request);
-  const reason = String(data.reason || "").trim();
-
-  if (reason.length < 5 || reason.length > 1000) {
-    fail(
-      400,
-      "invalid-dispute-reason",
-      "اكتب سبب الاعتراض بوضوح."
-    );
-  }
-
-  const token = await serviceToken(env);
-
-  const [order, earning] = await Promise.all([
-    firestoreGet(
-      env,
-      token,
-      `agent_orders/${encodeURIComponent(requestId)}`
-    ),
-    firestoreGet(
-      env,
-      token,
-      `agent_earnings/${encodeURIComponent(requestId)}`
-    )
-  ]);
-
-  if (!order) {
-    fail(404, "agent-order-not-found", "طلب الوسيطة غير موجود.");
-  }
-
-  if (order.customerId !== user.uid) {
-    fail(
-      403,
-      "permission-denied",
-      "الاعتراض متاح لصاحب الطلب فقط."
-    );
-  }
-
-  if (order.status !== "completed") {
-    fail(
-      409,
-      "invalid-agent-order-status",
-      "يمكن الاعتراض بعد إتمام الطلب فقط."
-    );
-  }
-
-  if (!earning) {
-    fail(
-      409,
-      "earning-not-found",
-      "لم يتم إنشاء مستحق لهذا الطلب."
-    );
-  }
-
-  if (
-    earning.status !== "due" ||
-    earning.frozen === true
-  ) {
-    fail(
-      409,
-      "earning-not-disputable",
-      "هذا المستحق غير متاح للاعتراض."
-    );
-  }
-
-  const disputeId = requestId;
-  const now = new Date();
-
-  const result = await firestoreCommit(
-    env,
-    token,
-    [
-      updateWrite(
-        env,
-        `agent_orders/${encodeURIComponent(requestId)}`,
-        {
-          status: "disputed",
-          earningStatus: "frozen",
-          disputeId,
-          disputedAt: now,
-          updatedAt: now
-        },
-        order.updateTime
-      ),
-
-      updateWrite(
-        env,
-        `agent_earnings/${encodeURIComponent(requestId)}`,
-        {
-          status: "frozen",
-          frozen: true,
-          disputeId,
-          frozenAt: now,
-          updatedAt: now
-        },
-        earning.updateTime
-      ),
-
-      createWrite(
-        env,
-        `agent_disputes/${encodeURIComponent(disputeId)}`,
-        {
-          disputeId,
-          orderId: requestId,
-          customerId: order.customerId,
-          agentId: order.agentId,
-          agentName: order.agentName || "الوسيطة",
-          amount: Number(earning.amount || 0),
-          reason,
-          status: "open",
-          createdBy: user.uid,
-          createdAt: now,
-          updatedAt: now
-        }
-      )
-    ]
-  );
-
-  if (!result) {
-    fail(
-      409,
-      "agent-dispute-conflict",
-      "تغيّرت بيانات الطلب أثناء تسجيل الاعتراض. حاول مجددًا."
-    );
-  }
-
-  return {
-    ok: true,
-    requestId,
-    disputeId,
-    status: "disputed",
-    earningStatus: "frozen"
-  };
-}
-
-async function resolveAgentOrderDispute(
-  request,
-  env,
-  user,
-  requestId
-) {
-  if (!/^[A-Za-z0-9_-]{1,128}$/.test(requestId)) {
-    fail(400, "invalid-agent-order", "رقم طلب الوسيطة غير صالح.");
-  }
-
-  const data = await readJson(request);
-  const decision = String(data.decision || "").trim();
-  const adminNote = String(data.adminNote || "").trim();
-
-  if (!["release", "cancel"].includes(decision)) {
-    fail(
-      400,
-      "invalid-dispute-decision",
-      "قرار الاعتراض غير صالح."
-    );
-  }
-
-  if (adminNote.length > 1000) {
-    fail(
-      400,
-      "invalid-admin-note",
-      "ملاحظة الأدمن طويلة جدًا."
-    );
-  }
-
-  const token = await serviceToken(env);
-
-  const [actor, order, earning, dispute] = await Promise.all([
-    firestoreGet(
-      env,
-      token,
-      `users/${encodeURIComponent(user.uid)}`
-    ),
-    firestoreGet(
-      env,
-      token,
-      `agent_orders/${encodeURIComponent(requestId)}`
-    ),
-    firestoreGet(
-      env,
-      token,
-      `agent_earnings/${encodeURIComponent(requestId)}`
-    ),
-    firestoreGet(
-      env,
-      token,
-      `agent_disputes/${encodeURIComponent(requestId)}`
-    )
-  ]);
-
-  if (!isPrimaryAdmin(user, actor)) {
-    fail(
-      403,
-      "permission-denied",
-      "معالجة اعتراضات الوسيطات متاحة للأدمن الأساسي فقط."
-    );
-  }
-
-  if (!order || !earning || !dispute) {
-    fail(
-      404,
-      "agent-dispute-not-found",
-      "بيانات الاعتراض غير مكتملة أو غير موجودة."
-    );
-  }
-
-  if (
-    order.status !== "disputed" ||
-    earning.status !== "frozen" ||
-    earning.frozen !== true ||
-    dispute.status !== "open"
-  ) {
-    fail(
-      409,
-      "dispute-already-resolved",
-      "تمت معالجة هذا الاعتراض مسبقًا."
-    );
-  }
-
-  const now = new Date();
-
-  const release = decision === "release";
-
-  const orderData = release
-    ? {
-        status: "completed",
-        earningStatus: "due",
-        disputeId: null,
-        disputeResolvedAt: now,
-        disputeResolvedBy: user.uid,
-        updatedAt: now
-      }
-    : {
-        status: "completed",
-        earningStatus: "cancelled",
-        disputeId: null,
-        disputeResolvedAt: now,
-        disputeResolvedBy: user.uid,
-        updatedAt: now
-      };
-
-  const earningData = release
-    ? {
-        status: "due",
-        frozen: false,
-        disputeId: null,
-        unfrozenAt: now,
-        updatedAt: now
-      }
-    : {
-        status: "cancelled",
-        frozen: false,
-        disputeId: null,
-        cancelledAt: now,
-        cancelledBy: user.uid,
-        updatedAt: now
-      };
-
-  const disputeData = {
-    status: release ? "rejected" : "accepted",
-    decision,
-    adminNote,
-    resolvedBy: user.uid,
-    resolvedAt: now,
-    updatedAt: now
-  };
-
-  const result = await firestoreCommit(
-    env,
-    token,
-    [
-      updateWrite(
-        env,
-        `agent_orders/${encodeURIComponent(requestId)}`,
-        orderData,
-        order.updateTime
-      ),
-      updateWrite(
-        env,
-        `agent_earnings/${encodeURIComponent(requestId)}`,
-        earningData,
-        earning.updateTime
-      ),
-      updateWrite(
-        env,
-        `agent_disputes/${encodeURIComponent(requestId)}`,
-        disputeData,
-        dispute.updateTime
-      )
-    ]
-  );
-
-  if (!result) {
-    fail(
-      409,
-      "agent-dispute-conflict",
-      "تغيّرت بيانات الاعتراض أثناء المعالجة. حدّث الصفحة."
-    );
-  }
-
-  return {
-    ok: true,
-    requestId,
-    disputeStatus: disputeData.status,
-    earningStatus: earningData.status
-  };
-}
-
-async function settleAgentOrderEarning(env, user, requestId) {
-  if (!/^[A-Za-z0-9_-]{1,128}$/.test(requestId)) {
-    fail(400, "invalid-agent-order", "رقم طلب الوسيطة غير صالح.");
-  }
-
-  const token = await serviceToken(env);
-
-  const [actor, order, earning] = await Promise.all([
-    firestoreGet(
-      env,
-      token,
-      `users/${encodeURIComponent(user.uid)}`
-    ),
-    firestoreGet(
-      env,
-      token,
-      `agent_orders/${encodeURIComponent(requestId)}`
-    ),
-    firestoreGet(
-      env,
-      token,
-      `agent_earnings/${encodeURIComponent(requestId)}`
-    )
-  ]);
-
-  if (!isPrimaryAdmin(user, actor)) {
-    fail(
-      403,
-      "permission-denied",
-      "تسوية مستحقات الوسيطات متاحة للأدمن الأساسي فقط."
-    );
-  }
-
-  if (!order || !earning) {
-    fail(
-      404,
-      "earning-not-found",
-      "مستحق الوسيطة غير موجود."
-    );
-  }
-
-  if (
-    earning.status !== "due" ||
-    earning.frozen === true
-  ) {
-    fail(
-      409,
-      "earning-not-settleable",
-      "لا يمكن دفع مستحق معلّق أو تمت تسويته مسبقًا."
-    );
-  }
-
-  const now = new Date();
-  const transactionId = `agent_${requestId}_settled`;
-
-  const result = await firestoreCommit(
-    env,
-    token,
-    [
-      updateWrite(
-        env,
-        `agent_orders/${encodeURIComponent(requestId)}`,
-        {
-          earningStatus: "settled",
-          settledAt: now,
-          settledBy: user.uid,
-          updatedAt: now
-        },
-        order.updateTime
-      ),
-
-      updateWrite(
-        env,
-        `agent_earnings/${encodeURIComponent(requestId)}`,
-        {
-          status: "settled",
-          frozen: false,
-          settledAt: now,
-          settledBy: user.uid,
-          transactionId,
-          updatedAt: now
-        },
-        earning.updateTime
-      ),
-
-      createWrite(
-        env,
-        `agent_finance_transactions/${encodeURIComponent(transactionId)}`,
-        {
-          transactionId,
-          type: "agent_settlement",
-          orderId: requestId,
-          earningId: requestId,
-          agentId: earning.agentId,
-          agentName: earning.agentName || "الوسيطة",
-          amount: Number(earning.amount || 0),
-          status: "settled",
-          createdBy: user.uid,
-          createdAt: now
-        }
-      )
-    ]
-  );
-
-  if (!result) {
-    fail(
-      409,
-      "earning-settlement-conflict",
-      "تغيّرت بيانات المستحق أثناء التسوية. حدّث الصفحة."
-    );
-  }
-
-  return {
-    ok: true,
-    requestId,
-    status: "settled",
-    transactionId
-  };
-}
-
 async function createOrder(request, env, user) {
   const idempotencyKey = (request.headers.get("idempotency-key") || "").trim();
   if (!/^[A-Za-z0-9_-]{16,100}$/.test(idempotencyKey)) {
@@ -4565,40 +2095,18 @@ async function createOrder(request, env, user) {
   if (!rawItems.length || rawItems.length > MAX_ITEMS) {
     fail(400, "invalid-items", "\u0627\u0644\u0633\u0644\u0629 \u0641\u0627\u0631\u063A\u0629 \u0623\u0648 \u062A\u062D\u062A\u0648\u064A \u0623\u0635\u0646\u0627\u0641\u064B\u0627 \u0643\u062B\u064A\u0631\u0629.");
   }
-  const requested = rawItems.map((item) => {
-    const selectedOptions = Array.isArray(item?.selectedOptions)
-      ? item.selectedOptions
-      : [];
-    const specialNote = String(item?.specialNote || "").trim();
-
-    if (selectedOptions.length > 12) {
-      fail(
-        400,
-        "too-many-selected-options",
-        "عدد خيارات أحد المنتجات أكبر من الحد المسموح."
-      );
-    }
-
-    if (specialNote.length > 500) {
-      fail(
-        400,
-        "special-note-too-long",
-        "ملاحظة المنتج يجب ألا تتجاوز 500 حرف."
-      );
-    }
-
-    return {
-      productId: String(item?.productId || "").trim(),
-      quantity: Number(item?.quantity),
-      selectedOptions: selectedOptions.map((option) => ({
-        groupId: String(option?.groupId || "").trim(),
-        optionId: String(option?.optionId || "").trim()
-      })),
-      specialNote
-    };
-  });
-  if (requested.some((item) => !/^[A-Za-z0-9_-]{1,128}$/.test(item.productId) || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 99)) {
+  const requested = rawItems.map((item) => ({
+    productId: String(item.productId || "").trim(),
+    quantity: Number(item.quantity),
+    addonIds: Array.isArray(item.addonIds) ? item.addonIds.map(String) : [],
+    optionId: String(item.optionId || "").trim(),
+    note: String(item.note || "").trim()
+  }));
+  if (requested.some((item) => !/^[A-Za-z0-9_-]{1,128}$/.test(item.productId) || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 99 || item.optionId.length > 80 || item.note.length > 300)) {
     fail(400, "invalid-items", "\u0623\u062D\u062F \u0623\u0635\u0646\u0627\u0641 \u0627\u0644\u0633\u0644\u0629 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D.");
+  }
+  if (new Set(requested.map((item) => item.productId)).size !== requested.length) {
+    fail(400, "duplicate-items", "\u064A\u0648\u062C\u062F \u0635\u0646\u0641 \u0645\u0643\u0631\u0631 \u0641\u064A \u0627\u0644\u0633\u0644\u0629.");
   }
   const token = await serviceToken(env);
   const products = await Promise.all(requested.map((item) => firestoreGet(env, token, `items/${encodeURIComponent(item.productId)}`)));
@@ -4607,12 +2115,24 @@ async function createOrder(request, env, user) {
   }
   for (let index = 0; index < products.length; index += 1) {
     const product = products[index];
+    const requestedQuantity = requested[index].quantity;
+    const hasManagedStock = Number.isInteger(Number(product.stock));
     if (product.soldOut === true) {
       fail(
         409,
         "product-sold-out",
         `${String(product.title || "\u0627\u0644\u0645\u0646\u062A\u062C")} \u0646\u0641\u062F \u0645\u0646 \u0627\u0644\u0645\u062E\u0632\u0648\u0646.`
       );
+    }
+    if (hasManagedStock) {
+      const availableStock = Math.max(0, Math.floor(Number(product.stock)));
+      if (availableStock < requestedQuantity) {
+        fail(
+          409,
+          "insufficient-stock",
+          availableStock <= 0 ? `${String(product.title || "\u0627\u0644\u0645\u0646\u062A\u062C")} \u0646\u0641\u062F \u0645\u0646 \u0627\u0644\u0645\u062E\u0632\u0648\u0646.` : `\u0627\u0644\u0645\u062A\u0648\u0641\u0631 \u0645\u0646 ${String(product.title || "\u0627\u0644\u0645\u0646\u062A\u062C")} \u0647\u0648 ${availableStock} \u0641\u0642\u0637.`
+        );
+      }
     }
   }
   const businessIds = new Set(products.map((product) => String(product.businessId || "")));
@@ -4641,123 +2161,38 @@ async function createOrder(request, env, user) {
   const scheduledMillis = Number(data.scheduledForMillis || 0);
   const scheduledFor = scheduledMillis > Date.now() + 6e4 ? new Date(scheduledMillis) : null;
   if (business.businessStatus === "coming_soon") {
-    fail(409, "business-coming-soon", "هذا المتجر قريبًا في بركة ولا يستقبل طلبات بعد.");
+    fail(409, "business-coming-soon", "هذا المحل سيتم افتتاحه قريبًا ولا يستقبل الطلبات حاليًا.");
   }
   if (business.businessStatus === "closed" && !scheduledFor) {
     fail(409, "business-closed", "\u0627\u0644\u0645\u062D\u0644 \u0645\u063A\u0644\u0642 \u0627\u0644\u0622\u0646\u061B \u064A\u0645\u0643\u0646\u0643 \u062C\u062F\u0648\u0644\u0629 \u0627\u0644\u0637\u0644\u0628.");
   }
   const items = products.map((product, index) => {
-    const requestedItem = requested[index];
-    const basePrice = Number(product.price);
-
-    if (!Number.isFinite(basePrice) || basePrice < 0) {
-      fail(
-        409,
-        "invalid-product-price",
-        "سعر أحد الأصناف غير صالح."
-      );
+    const requestedOptionId = requested[index].optionId;
+    const options = normalizeMealOptions(product.mealOptions);
+    const selectedOption = requestedOptionId && requestedOptionId !== "default"
+      ? options.find((option) => option.id === requestedOptionId)
+      : null;
+    if (requestedOptionId && requestedOptionId !== "default" && !selectedOption) {
+      fail(409, "meal-option-unavailable", "خيار الوجبة المحدد لم يعد متاحًا.");
     }
-
-    const optionGroups = normalizeProductOptionGroups(
-      product.optionGroups || []
-    );
-
-    const requestedSelections = requestedItem.selectedOptions || [];
-    const selectionByGroup = new Map();
-
-    for (const selection of requestedSelections) {
-      if (
-        !selection.groupId ||
-        !selection.optionId ||
-        selectionByGroup.has(selection.groupId)
-      ) {
-        fail(
-          400,
-          "invalid-selected-options",
-          `اختيارات ${String(product.title || "المنتج")} غير صالحة.`
-        );
-      }
-
-      selectionByGroup.set(selection.groupId, selection.optionId);
-    }
-
-    const authoritativeSelections = [];
-    let optionsTotal = 0;
-
-    for (const group of optionGroups) {
-      const selectedOptionId = selectionByGroup.get(group.id);
-
-      if (!selectedOptionId) {
-        if (group.required === true) {
-          fail(
-            400,
-            "required-option-missing",
-            `اختر "${group.name}" للمنتج ${String(product.title || "")}.`
-          );
-        }
-        continue;
-      }
-
-      const option = group.options.find(
-        (candidate) => candidate.id === selectedOptionId
-      );
-
-      if (!option) {
-        fail(
-          400,
-          "invalid-selected-option",
-          `أحد خيارات ${String(product.title || "المنتج")} لم يعد متاحًا.`
-        );
-      }
-
-      const priceDelta = Number(option.priceDelta || 0);
-
-      if (
-        !Number.isFinite(priceDelta) ||
-        priceDelta < 0 ||
-        priceDelta > 1e6
-      ) {
-        fail(
-          409,
-          "invalid-option-price",
-          `سعر أحد خيارات ${String(product.title || "المنتج")} غير صالح.`
-        );
-      }
-
-      optionsTotal = money(optionsTotal + priceDelta);
-
-      authoritativeSelections.push({
-        groupId: group.id,
-        groupName: group.name,
-        optionId: option.id,
-        optionName: option.name,
-        priceDelta: money(priceDelta)
-      });
-
-      selectionByGroup.delete(group.id);
-    }
-
-    // أي groupId بقي هنا يعني أن التطبيق أرسل خيارًا
-    // غير موجود أصلًا في تعريف المنتج.
-    if (selectionByGroup.size > 0) {
-      fail(
-        400,
-        "unknown-option-group",
-        `أحد خيارات ${String(product.title || "المنتج")} غير معروف.`
-      );
-    }
-
-    const price = money(basePrice + optionsTotal);
-
+    if (options.length && !selectedOption) fail(409, 'option-required', 'اختاري نوع الوجبة أولًا.');
+    const addonIds = requested[index].addonIds;
+    const availableAddons = normalizeMealOptions(product.addons);
+    if (addonIds.length > 30 || new Set(addonIds).size !== addonIds.length || addonIds.some(id => !availableAddons.some(a => a.id === id))) fail(409, 'addon-unavailable', 'إحدى الإضافات لم تعد متاحة.');
+    const addons = availableAddons.filter(a => addonIds.includes(a.id));
+    const price = Number(selectedOption?.price ?? product.price) + addons.reduce((sum,a) => sum + a.price, 0);
+    if (!Number.isFinite(price) || price < 0) fail(409, "invalid-product-price", "\u0633\u0639\u0631 \u0623\u062D\u062F \u0627\u0644\u0623\u0635\u0646\u0627\u0641 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D.");
     return {
-      productId: requestedItem.productId,
-      title: String(product.title || "منتج"),
-      basePrice: money(basePrice),
-      optionsTotal,
+      productId: requested[index].productId,
+      title: String(product.title || "\u0645\u0646\u062A\u062C"),
       price,
-      quantity: requestedItem.quantity,
-      selectedOptions: authoritativeSelections,
-      specialNote: requestedItem.specialNote || "",
+      quantity: requested[index].quantity,
+      optionId: selectedOption?.id || null,
+      addonIds,
+      addons,
+      optionName: [selectedOption?.name, ...addons.map(a => a.name)].filter(Boolean).join(' + ') || null,
+      note: requested[index].note || null,
+      image: String(product.image || ""),
       businessId,
       businessTitle: String(business.title || "")
     };
@@ -4765,6 +2200,8 @@ async function createOrder(request, env, user) {
   const subtotal = money(items.reduce((sum, item) => sum + item.price * item.quantity, 0));
   const deliveryMethod = data.deliveryMethod === "pickup" ? "pickup" : "delivery";
   const paymentMethod = data.paymentMethod === "cash" ? "cash" : "cash";
+  const deliveryFee = deliveryMethod === "delivery" ? money(Number(business.deliveryFee || 0)) : 0;
+  const total = money(subtotal + Math.max(0, deliveryFee));
   const [customer, loyaltySettings] = await Promise.all([
     firestoreGet(
       env,
@@ -4776,73 +2213,6 @@ async function createOrder(request, env, user) {
   if (!customer) {
     fail(409, "customer-missing", "\u062D\u0633\u0627\u0628 \u0627\u0644\u0632\u0628\u0648\u0646 \u063A\u064A\u0631 \u0645\u062A\u0627\u062D.");
   }
-  const customerPhone = String(
-    data.customerPhone || customer.phone || user.phone || ""
-  ).trim();
-  const deliveryAddress = String(
-    data.deliveryAddress || customer.address || ""
-  ).trim();
-  const deliveryLatitude = finiteOrNull(
-    data.deliveryLatitude ?? customer.agentLatitude
-  );
-  const deliveryLongitude = finiteOrNull(
-    data.deliveryLongitude ?? customer.agentLongitude
-  );
-  let deliveryFee = 0;
-  if (deliveryMethod === "delivery") {
-    if (!customerPhone) {
-      fail(
-        400,
-        "customer-phone-required",
-        "\u0623\u0636\u0641 \u0631\u0642\u0645 \u0627\u0644\u0647\u0627\u062A\u0641 \u0625\u0644\u0649 \u062D\u0633\u0627\u0628\u0643 \u0642\u0628\u0644 \u0637\u0644\u0628 \u0627\u0644\u062A\u0648\u0635\u064A\u0644."
-      );
-    }
-    if (!deliveryAddress) {
-      fail(
-        400,
-        "delivery-address-required",
-        "\u0623\u0636\u0641 \u0639\u0646\u0648\u0627\u0646 \u0627\u0644\u062A\u0648\u0635\u064A\u0644 \u0625\u0644\u0649 \u062D\u0633\u0627\u0628\u0643 \u0642\u0628\u0644 \u0645\u062A\u0627\u0628\u0639\u0629 \u0627\u0644\u0637\u0644\u0628."
-      );
-    }
-    if (deliveryLatitude === null || deliveryLongitude === null) {
-      fail(
-        400,
-        "delivery-location-required",
-        "\u062D\u062F\u062F \u0645\u0648\u0642\u0639 \u0627\u0644\u062A\u0648\u0635\u064A\u0644 \u0639\u0644\u0649 \u0627\u0644\u062E\u0631\u064A\u0637\u0629 \u0642\u0628\u0644 \u0645\u062A\u0627\u0628\u0639\u0629 \u0627\u0644\u0637\u0644\u0628."
-      );
-    }
-
-    const businessLatitude = finiteOrNull(business.latitude);
-    const businessLongitude = finiteOrNull(business.longitude);
-    const deliveryZones = Array.isArray(business.deliveryZones)
-      ? business.deliveryZones
-          .filter((zone) => Number.isFinite(Number(zone?.maxKm)) && Number.isFinite(Number(zone?.fee)))
-          .map((zone) => ({ maxKm: Number(zone.maxKm), fee: Number(zone.fee) }))
-          .filter((zone) => zone.maxKm >= 0 && zone.fee >= 0)
-          .sort((a, b) => a.maxKm - b.maxKm)
-      : [];
-
-    if (businessLatitude !== null && businessLongitude !== null && deliveryZones.length > 0) {
-      const distanceKm = geoDistanceKm(
-        businessLatitude,
-        businessLongitude,
-        deliveryLatitude,
-        deliveryLongitude
-      );
-      const matchedZone = deliveryZones.find((zone) => distanceKm <= zone.maxKm);
-      if (!matchedZone) {
-        fail(
-          409,
-          "delivery-outside-range",
-          "\u0639\u0646\u0648\u0627\u0646\u0643 \u062E\u0627\u0631\u062C \u0646\u0637\u0627\u0642 \u062A\u0648\u0635\u064A\u0644 \u0647\u0630\u0627 \u0627\u0644\u0645\u062A\u062C\u0631. \u0627\u062E\u062A\u0631 \u0627\u0633\u062A\u0644\u0627\u0645\u064B\u0627 \u0634\u062E\u0635\u064A\u064B\u0627 \u0623\u0648 \u0639\u0646\u0648\u0627\u0646\u064B\u0627 \u0623\u0642\u0631\u0628."
-        );
-      }
-      deliveryFee = money(matchedZone.fee);
-    } else {
-      deliveryFee = money(Number(business.deliveryFee || 0));
-    }
-  }
-  const total = money(subtotal + Math.max(0, deliveryFee));
   const redemptionPoints = Math.max(
     1,
     Math.floor(Number(loyaltySettings?.redemptionPoints || 1e3))
@@ -4856,7 +2226,7 @@ async function createOrder(request, env, user) {
     Math.floor(Number(customer.loyaltyPoints || 0))
   );
   if (requestedBarakahPoints > 0) {
-    await verifyBarakahPin(user.uid, customer, barakahPin);
+    await verifyBarakahPin(env, token, user.uid, customer, barakahPin);
     if (requestedBarakahPoints > availablePoints) {
       fail(
         409,
@@ -4916,18 +2286,48 @@ async function createOrder(request, env, user) {
   const orderNumber = `BRK-${String(sequence).padStart(6, "0")}`;
   const orderId = crypto.randomUUID().replace(/-/g, "");
   const preparationMinutes = Math.max(1, Math.min(240, Number(business.preparationMinutes || 30)));
+  const customerPhone = String(
+    data.customerPhone || customer.phone || user.phone || ""
+  ).trim();
+  const deliveryAddress = String(
+    data.deliveryAddress || customer.address || ""
+  ).trim();
+  const deliveryLatitude = finiteOrNull(
+    data.deliveryLatitude ?? customer.agentLatitude
+  );
+  const deliveryLongitude = finiteOrNull(
+    data.deliveryLongitude ?? customer.agentLongitude
+  );
+  if (deliveryMethod === "delivery") {
+    if (!customerPhone) {
+      fail(
+        400,
+        "customer-phone-required",
+        "\u0623\u0636\u0641 \u0631\u0642\u0645 \u0627\u0644\u0647\u0627\u062A\u0641 \u0625\u0644\u0649 \u062D\u0633\u0627\u0628\u0643 \u0642\u0628\u0644 \u0637\u0644\u0628 \u0627\u0644\u062A\u0648\u0635\u064A\u0644."
+      );
+    }
+    if (!deliveryAddress) {
+      fail(
+        400,
+        "delivery-address-required",
+        "\u0623\u0636\u0641 \u0639\u0646\u0648\u0627\u0646 \u0627\u0644\u062A\u0648\u0635\u064A\u0644 \u0625\u0644\u0649 \u062D\u0633\u0627\u0628\u0643 \u0642\u0628\u0644 \u0645\u062A\u0627\u0628\u0639\u0629 \u0627\u0644\u0637\u0644\u0628."
+      );
+    }
+    if (deliveryLatitude === null || deliveryLongitude === null) {
+      fail(
+        400,
+        "delivery-location-required",
+        "\u062D\u062F\u062F \u0645\u0648\u0642\u0639 \u0627\u0644\u062A\u0648\u0635\u064A\u0644 \u0639\u0644\u0649 \u0627\u0644\u062E\u0631\u064A\u0637\u0629 \u0642\u0628\u0644 \u0645\u062A\u0627\u0628\u0639\u0629 \u0627\u0644\u0637\u0644\u0628."
+      );
+    }
+  }
   const orderRecord = {
     orderNumber,
     orderSequence: sequence,
     customerId: user.uid,
-    customerName: String(
-      customer.fullName ||
-      customer.name ||
-      customer.displayName ||
-      user.name ||
-      ""
-    ).trim() || null,
-    customerEmail: user.email,
+    customerName: [customer.fullName, customer.name, customer.displayName, user.name]
+      .map(value => String(value || "").trim()).find(Boolean)?.slice(0, 120) || null,
+    customerEmail: user.email || customer.email || null,
     customerPhone: customerPhone || null,
     deliveryAddress: deliveryAddress || null,
     deliveryLatitude,
@@ -4956,8 +2356,6 @@ async function createOrder(request, env, user) {
     estimatedReadyAt: new Date(Date.now() + preparationMinutes * 6e4),
     scheduledFor,
     rewardGranted: false,
-    inventoryManaged: false,
-    stockRestored: true,
     createdAt: /* @__PURE__ */ new Date(),
     updatedAt: /* @__PURE__ */ new Date()
   };
@@ -4968,6 +2366,23 @@ async function createOrder(request, env, user) {
       orderRecord
     )
   ];
+  products.forEach((product, index) => {
+    if (!Number.isInteger(Number(product.stock))) return;
+    const currentStock = Math.max(0, Math.floor(Number(product.stock)));
+    const nextStock = currentStock - requested[index].quantity;
+    writes.push(
+      updateWrite(
+        env,
+        `items/${encodeURIComponent(requested[index].productId)}`,
+        {
+          stock: nextStock,
+          soldOut: nextStock <= 0,
+          updatedAt: /* @__PURE__ */ new Date()
+        },
+        product.updateTime
+      )
+    );
+  });
   if (requestedBarakahPoints > 0) {
     writes.push(
       updateWrite(
@@ -5308,19 +2723,8 @@ async function updateOrderStatus(request, env, user, orderId) {
     firestoreGet(env, token, `orders/${encodeURIComponent(orderId)}`)
   ]);
   if (!order) fail(404, "order-not-found", "\u0627\u0644\u0637\u0644\u0628 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F.");
-  const isAdmin = isPrimaryAdmin(user, actor) ||
-    (actor?.role === "order_supervisor" && actor?.adminPermissions?.manageOrders === true);
-  const orderBusiness = order.businessId
-    ? await firestoreGet(env, token, `items/${encodeURIComponent(order.businessId)}`)
-    : null;
-  const isMerchant = Boolean(
-    actor &&
-      orderBusiness &&
-      (canManageBusiness(user.uid, orderBusiness) ||
-        actor.merchantBusinessId === order.businessId ||
-        (Array.isArray(actor.managedBusinessIds) &&
-          actor.managedBusinessIds.includes(order.businessId)))
-  );
+  const isAdmin = actor?.role === "admin";
+  const isMerchant = actor?.role === "merchant" && order.businessId && (await firestoreGet(env, token, `items/${encodeURIComponent(order.businessId)}`))?.ownerId === user.uid;
   const isDriver = actor?.role === "driver" && order.driverId === user.uid;
   const isPickupMerchant = Boolean(isMerchant && order.deliveryMethod === "pickup");
   const merchantStates = /* @__PURE__ */ new Set(["accepted", "preparing", "ready", "rejected"]);
@@ -5463,19 +2867,7 @@ async function publishOrderToDrivers(env, token, order, orderId) {
   if (!result) {
     fail(409, "order-changed", "\u062A\u063A\u064A\u0651\u0631\u062A \u062D\u0627\u0644\u0629 \u0627\u0644\u0637\u0644\u0628\u061B \u062D\u062F\u0651\u062B \u0627\u0644\u0635\u0641\u062D\u0629.");
   }
-  const driverTokens = availableDrivers.flatMap((driver) =>
-  (Array.isArray(driver.fcmTokens) ? driver.fcmTokens : [])
-    .filter(
-      (deviceToken) =>
-        typeof deviceToken === "string" &&
-        deviceToken.length > 20
-    )
-    .map((deviceToken) => ({
-      uid: driver.id,
-      token: deviceToken,
-      updateTime: driver.updateTime
-    }))
-);
+  const driverTokens = availableDrivers.flatMap((driver) => Array.isArray(driver.fcmTokens) ? driver.fcmTokens : []);
   if (driverTokens.length > 0) {
     const orderLabel = String(
       order.orderNumber || orderId.substring(0, 6).toUpperCase()
@@ -5864,26 +3256,21 @@ function assertRewardOrder(order, user) {
   if ((/* @__PURE__ */ new Set([
     "rejected",
     "cancelled",
-    "canceled"
+    "canceled",
+    "delivered",
+    "completed",
+    "finished"
   ])).has(order.status)) {
     fail(409, "order-inactive", "\u064A\u062C\u0628 \u0625\u0643\u0645\u0627\u0644 \u0627\u0644\u0645\u0647\u0645\u0629 \u0642\u0628\u0644 \u0627\u0646\u062A\u0647\u0627\u0621 \u0627\u0644\u0637\u0644\u0628.");
   }
 }
 __name(assertRewardOrder, "assertRewardOrder");
 function orderRewardDeadline(order) {
-  const rewardStartedAt = Date.parse(
-    order.completedAt ||
-    order.deliveredAt ||
-    order.finishedAt ||
-    order.updatedAt ||
-    order.createdAt ||
-    order.createTime ||
-    ""
-  );
-  if (!Number.isFinite(rewardStartedAt)) {
-    fail(409, "order-time-missing", "تعذر تثبيت وقت بدء مهلة اللعب.");
+  const orderCreatedAt = Date.parse(order.createdAt || order.createTime || "");
+  if (!Number.isFinite(orderCreatedAt)) {
+    fail(409, "order-time-missing", "\u062A\u0639\u0630\u0631 \u062A\u062B\u0628\u064A\u062A \u0648\u0642\u062A \u0627\u0644\u0637\u0644\u0628.");
   }
-  return rewardStartedAt + 30 * 60 * 1e3;
+  return orderCreatedAt + 30 * 60 * 1e3;
 }
 __name(orderRewardDeadline, "orderRewardDeadline");
 async function startPlayTask(request, env, user, orderId, taskId) {
@@ -6070,25 +3457,201 @@ function money(value) {
   return Math.round(value * 100) / 100;
 }
 __name(money, "money");
+function normalizeMealOptions(value) {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 20).map((option, index) => {
+    const name = String(option?.name || option?.title || "").trim();
+    const price = Number(option?.price);
+    const rawId = String(option?.id || `option_${index}`).trim();
+    if (!name || name.length > 120 || !Number.isFinite(price) || price < 0 || price > 1e6 || !/^[A-Za-z0-9_-]{1,80}$/.test(rawId)) {
+      return null;
+    }
+    return {
+      id: rawId,
+      name,
+      price: Math.round(price * 100) / 100
+    };
+  }).filter(Boolean);
+}
+__name(normalizeMealOptions, "normalizeMealOptions");
 function finiteOrNull(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
 __name(finiteOrNull, "finiteOrNull");
-function geoDistanceKm(latitude1, longitude1, latitude2, longitude2) {
-  const radians = (value) => value * Math.PI / 180;
-  const latitudeDelta = radians(latitude2 - latitude1);
-  const longitudeDelta = radians(longitude2 - longitude1);
-  const haversine = Math.sin(latitudeDelta / 2) ** 2 +
-    Math.cos(radians(latitude1)) *
-      Math.cos(radians(latitude2)) *
-      Math.sin(longitudeDelta / 2) ** 2;
-  return 6371 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
-}
-__name(geoDistanceKm, "geoDistanceKm");
 export {
   canUploadMedia,
   canTransitionOrderStatus,
   createImageKitSignature,
   index_default as default
 };
+
+function appointmentDateKey(date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {timeZone: "Asia/Hebron", year: "numeric", month: "2-digit", day: "2-digit"}).formatToParts(date);
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${value.year}-${value.month}-${value.day}`;
+}
+function appointmentMinutes(date) {
+  const parts = new Intl.DateTimeFormat("en-GB", {timeZone: "Asia/Hebron", hour: "2-digit", minute: "2-digit", hourCycle: "h23"}).formatToParts(date);
+  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return Number(value.hour) * 60 + Number(value.minute);
+}
+function appointmentClockMinutes(value) {
+  const match = String(value || "").match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  return hour >= 0 && hour <= 23 && minute >= 0 && minute < 60 ? hour * 60 + minute : null;
+}
+function appointmentService(business, serviceId) {
+  const services = Array.isArray(business.barberServices) ? business.barberServices : [];
+  const match = String(serviceId || "").match(/^service_(\d+)$/);
+  const index = match ? Number(match[1]) - 1 : -1;
+  const service = index >= 0 ? services[index] : null;
+  if (service && typeof service === "object") {
+    const title = String(service.title || "").trim();
+    const price = Number(service.price);
+    const durationMinutes = Number(service.durationMinutes);
+    if (title.length >= 2 && Number.isFinite(price) && price >= 0 && Number.isInteger(durationMinutes) && durationMinutes >= 5 && durationMinutes <= 480) {
+      return {serviceId: `service_${index + 1}`, title, price: money(price), durationMinutes};
+    }
+  }
+  if (serviceId === "consultation" && String(business.type || "").toLowerCase() === "doctor") {
+    const price = Number(business.doctorConsultationFee ?? business.bookingPrice ?? 0);
+    const durationMinutes = Number(business.appointmentSlotMinutes || 30);
+    if (Number.isFinite(price) && price >= 0 && Number.isInteger(durationMinutes) && durationMinutes >= 5 && durationMinutes <= 480) {
+      return {serviceId: "consultation", title: "استشارة طبية", price: money(price), durationMinutes};
+    }
+  }
+  fail(409, "appointment-service-unavailable", "الخدمة المحددة لم تعد متاحة.");
+}
+async function createAppointment(request, env, user) {
+  const data = await readJson(request);
+  const businessId = String(data.businessId || "").trim();
+  const serviceId = String(data.serviceId || "").trim();
+  const startMillis = Number(data.startMillis);
+  const customerName = String(data.customerName || "").trim().slice(0, 120);
+  const customerPhone = String(data.customerPhone || "").trim().slice(0, 30);
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(businessId) || !Number.isFinite(startMillis) || !customerName || !customerPhone) {
+    fail(400, "invalid-appointment", "بيانات الموعد غير مكتملة أو غير صالحة.");
+  }
+  const start = new Date(startMillis);
+  if (!Number.isFinite(start.getTime()) || start.getTime() < Date.now() + 60 * 1000 || start.getTime() > Date.now() + 90 * 864e5 || start.getUTCSeconds() !== 0 || start.getUTCMilliseconds() !== 0) {
+    fail(400, "invalid-appointment-time", "وقت الموعد غير صالح.");
+  }
+  const token = await serviceToken(env);
+  const [business, customer] = await Promise.all([
+    firestoreGet(env, token, `items/${encodeURIComponent(businessId)}`),
+    firestoreGet(env, token, `users/${encodeURIComponent(user.uid)}`)
+  ]);
+  if (!business || business.kind === "product" || business.appointmentBookingEnabled !== true || business.businessStatus === "closed" || business.businessStatus === "coming_soon") {
+    fail(409, "appointment-business-unavailable", "هذا المكان لا يستقبل حجوزات الآن.");
+  }
+  if (!customer || customer.role !== "customer") fail(403, "appointment-customer-required", "الحجز متاح لحسابات العملاء فقط.");
+  const service = appointmentService(business, serviceId);
+  const dateKey = appointmentDateKey(start);
+  const startMinutes = appointmentMinutes(start);
+  const endMinutes = startMinutes + service.durationMinutes;
+  const opening = appointmentClockMinutes(business.openingTime ?? business.barberOpeningTime);
+  const closing = appointmentClockMinutes(business.closingTime ?? business.barberClosingTime);
+  const slot = Number(business.appointmentSlotMinutes || service.durationMinutes);
+  if (opening === null || closing === null || closing <= opening || startMinutes < opening || endMinutes > closing || !Number.isInteger(slot) || slot < 5 || startMinutes % slot !== opening % slot) {
+    fail(409, "appointment-outside-hours", "وقت الموعد خارج أوقات العمل أو لا يوافق فترة الحجز.");
+  }
+  const commissionRate = Number.isFinite(Number(business.commissionRate)) ? Math.max(0, Math.min(100, Number(business.commissionRate))) : 10;
+  const commissionAmount = money(service.price * commissionRate / 100);
+  const bookingId = crypto.randomUUID().replace(/-/g, "");
+  const lockIds = [];
+  for (let minute = startMinutes; minute < endMinutes; minute += 5) lockIds.push(`${businessId}_${dateKey}_${minute}`);
+  const now = new Date();
+  const writes = [createWrite(env, `barber_bookings/${bookingId}`, {
+    businessId, serviceId: service.serviceId, serviceTitle: service.title,
+    customerId: user.uid, customerName, customerPhone, dateKey, startMinutes, endMinutes,
+    scheduledAt: start, price: service.price, commissionRate, commissionAmount,
+    businessNetAmount: money(service.price - commissionAmount), status: "pending",
+    orderType: "barber_booking", lockIds, createdAt: now, updatedAt: now
+  })];
+  for (const lockId of lockIds) writes.push(createWrite(env, `barber_slot_locks/${lockId}`, {
+    businessId, dateKey, startMinutes: Number(lockId.split("_").pop()), endMinutes: Number(lockId.split("_").pop()) + 5,
+    bookingId, status: "reserved", createdAt: now
+  }));
+  const committed = await firestoreCommit(env, token, writes);
+  if (!committed) fail(409, "appointment-slot-taken", "هذا الوقت حُجز للتو؛ اختَر وقتًا آخر.");
+  return {bookingId, scheduledAt: start.toISOString(), price: service.price};
+}
+async function updateAppointmentStatus(request, env, user, bookingId) {
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(bookingId)) fail(400, "invalid-appointment", "معرّف الموعد غير صالح.");
+  const status = String((await readJson(request)).status || "").trim();
+  if (!new Set(["confirmed", "completed", "cancelled", "no_show"]).has(status)) fail(400, "invalid-appointment-status", "حالة الموعد غير صالحة.");
+  const token = await serviceToken(env);
+  const booking = await firestoreGet(env, token, `barber_bookings/${encodeURIComponent(bookingId)}`);
+  if (!booking) fail(404, "appointment-not-found", "الموعد غير موجود.");
+  const actor = await firestoreGet(env, token, `users/${encodeURIComponent(user.uid)}`);
+  const business = await firestoreGet(env, token, `items/${encodeURIComponent(String(booking.businessId || ""))}`);
+  const isCustomer = booking.customerId === user.uid;
+  const isMerchant = actor?.role === "merchant" && business?.ownerId === user.uid;
+  if (!isCustomer && !isMerchant && actor?.role !== "admin") fail(403, "appointment-permission-denied", "غير مسموح بتعديل هذا الموعد.");
+  if (isCustomer && status !== "cancelled") fail(403, "appointment-permission-denied", "يمكن للعميل إلغاء موعده فقط.");
+  if (booking.status === "cancelled") return {ok: true, bookingId, status: "cancelled", repeated: true};
+  const writes = [updateWrite(env, `barber_bookings/${encodeURIComponent(bookingId)}`, {status, updatedAt: new Date()}, booking.updateTime)];
+  if (status === "cancelled") {
+    for (const lockId of Array.isArray(booking.lockIds) ? booking.lockIds : []) {
+      const lock = await firestoreGet(env, token, `barber_slot_locks/${encodeURIComponent(lockId)}`);
+      if (lock?.bookingId === bookingId && lock.status === "reserved") writes.push(updateWrite(env, `barber_slot_locks/${encodeURIComponent(lockId)}`, {status: "cancelled", cancelledAt: new Date()}, lock.updateTime));
+    }
+  }
+  const committed = await firestoreCommit(env, token, writes);
+  if (!committed) fail(409, "appointment-changed", "تغير الموعد أثناء العملية؛ حدّث الصفحة وحاول مجددًا.");
+  return {ok: true, bookingId, status};
+}
+
+async function runMediatorAction(request, env, user) {
+  const token = await serviceToken(env);
+  const headers = {authorization: `Bearer ${token}`, 'content-type': 'application/json'};
+  const base = firestoreBase(env);
+  const ref = path => ({path, id: path.split('/').pop(), collection: name => ({doc: id => ref(`${path}/${name}/${id || crypto.randomUUID()}`)}), get: async () => ({data: () => null})});
+  const database = {
+    doc(path) { const r = ref(path); r.get = async () => {const data = await firestoreGet(env, token, path); return {data: () => data};}; return r; },
+    collection: name => ({doc: id => ref(`${name}/${id || crypto.randomUUID()}`)}),
+    async runTransaction(callback) {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const writes = [];
+        const reads = new Map();
+        try {
+          const result = await callback({
+            async get(r) {
+              const data = await firestoreGet(env, token, r.path);
+              reads.set(r.path, data);
+              if (data?.lockedUntil) { const millis = new Date(data.lockedUntil).getTime(); data.lockedUntil = {toMillis: () => millis}; }
+              return {exists: !!data, data: () => data};
+            },
+            create: (r,d) => writes.push(createWrite(env,r.path,d)),
+            update: (r,d) => writes.push(updateWrite(env,r.path,d,reads.get(r.path)?.updateTime)),
+            delete: r => {
+              const write = deleteWrite(env,r.path);
+              const updateTime = reads.get(r.path)?.updateTime;
+              if (updateTime) write.currentDocument = {updateTime};
+              writes.push(write);
+            },
+          });
+          const committed = await firestoreCommit(env, token, writes);
+          if (!committed) {
+            const conflict = new Error('تعارض أثناء حفظ العملية');
+            conflict.status = 409;
+            throw conflict;
+          }
+          return result;
+        } catch (error) {
+          if (error.status === 409 && attempt < 2) continue;
+          throw error;
+        }
+      }
+    }
+  };
+  class MediatorError extends Error { constructor(code,message) { super(message); this.status = code === 'permission-denied' ? 403 : code === 'unauthenticated' ? 401 : 409; this.code = code; } }
+  return mediatorActionCore({auth: {uid: user.uid}, data: await readJson(request)}, {
+    database, HttpsError: MediatorError, FieldValue: {serverTimestamp: () => new Date()},
+    hash: async value => [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))].map(b => b.toString(16).padStart(2,'0')).join(''),
+    randomInt: (min,max) => { const range = max-min, limit = Math.floor(4294967296/range)*range; let n; do {n=crypto.getRandomValues(new Uint32Array(1))[0];} while(n>=limit); return min+n%range; },
+  });
+}

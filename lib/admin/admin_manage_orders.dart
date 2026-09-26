@@ -2,19 +2,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 import '../services/order_service.dart';
+import '../services/order_fields.dart';
 import '../theme/app_theme.dart';
 
 class AdminManageOrders extends StatelessWidget {
-  const AdminManageOrders({
-    super.key,
-    this.embedded = false,
-    this.supervisorMode = false,
-    this.orderId,
-  });
+  const AdminManageOrders({super.key, this.embedded = false});
 
-  final String? orderId;
   final bool embedded;
-  final bool supervisorMode;
 
   static const _statuses = {
     'new': 'جديد',
@@ -58,18 +52,6 @@ class AdminManageOrders extends StatelessWidget {
   Future<Map<String, dynamic>> _loadCustomerSummary(
     Map<String, dynamic> orderData,
   ) async {
-    if (supervisorMode) {
-      return {
-        'name': _firstNonEmpty([
-          orderData['customerName'],
-          orderData['customerEmail'],
-        ]),
-        'phone': _firstNonEmpty([orderData['customerPhone']]),
-        'email': _firstNonEmpty([orderData['customerEmail']]),
-        'totalOrders': 0,
-        'completedOrders': 0,
-      };
-    }
     final firestore = FirebaseFirestore.instance;
 
     final customerId = _firstNonEmpty(
@@ -83,49 +65,39 @@ class AdminManageOrders extends StatelessWidget {
     Map<String, dynamic> userData = <String, dynamic>{};
 
     if (customerId.isNotEmpty) {
-      final userSnapshot =
-          await firestore.collection('users').doc(customerId).get();
-
-      userData = userSnapshot.data() ?? <String, dynamic>{};
+      try {
+        final userSnapshot =
+            await firestore.collection('users').doc(customerId).get();
+        userData = userSnapshot.data() ?? <String, dynamic>{};
+      } on FirebaseException {
+        // Keep the order snapshot visible if the profile cannot be read.
+      }
     }
 
-    int totalOrders = 0;
-    int completedOrders = 0;
+    int? totalOrders;
+    int? completedOrders;
 
     if (customerId.isNotEmpty) {
-      final ordersSnapshot = await firestore
-          .collection('orders')
-          .where('customerId', isEqualTo: customerId)
-          .get();
+      try {
+        final ordersSnapshot = await firestore
+            .collection('orders')
+            .where('customerId', isEqualTo: customerId)
+            .get();
 
-      totalOrders = ordersSnapshot.docs.length;
+        totalOrders = ordersSnapshot.docs.length;
 
-      completedOrders = ordersSnapshot.docs
-          .where(
-            (doc) => doc.data()['status']?.toString() == 'delivered',
-          )
-          .length;
+        completedOrders = ordersSnapshot.docs
+            .where(
+              (doc) => doc.data()['status']?.toString() == 'delivered',
+            )
+            .length;
+      } on FirebaseException {
+        // Statistics must not hide customer details.
+      }
     }
 
     return {
-      'name': _firstNonEmpty([
-        orderData['customerName'],
-        userData['fullName'],
-        userData['name'],
-        userData['displayName'],
-        orderData['customerEmail'],
-        userData['email'],
-      ]),
-      'phone': _firstNonEmpty([
-        orderData['customerPhone'],
-        userData['phone'],
-        userData['phoneNumber'],
-        userData['mobile'],
-      ]),
-      'email': _firstNonEmpty([
-        orderData['customerEmail'],
-        userData['email'],
-      ]),
+      ...orderCustomerFields(orderData, userData),
       'totalOrders': totalOrders,
       'completedOrders': completedOrders,
     };
@@ -135,32 +107,13 @@ class AdminManageOrders extends StatelessWidget {
     return FutureBuilder<Map<String, dynamic>>(
       future: _loadCustomerSummary(data),
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                  ),
-                ),
-                SizedBox(width: 10),
-                Text('جاري تحميل بيانات العميل...'),
-              ],
-            ),
-          );
-        }
+        final customer = snapshot.data ?? orderCustomerFields(data);
 
-        final customer = snapshot.data ?? <String, dynamic>{};
+        final totalOrders = customer['totalOrders'] as int?;
 
-        final totalOrders = customer['totalOrders'] as int? ?? 0;
+        final completedOrders = customer['completedOrders'] as int?;
 
-        final completedOrders = customer['completedOrders'] as int? ?? 0;
-
-        final isNewCustomer = totalOrders <= 1;
+        final isNewCustomer = totalOrders != null && totalOrders <= 1;
 
         Widget infoLine(
           IconData icon,
@@ -225,7 +178,7 @@ class AdminManageOrders extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (!supervisorMode && isNewCustomer)
+                  if (isNewCustomer)
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 9,
@@ -262,32 +215,30 @@ class AdminManageOrders extends StatelessWidget {
                 'البريد الإلكتروني',
                 customer['email']?.toString() ?? 'غير مضاف',
               ),
-              if (!supervisorMode) ...[
-                const Divider(height: 18),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'إجمالي الطلبات: $totalOrders',
-                        style: const TextStyle(
-                          color: AppTheme.navy,
-                          fontWeight: FontWeight.w900,
-                        ),
+              const Divider(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'إجمالي الطلبات: ${totalOrders ?? 'غير متاح'}',
+                      style: const TextStyle(
+                        color: AppTheme.navy,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
-                    Expanded(
-                      child: Text(
-                        'المكتملة: $completedOrders',
-                        textAlign: TextAlign.end,
-                        style: const TextStyle(
-                          color: AppTheme.navy,
-                          fontWeight: FontWeight.w900,
-                        ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      'المكتملة: ${completedOrders ?? 'غير متاح'}',
+                      textAlign: TextAlign.end,
+                      style: const TextStyle(
+                        color: AppTheme.navy,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
-                  ],
-                ),
-              ],
+                  ),
+                ],
+              ),
             ],
           ),
         );
@@ -312,9 +263,7 @@ class AdminManageOrders extends StatelessWidget {
           );
         }
 
-        final orders = snapshot.data!.docs
-            .where((doc) => orderId == null || doc.id == orderId)
-            .toList()
+        final orders = snapshot.data!.docs.toList()
           ..sort((a, b) {
             final right = b.data()['createdAt'] as Timestamp?;
             final left = a.data()['createdAt'] as Timestamp?;
@@ -361,7 +310,6 @@ class AdminManageOrders extends StatelessWidget {
             return Card(
               clipBehavior: Clip.antiAlias,
               child: ExpansionTile(
-                initiallyExpanded: orderId != null,
                 leading: const CircleAvatar(
                   child: Icon(Icons.receipt_long_rounded),
                 ),
@@ -375,9 +323,7 @@ class AdminManageOrders extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      supervisorMode
-                          ? '${lines.length} أصناف'
-                          : '${lines.length} أصناف • ${data['total'] ?? 0} ₪',
+                      '${lines.length} أصناف • ${data['total'] ?? 0} ₪',
                     ),
                     const SizedBox(height: 8),
                     _OrderActionPanel(
@@ -402,39 +348,6 @@ class AdminManageOrders extends StatelessWidget {
                         ? Map<String, dynamic>.from(line)
                         : <String, dynamic>{};
 
-                    final selectedOptions = (item['selectedOptions'] as List?)
-                            ?.whereType<Map>()
-                            .map((option) => Map<String, dynamic>.from(option))
-                            .toList() ??
-                        const <Map<String, dynamic>>[];
-
-                    final specialNote =
-                        item['specialNote']?.toString().trim() ?? '';
-
-                    final details = <String>[
-                      'الكمية: ${item['quantity'] ?? 1}',
-                      ...selectedOptions.map((option) {
-                        final groupName =
-                            option['groupName']?.toString().trim() ?? '';
-                        final optionName =
-                            option['optionName']?.toString().trim() ?? '';
-                        final priceDelta = option['priceDelta'];
-
-                        final label = groupName.isNotEmpty
-                            ? '$groupName: $optionName'
-                            : optionName;
-
-                        if (label.isEmpty) return '';
-
-                        if (priceDelta is num && priceDelta > 0) {
-                          return '$label (+$priceDelta ₪)';
-                        }
-
-                        return label;
-                      }).where((text) => text.isNotEmpty),
-                      if (specialNote.isNotEmpty) 'ملاحظة: $specialNote',
-                    ];
-
                     return ListTile(
                       dense: true,
                       contentPadding: EdgeInsets.zero,
@@ -444,20 +357,21 @@ class AdminManageOrders extends StatelessWidget {
                       title: Text(
                         item['title']?.toString() ?? 'صنف',
                       ),
-                      subtitle: Text(details.join('\n')),
-                      trailing: supervisorMode
-                          ? null
-                          : Text('${item['price'] ?? 0} ₪'),
+                      subtitle: Text(
+                        orderItemDetails(item).join('\n'),
+                      ),
+                      trailing: Text(
+                        '${item['price'] ?? 0} ₪',
+                      ),
                     );
                   }),
-                  if (!supervisorMode)
-                    Align(
-                      alignment: AlignmentDirectional.centerStart,
-                      child: Text(
-                        '${data['deliveryMethod'] ?? ''} • ${data['paymentMethod'] ?? ''}',
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: Text(
+                      '${data['deliveryMethod'] ?? ''} • ${data['paymentMethod'] ?? ''}',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
+                  ),
                 ],
               ),
             );
@@ -468,7 +382,7 @@ class AdminManageOrders extends StatelessWidget {
     if (embedded) return body;
     return Scaffold(
       appBar: AppBar(
-        title: Text(supervisorMode ? 'إشراف الطلبات' : 'إدارة الطلبات'),
+        title: const Text('إدارة الطلبات'),
         centerTitle: true,
       ),
       body: body,

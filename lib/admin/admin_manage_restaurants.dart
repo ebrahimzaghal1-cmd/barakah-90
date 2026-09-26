@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../screens/location_picker_screen.dart';
 import '../services/media_upload_service.dart';
-import '../services/business_manager_service.dart';
 import '../theme/app_theme.dart';
 import 'admin_manage_products.dart';
 
@@ -56,11 +55,6 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
         TextEditingController(text: '${restaurant['commissionRate'] ?? 10}');
     final ownerEmailController =
         TextEditingController(text: restaurant['ownerEmail'] ?? '');
-    final managerEmailController = TextEditingController();
-    var managerEmails = ((restaurant['managerEmails'] as List?) ?? const [])
-        .map((value) => value.toString().trim())
-        .where((value) => value.isNotEmpty)
-        .toList();
     final preparationController = TextEditingController(
         text: (restaurant['preparationMinutes'] ?? 30).toString());
 
@@ -116,7 +110,6 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
     var isSaving = false;
     var hasDeliveryOffer = restaurant['hasDeliveryOffer'] == true;
     var isTrending = restaurant['isTrending'] == true;
-    var isNewInBarakah = restaurant['isNewInBarakah'] == true;
     double? latitude = (restaurant['latitude'] as num?)?.toDouble();
     double? longitude = (restaurant['longitude'] as num?)?.toDouble();
 
@@ -182,7 +175,6 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
                 'commissionRate': commissionRate,
                 'hasDeliveryOffer': hasDeliveryOffer,
                 'isTrending': isTrending,
-                'isNewInBarakah': isNewInBarakah,
                 'businessStatus': businessStatus,
                 'openingTime': openingTimeController.text.trim(),
                 'closingTime': closingTimeController.text.trim(),
@@ -295,15 +287,7 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
                   TextField(
                     controller: titleController,
                     decoration: InputDecoration(
-                      labelText: widget.itemType == 'taxi'
-                          ? 'اسم المكتب الداخلي'
-                          : 'اسم ${widget.singularLabel}',
-                      helperText: widget.itemType == 'taxi'
-                          ? 'لإدارة بركة والمكتب فقط — لا يظهر للزبون'
-                          : null,
-                      prefixIcon: widget.itemType == 'taxi'
-                          ? const Icon(Icons.admin_panel_settings_outlined)
-                          : null,
+                      labelText: 'اسم ${widget.singularLabel}',
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -330,33 +314,30 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
                         ? 'اختيار الموقع على الخريطة'
                         : 'تم اختيار الموقع — تغيير'),
                   ),
-                  if (widget.itemType != 'taxi') ...[
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: descriptionController,
-                      decoration: const InputDecoration(
-                        labelText: 'الوصف',
-                      ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: descriptionController,
+                    decoration: const InputDecoration(
+                      labelText: 'الوصف',
                     ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: ratingController,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      decoration:
-                          const InputDecoration(labelText: 'التقييم من 5'),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: discountController,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: ratingController,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration:
+                        const InputDecoration(labelText: 'التقييم من 5'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: discountController,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
                         labelText: 'خصم بركة % (اختياري)',
-                        prefixIcon: Icon(Icons.percent_rounded),
-                      ),
-                    ),
-                  ],
+                        prefixIcon: Icon(Icons.percent_rounded)),
+                  ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: commissionController,
@@ -369,218 +350,61 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
                       prefixIcon: Icon(Icons.account_balance_wallet_outlined),
                     ),
                   ),
-                  if (widget.itemType != 'taxi') ...[
-                    SwitchListTile.adaptive(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('عرض توصيل'),
-                      subtitle: const Text('إظهار داخل خانة عروض التوصيل'),
-                      value: hasDeliveryOffer,
-                      onChanged: isSaving
-                          ? null
-                          : (value) =>
-                              setDialogState(() => hasDeliveryOffer = value),
-                    ),
-                    if (hasDeliveryOffer) ...[
-                      TextField(
-                        controller: deliveryFeeController,
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
-                        decoration: const InputDecoration(
-                            labelText: 'سعر التوصيل بعد العرض (₪)',
-                            prefixIcon: Icon(Icons.delivery_dining_rounded)),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    SwitchListTile.adaptive(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('إظهار في قائمة الترندات'),
-                      secondary: const Icon(Icons.local_fire_department_rounded,
-                          color: Colors.orange),
-                      value: isTrending,
-                      onChanged: isSaving
-                          ? null
-                          : (value) => setDialogState(() => isTrending = value),
-                    ),
-                    SwitchListTile.adaptive(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('إضافة إلى شريط جديد في بركة'),
-                      subtitle: const Text('يمكن إزالته من الشريط في أي وقت'),
-                      secondary: const Icon(Icons.new_releases_rounded),
-                      value: isNewInBarakah,
-                      onChanged: isSaving
-                          ? null
-                          : (value) =>
-                              setDialogState(() => isNewInBarakah = value),
-                    ),
                   SwitchListTile.adaptive(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('إضافة إلى قريبًا في بركة'),
-                    subtitle: const Text(
-                      'يظهر المحل في قسم قريبًا ولا يستقبل الطلبات',
-                    ),
-                    secondary: const Icon(Icons.upcoming_rounded),
-                    value: businessStatus == 'coming_soon',
+                    title: const Text('عرض توصيل'),
+                    subtitle: const Text('إظهار داخل خانة عروض التوصيل'),
+                    value: hasDeliveryOffer,
                     onChanged: isSaving
                         ? null
-                        : (value) => setDialogState(() {
-                              businessStatus =
-                                  value ? 'coming_soon' : 'open';
-                            }),
+                        : (value) =>
+                            setDialogState(() => hasDeliveryOffer = value),
                   ),
-                  ],
-                  if (widget.itemType != 'taxi') ...[
+                  if (hasDeliveryOffer) ...[
                     TextField(
-                      controller: categoryController,
+                      controller: deliveryFeeController,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                       decoration: const InputDecoration(
-                        labelText: 'التصنيف',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: typeController,
-                      decoration: const InputDecoration(
-                        labelText: 'النوع',
-                      ),
+                          labelText: 'سعر التوصيل بعد العرض (₪)',
+                          prefixIcon: Icon(Icons.delivery_dining_rounded)),
                     ),
                     const SizedBox(height: 12),
                   ],
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('إظهار في قائمة الترندات'),
+                    secondary: const Icon(Icons.local_fire_department_rounded,
+                        color: Colors.orange),
+                    value: isTrending,
+                    onChanged: isSaving
+                        ? null
+                        : (value) => setDialogState(() => isTrending = value),
+                  ),
+                  TextField(
+                    controller: categoryController,
+                    decoration: const InputDecoration(
+                      labelText: 'التصنيف',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: typeController,
+                    decoration: const InputDecoration(
+                      labelText: 'النوع',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   TextField(
                     controller: ownerEmailController,
                     keyboardType: TextInputType.emailAddress,
-                    decoration: InputDecoration(
-                      labelText: widget.itemType == 'taxi'
-                          ? 'بريد صاحب مكتب التكسي'
-                          : 'بريد صاحب المحل المشترك',
-                      helperText: widget.itemType == 'taxi'
-                          ? 'يجب أن يكون لديه حساب في بركة — يستخدم لإدارة طلبات مكتبه فقط'
-                          : 'بعد الربط تظهر له لوحة إدارة منتجات محله فقط',
-                      prefixIcon: const Icon(Icons.storefront_outlined),
+                    decoration: const InputDecoration(
+                      labelText: 'بريد صاحب المحل المشترك',
+                      helperText:
+                          'بعد الربط تظهر له لوحة إدارة منتجات محله فقط',
+                      prefixIcon: Icon(Icons.storefront_outlined),
                     ),
                   ),
-                  if (doc != null) ...[
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: managerEmailController,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: InputDecoration(
-                        labelText: 'إضافة مدير آخر للمحل بالإيميل',
-                        helperText: 'يجب أن يكون لديه حساب مسجل في تطبيق بركة',
-                        prefixIcon: const Icon(Icons.person_add_alt_1_rounded),
-                        suffixIcon: IconButton(
-                          tooltip: 'إضافة مدير',
-                          onPressed: isSaving
-                              ? null
-                              : () async {
-                                  final email = managerEmailController.text
-                                      .trim()
-                                      .toLowerCase();
-                                  if (email.isEmpty) return;
-                                  try {
-                                    await BusinessManagerService()
-                                        .updateManager(
-                                      businessId: doc.id,
-                                      email: email,
-                                      add: true,
-                                    );
-                                    managerEmailController.clear();
-                                    setDialogState(() {
-                                      if (!managerEmails.contains(email)) {
-                                        managerEmails = [...managerEmails, email];
-                                      }
-                                    });
-                                    if (!context.mounted) return;
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          'تمت إضافة $email كمدير للمحل ✅',
-                                        ),
-                                        backgroundColor: Colors.green,
-                                      ),
-                                    );
-                                  } catch (error) {
-                                    if (!context.mounted) return;
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(error is StateError
-                                            ? error.message.toString()
-                                            : 'تعذر إضافة مدير المحل.'),
-                                        backgroundColor: Colors.red,
-                                      ),
-                                    );
-                                  }
-                                },
-                          icon: const Icon(Icons.add_circle_rounded),
-                        ),
-                      ),
-                    ),
-                    if (managerEmails.isNotEmpty) ...[
-                      const SizedBox(height: 10),
-                      const Align(
-                        alignment: AlignmentDirectional.centerEnd,
-                        child: Text(
-                          'مديرو المحل الحاليون',
-                          style: TextStyle(fontWeight: FontWeight.w800),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      ...managerEmails.map(
-                        (managerEmail) => Card(
-                          margin: const EdgeInsets.only(bottom: 6),
-                          child: ListTile(
-                            dense: true,
-                            title: Text(managerEmail),
-                            trailing: IconButton(
-                              tooltip: 'إزالة المدير',
-                              icon: const Icon(
-                                Icons.person_remove_alt_1_rounded,
-                              ),
-                              onPressed: isSaving
-                                  ? null
-                                  : () async {
-                                      try {
-                                        await BusinessManagerService()
-                                            .updateManager(
-                                          businessId: doc.id,
-                                          email: managerEmail,
-                                          add: false,
-                                        );
-                                        setDialogState(() {
-                                          managerEmails = managerEmails
-                                              .where((value) =>
-                                                  value != managerEmail)
-                                              .toList();
-                                        });
-                                        if (!context.mounted) return;
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              'تمت إزالة $managerEmail من إدارة المحل.',
-                                            ),
-                                            backgroundColor: Colors.green,
-                                          ),
-                                        );
-                                      } catch (error) {
-                                        if (!context.mounted) return;
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              error is StateError
-                                                  ? error.message.toString()
-                                                  : 'تعذر إزالة مدير المحل.',
-                                            ),
-                                            backgroundColor: Colors.red,
-                                          ),
-                                        );
-                                      }
-                                    },
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
                   const SizedBox(height: 12),
                   TextField(
                     controller: preparationController,
@@ -756,7 +580,7 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
                       ),
                       DropdownMenuItem(
                         value: 'coming_soon',
-                        child: Text('قريبًا — يظهر في التبويب دون طلبات'),
+                        child: Text('قريبًا — سيتم افتتاحه قريبًا'),
                       ),
                     ],
                     onChanged: isSaving
@@ -807,7 +631,6 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
     }
     commissionController.dispose();
     ownerEmailController.dispose();
-    managerEmailController.dispose();
     preparationController.dispose();
   }
 
@@ -939,26 +762,25 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
                         ],
                       ),
                     ),
-                    if (type.toLowerCase().trim() != 'taxi')
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            icon: const Icon(Icons.add_shopping_cart_rounded),
-                            label: Text('عرض وإضافة أصناف $title'),
-                            onPressed: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => AdminManageProducts(
-                                  initialBusinessId: doc.id,
-                                  initialBusinessTitle: title,
-                                ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.add_shopping_cart_rounded),
+                          label: Text('عرض وإضافة أصناف $title'),
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => AdminManageProducts(
+                                initialBusinessId: doc.id,
+                                initialBusinessTitle: title,
                               ),
                             ),
                           ),
                         ),
                       ),
+                    ),
                   ],
                 ),
               );

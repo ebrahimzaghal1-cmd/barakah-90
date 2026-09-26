@@ -8,122 +8,18 @@ import 'package:image_picker/image_picker.dart';
 import '../admin/admin_manage_products.dart';
 import 'location_picker_screen.dart';
 import 'restaurant_details_screen.dart';
+import 'merchant_support_inbox.dart';
 import '../services/order_service.dart';
+import '../widgets/order_details.dart';
 import '../services/barber_booking_service.dart';
-import '../services/taxi_order_service.dart';
 import '../services/media_upload_service.dart';
-import '../services/business_manager_service.dart';
 import '../theme/app_theme.dart';
-import '../services/agent_order_service.dart';
-import '../widgets/agent_earnings_panel.dart';
 
 class MerchantDashboard extends StatelessWidget {
   const MerchantDashboard({super.key});
 
   Future<String> _uploadStoreImage(XFile image) async {
     return MediaUploadService().upload(image, isVideo: false);
-  }
-
-  Future<void> _addBusinessManager(
-    BuildContext context,
-    String businessId,
-  ) async {
-    final controller = TextEditingController();
-    final email = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('إضافة مدير للمحل'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'أدخل بريد شخص لديه حساب مسجل في بركة. سيدخل بحسابه الخاص ويدير هذا المحل.',
-              style: TextStyle(height: 1.5),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                labelText: 'بريد مدير المحل',
-                prefixIcon: Icon(Icons.email_outlined),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('إلغاء'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final value = controller.text.trim().toLowerCase();
-              if (value.isNotEmpty) Navigator.pop(dialogContext, value);
-            },
-            child: const Text('إضافة'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (email == null || !context.mounted) return;
-    try {
-      await BusinessManagerService().updateManager(
-        businessId: businessId,
-        email: email,
-        add: true,
-      );
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('تمت إضافة $email كمدير للمحل ✅'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    } catch (error) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error is StateError
-              ? error.message.toString()
-              : 'تعذر إضافة مدير المحل.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  Future<void> _removeBusinessManager(
-    BuildContext context,
-    String businessId,
-    String email,
-  ) async {
-    try {
-      await BusinessManagerService().updateManager(
-        businessId: businessId,
-        email: email,
-        add: false,
-      );
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تمت إزالة مدير المحل.'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    } catch (error) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error is StateError
-              ? error.message.toString()
-              : 'تعذر إزالة مدير المحل.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
   }
 
   Future<void> _editBusiness(
@@ -737,7 +633,6 @@ class MerchantDashboard extends StatelessWidget {
                 itemBuilder: (context, index) {
                   final business = businesses[index];
                   final data = business.data();
-                  final isTaxi = _isTaxiBusiness(data);
                   final businessStatus =
                       data['businessStatus']?.toString() ?? 'open';
                   return Card(
@@ -761,138 +656,31 @@ class MerchantDashboard extends StatelessWidget {
                                   const TextStyle(fontWeight: FontWeight.w900)),
                           subtitle: Text(data['category']?.toString() ?? ''),
                         ),
-                        if (data['ownerId']?.toString() == user.uid) ...[
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: AppTheme.coolYellow.withOpacity(.12),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  isTaxi ? 'مديرو مكتب التكسي' : 'مديرو المحل',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w900,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                const Text(
-                                  'أضف أكثر من شخص بالإيميل لإدارة نفس المحل بحسابه الخاص.',
-                                  style: TextStyle(
-                                    color: Colors.black54,
-                                    height: 1.4,
-                                  ),
-                                ),
-                                if (data['managerEmails'] is List &&
-                                    (data['managerEmails'] as List)
-                                        .isNotEmpty) ...[
-                                  const SizedBox(height: 8),
-                                  Wrap(
-                                    spacing: 7,
-                                    runSpacing: 7,
-                                    children: (data['managerEmails'] as List)
-                                        .map((value) => value.toString())
-                                        .where((email) => email.isNotEmpty)
-                                        .map(
-                                          (email) => InputChip(
-                                            label: Text(email),
-                                            onDeleted: () =>
-                                                _removeBusinessManager(
-                                              context,
-                                              business.id,
-                                              email,
-                                            ),
-                                          ),
-                                        )
-                                        .toList(),
-                                  ),
-                                ],
-                                const SizedBox(height: 8),
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: OutlinedButton.icon(
-                                    onPressed: () => _addBusinessManager(
-                                      context,
-                                      business.id,
-                                    ),
-                                    icon: const Icon(
-                                      Icons.person_add_alt_1_rounded,
-                                    ),
-                                    label: Text(
-                                      isTaxi
-                                          ? 'إضافة مدير لمكتب التكسي بالإيميل'
-                                          : 'إضافة مدير للمحل بالإيميل',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w900,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                        ],
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String>(
-                          value: isTaxi
-                              ? (const ['open', 'busy', 'closed']
-                                      .contains(businessStatus)
-                                  ? businessStatus
-                                  : 'open')
-                              : (const ['open', 'busy', 'closed', 'coming_soon']
-                                      .contains(businessStatus)
-                                  ? businessStatus
-                                  : 'open'),
-                          decoration: InputDecoration(
-                            labelText: isTaxi
-                                ? 'حالة مكتب التكسي'
-                                : 'حالة المحل للزبائن',
-                            prefixIcon: Icon(
-                              isTaxi
-                                  ? Icons.local_taxi_outlined
-                                  : Icons.store_mall_directory_outlined,
-                            ),
+                          value: const ['open', 'busy', 'closed', 'coming_soon']
+                                  .contains(businessStatus)
+                              ? businessStatus
+                              : 'open',
+                          decoration: const InputDecoration(
+                            labelText: 'حالة المحل للزبائن',
+                            prefixIcon:
+                                Icon(Icons.store_mall_directory_outlined),
                           ),
-                          items: isTaxi
-                              ? const [
-                                  DropdownMenuItem(
-                                    value: 'open',
-                                    child: Text('متاح — يستقبل طلبات التكسي'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 'busy',
-                                    child:
-                                        Text('مشغول — قد يتأخر إرسال السيارة'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 'closed',
-                                    child: Text('غير متاح — لا يستقبل طلبات'),
-                                  ),
-                                ]
-                              : const [
-                                  DropdownMenuItem(
-                                    value: 'open',
-                                    child: Text('مفتوح — يستقبل الطلبات'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 'busy',
-                                    child: Text('مشغول — قد يتأخر الطلب'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 'closed',
-                                    child: Text('مغلق — لا يستقبل طلبات'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 'coming_soon',
-                                    child:
-                                        Text('قريبًا — يظهر دون استقبال طلبات'),
-                                  ),
-                                ],
+                          items: const [
+                            DropdownMenuItem(
+                                value: 'open',
+                                child: Text('مفتوح — يستقبل الطلبات')),
+                            DropdownMenuItem(
+                                value: 'busy',
+                                child: Text('مشغول — قد يتأخر الطلب')),
+                            DropdownMenuItem(
+                                value: 'closed',
+                                child: Text('مغلق — لا يستقبل طلبات')),
+                            DropdownMenuItem(
+                                value: 'coming_soon',
+                                child: Text('قريبًا — لم يفتتح بعد')),
+                          ],
                           onChanged: (value) {
                             if (value != null) {
                               business.reference
@@ -900,55 +688,32 @@ class MerchantDashboard extends StatelessWidget {
                             }
                           },
                         ),
-                        if (!isTaxi)
-                          SwitchListTile.adaptive(
-                            contentPadding: EdgeInsets.zero,
-                            title: const Text(
-                              'إظهار متجري في «جديد في بركة»',
-                              style: TextStyle(fontWeight: FontWeight.w900),
-                            ),
-                            subtitle: const Text(
-                              'يمكنك إزالته عندما لا يعود المتجر جديدًا',
-                            ),
-                            secondary: const Icon(Icons.new_releases_rounded),
-                            value: data['isNewInBarakah'] == true,
-                            onChanged: (value) => business.reference.update({
-                              'isNewInBarakah': value,
-                              'updatedAt': FieldValue.serverTimestamp(),
-                            }),
-                          ),
-                        if (!isTaxi) ...[
-                          const SizedBox(height: 8),
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton.icon(
-                              onPressed: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => RestaurantDetailsScreen(
-                                    restaurant: business,
-                                  ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => RestaurantDetailsScreen(
+                                  restaurant: business,
                                 ),
                               ),
-                              icon: const Icon(Icons.visibility_outlined),
-                              label: const Text(
-                                'عرض متجري كما يراه الزبون',
-                                style: TextStyle(fontWeight: FontWeight.w800),
-                              ),
+                            ),
+                            icon: const Icon(Icons.visibility_outlined),
+                            label: const Text(
+                              'عرض متجري كما يراه الزبون',
+                              style: TextStyle(fontWeight: FontWeight.w800),
                             ),
                           ),
-                        ],
+                        ),
                         const SizedBox(height: 8),
                         SizedBox(
                           width: double.infinity,
                           child: OutlinedButton.icon(
                             onPressed: () => _editBusiness(context, business),
                             icon: const Icon(Icons.edit_outlined),
-                            label: Text(
-                              isTaxi
-                                  ? 'تعديل بيانات مكتب التكسي'
-                                  : 'تعديل بيانات محلي',
-                            ),
+                            label: const Text('تعديل بيانات محلي'),
                           ),
                         ),
                         if (data['type']?.toString().toLowerCase() ==
@@ -1042,42 +807,47 @@ class MerchantDashboard extends StatelessWidget {
                             },
                           ),
                         ],
-                        if (!isTaxi) ...[
-                          const SizedBox(height: 8),
-                          SizedBox(
-                            width: double.infinity,
-                            child: FilledButton.icon(
-                              onPressed: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => AdminManageProducts(
-                                    initialBusinessId: business.id,
-                                    initialBusinessTitle:
-                                        data['title']?.toString(),
-                                    ownerUid: user.uid,
-                                  ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.icon(
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => AdminManageProducts(
+                                  initialBusinessId: business.id,
+                                  initialBusinessTitle:
+                                      data['title']?.toString(),
+                                  ownerUid: user.uid,
                                 ),
                               ),
-                              icon: const Icon(Icons.inventory_2_outlined),
-                              label: const Text('إدارة المنتجات والأسعار'),
+                            ),
+                            icon: const Icon(Icons.inventory_2_outlined),
+                            label: const Text('إدارة المنتجات والأسعار'),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.forum_outlined),
+                            label: const Text('رسائل عملاء المحل'),
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => MerchantSupportInbox(
+                                  businessId: business.id,
+                                  businessTitle:
+                                      data['title']?.toString() ?? 'المحل',
+                                ),
+                              ),
                             ),
                           ),
-                        ],
+                        ),
                         const SizedBox(height: 8),
-                        if (data['kind']?.toString() == 'agent') ...[
-                          _MerchantAgentOrders(agentId: business.id),
-                          AgentEarningsPanel(agentId: business.id),
-                          const SizedBox(height: 8),
-                        ],
-                        if (_isTaxiBusiness(data)) ...[
-                          _MerchantTaxiOrders(businessId: business.id),
-                          const SizedBox(height: 8),
-                        ],
-                        if (!isTaxi) ...[
-                          _MerchantCoupons(businessId: business.id),
-                          const SizedBox(height: 8),
-                          _MerchantOrders(businessId: business.id),
-                        ],
+                        _MerchantCoupons(businessId: business.id),
+                        const SizedBox(height: 8),
+                        _MerchantOrders(businessId: business.id),
                         if (data['type']?.toString().toLowerCase() ==
                             'barber') ...[
                           const SizedBox(height: 8),
@@ -1099,857 +869,6 @@ class MerchantDashboard extends StatelessWidget {
           );
         },
       ),
-    );
-  }
-}
-
-bool _isTaxiBusiness(Map<String, dynamic> data) {
-  final type = data['type']?.toString().toLowerCase().trim() ?? '';
-  final merchantType =
-      data['merchantType']?.toString().toLowerCase().trim() ?? '';
-  final category = data['category']?.toString().toLowerCase().trim() ?? '';
-  final activity = data['activityType']?.toString().toLowerCase().trim() ?? '';
-  final title =
-      (data['title'] ?? data['name'])?.toString().toLowerCase().trim() ?? '';
-
-  return type == 'taxi' ||
-      merchantType == 'taxi' ||
-      category.contains('تكسي') ||
-      category.contains('تاكسي') ||
-      category.contains('taxi') ||
-      activity.contains('تكسي') ||
-      activity.contains('تاكسي') ||
-      activity.contains('taxi') ||
-      title.contains('تكسي') ||
-      title.contains('تاكسي');
-}
-
-class _MerchantTaxiOrders extends StatelessWidget {
-  const _MerchantTaxiOrders({required this.businessId});
-
-  final String businessId;
-
-  String _statusLabel(String status) => switch (status) {
-        'pending' => 'بانتظار إرسال سيارة',
-        'dispatched' => 'تم إرسال السيارة',
-        'awaiting_customer_confirmation' => 'بانتظار تأكيد العميل',
-        'completed' => 'رحلة مكتملة',
-        'cancelled' => 'ملغي',
-        _ => status,
-      };
-
-  Future<void> _dispatch(
-    BuildContext context,
-    String orderId,
-  ) async {
-    try {
-      final driversSnapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .where('role', isEqualTo: 'driver')
-          .where('taxiDriverEnabled', isEqualTo: true)
-          .where('taxiBusinessId', isEqualTo: businessId)
-          .get();
-
-      if (!context.mounted) return;
-
-      final drivers = driversSnapshot.docs;
-
-      if (drivers.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'لا يوجد سائق تكسي معتمد مرتبط بهذا المكتب. اربط سائقًا بالمكتب أولًا.',
-            ),
-            backgroundColor: Colors.orange,
-          ),
-        );
-        return;
-      }
-
-      final vehicleController = TextEditingController();
-      final etaController = TextEditingController(text: '5');
-      String? selectedDriverUid;
-
-      final result = await showDialog<Map<String, dynamic>>(
-        context: context,
-        builder: (dialogContext) => StatefulBuilder(
-          builder: (dialogContext, setDialogState) {
-            Map<String, dynamic>? selectedDriver;
-
-            if (selectedDriverUid != null) {
-              for (final doc in drivers) {
-                if (doc.id == selectedDriverUid) {
-                  selectedDriver = doc.data();
-                  break;
-                }
-              }
-            }
-
-            final storedVehicle = selectedDriver == null
-                ? ''
-                : (selectedDriver['vehicleInfo'] ??
-                        selectedDriver['vehicle'] ??
-                        selectedDriver['carInfo'] ??
-                        '')
-                    .toString()
-                    .trim();
-
-            return AlertDialog(
-              title: const Text('تعيين سائق وإرسال السيارة'),
-              content: SizedBox(
-                width: 460,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      DropdownButtonFormField<String>(
-                        value: selectedDriverUid,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          labelText: 'السائق',
-                          prefixIcon: Icon(Icons.person_pin_circle_outlined),
-                        ),
-                        items: drivers.map((doc) {
-                          final data = doc.data();
-
-                          final name = (data['displayName'] ??
-                                  data['name'] ??
-                                  data['fullName'] ??
-                                  'سائق بركة')
-                              .toString()
-                              .trim();
-
-                          final phone =
-                              (data['phone'] ?? data['phoneNumber'] ?? '')
-                                  .toString()
-                                  .trim();
-
-                          return DropdownMenuItem<String>(
-                            value: doc.id,
-                            child: Text(
-                              phone.isEmpty ? name : '$name — $phone',
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          );
-                        }).toList(),
-                        onChanged: (value) {
-                          setDialogState(() {
-                            selectedDriverUid = value;
-
-                            if (value != null) {
-                              for (final doc in drivers) {
-                                if (doc.id == value) {
-                                  final data = doc.data();
-                                  final vehicle = (data['vehicleInfo'] ??
-                                          data['vehicle'] ??
-                                          data['carInfo'] ??
-                                          '')
-                                      .toString()
-                                      .trim();
-
-                                  if (vehicle.isNotEmpty) {
-                                    vehicleController.text = vehicle;
-                                  }
-                                  break;
-                                }
-                              }
-                            }
-                          });
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: vehicleController,
-                        decoration: InputDecoration(
-                          labelText: 'بيانات السيارة',
-                          hintText: storedVehicle.isEmpty
-                              ? 'مثال: سكودا أبيض - رقم 1234'
-                              : storedVehicle,
-                          prefixIcon: const Icon(Icons.local_taxi_rounded),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: etaController,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'وقت الوصول المتوقع بالدقائق',
-                          prefixIcon: Icon(Icons.timer_outlined),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('تراجع'),
-                ),
-                FilledButton.icon(
-                  icon: const Icon(Icons.local_taxi_rounded),
-                  label: const Text('تعيين السائق وإرسال السيارة'),
-                  onPressed: () {
-                    final driverUid = selectedDriverUid?.trim() ?? '';
-                    final vehicle = vehicleController.text.trim();
-                    final eta = int.tryParse(etaController.text.trim());
-
-                    if (driverUid.isEmpty) {
-                      ScaffoldMessenger.of(dialogContext).showSnackBar(
-                        const SnackBar(
-                          content: Text('اختر السائق أولًا.'),
-                        ),
-                      );
-                      return;
-                    }
-
-                    if (vehicle.isEmpty) {
-                      ScaffoldMessenger.of(dialogContext).showSnackBar(
-                        const SnackBar(
-                          content: Text('أدخل بيانات السيارة.'),
-                        ),
-                      );
-                      return;
-                    }
-
-                    if (eta == null || eta < 1 || eta > 240) {
-                      ScaffoldMessenger.of(dialogContext).showSnackBar(
-                        const SnackBar(
-                          content:
-                              Text('أدخل وقت وصول صحيحًا من 1 إلى 240 دقيقة.'),
-                        ),
-                      );
-                      return;
-                    }
-
-                    Navigator.pop(dialogContext, {
-                      'driverUid': driverUid,
-                      'vehicle': vehicle,
-                      'eta': eta,
-                    });
-                  },
-                ),
-              ],
-            );
-          },
-        ),
-      );
-
-      vehicleController.dispose();
-      etaController.dispose();
-
-      if (result == null || !context.mounted) return;
-
-      await TaxiOrderService.instance.dispatchTaxi(
-        orderId: orderId,
-        driverUid: result['driverUid'].toString(),
-        vehicleInfo: result['vehicle'].toString(),
-        etaMinutes: result['eta'] as int,
-      );
-
-      if (!context.mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تم تعيين السائق وإرسال السيارة للعميل ✅'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    } catch (e) {
-      if (!context.mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'تعذر تعيين السائق: '
-            '${e.toString().replaceFirst('Bad state: ', '')}',
-          ),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  Future<void> _complete(
-    BuildContext context,
-    String orderId,
-  ) async {
-    final fareController = TextEditingController();
-
-    final fareAmount = await showDialog<double>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('إنهاء رحلة التكسي'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'أدخل أجرة الرحلة الفعلية. سيحسب خادم بركة العمولة تلقائيًا حسب نسبة المكتب.',
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: fareController,
-              autofocus: true,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: const InputDecoration(
-                labelText: 'أجرة الرحلة',
-                hintText: 'مثال: 30',
-                prefixIcon: Icon(Icons.payments_outlined),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('تراجع'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final normalized =
-                  fareController.text.trim().replaceAll(',', '.');
-              final value = double.tryParse(normalized);
-
-              if (value == null || value <= 0 || value > 100000) {
-                ScaffoldMessenger.of(dialogContext).showSnackBar(
-                  const SnackBar(
-                    content: Text('أدخل أجرة رحلة صحيحة.'),
-                  ),
-                );
-                return;
-              }
-
-              Navigator.pop(dialogContext, value);
-            },
-            child: const Text('تسجيل انتهاء الرحلة'),
-          ),
-        ],
-      ),
-    );
-
-    fareController.dispose();
-
-    if (fareAmount == null || !context.mounted) return;
-
-    try {
-      await TaxiOrderService.instance.completeTrip(
-        orderId: orderId,
-        fareAmount: fareAmount,
-      );
-
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'تم تسجيل انتهاء المشوار، وبانتظار تأكيد العميل ✅',
-          ),
-          backgroundColor: Colors.green,
-        ),
-      );
-    } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('تعذر إنهاء الرحلة: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  Future<void> _cancel(
-    BuildContext context,
-    String orderId,
-  ) async {
-    final reasonController = TextEditingController();
-
-    final reason = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('إلغاء طلب التكسي'),
-        content: TextField(
-          controller: reasonController,
-          maxLines: 2,
-          decoration: const InputDecoration(
-            labelText: 'سبب الإلغاء',
-            hintText: 'مثال: لا توجد سيارة متاحة حاليًا',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('تراجع'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(
-              dialogContext,
-              reasonController.text.trim(),
-            ),
-            child: const Text('تأكيد الإلغاء'),
-          ),
-        ],
-      ),
-    );
-
-    reasonController.dispose();
-
-    if (reason == null || !context.mounted) return;
-
-    try {
-      await TaxiOrderService.instance.cancelTrip(
-        orderId: orderId,
-        reason: reason,
-      );
-
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('تم إلغاء الطلب.')),
-      );
-    } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('تعذر إلغاء الطلب: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ExpansionTile(
-      leading: const Icon(Icons.local_taxi_rounded),
-      title: const Text(
-        'طلبات تكسي بركة',
-        style: TextStyle(fontWeight: FontWeight.w900),
-      ),
-      subtitle: const Text(
-        'استقبال الطلبات وإرسال السيارة وتوثيق الرحلات',
-      ),
-      children: [
-        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: TaxiOrderService.instance.watchBusinessOrders(businessId),
-          builder: (context, snapshot) {
-            if (snapshot.hasError) {
-              return Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  'تعذر تحميل طلبات التكسي: ${snapshot.error}',
-                ),
-              );
-            }
-
-            if (!snapshot.hasData) {
-              return const Padding(
-                padding: EdgeInsets.all(20),
-                child: CircularProgressIndicator(),
-              );
-            }
-
-            final orders = snapshot.data!.docs.toList()
-              ..sort((a, b) {
-                final aTime = a.data()['createdAt'];
-                final bTime = b.data()['createdAt'];
-
-                final aDate =
-                    aTime is Timestamp ? aTime.toDate() : DateTime(1970);
-                final bDate =
-                    bTime is Timestamp ? bTime.toDate() : DateTime(1970);
-
-                return bDate.compareTo(aDate);
-              });
-
-            if (orders.isEmpty) {
-              return const Padding(
-                padding: EdgeInsets.all(18),
-                child: Text(
-                  'لا توجد طلبات تكسي حتى الآن.',
-                  textAlign: TextAlign.center,
-                ),
-              );
-            }
-
-            return Column(
-              children: orders.map((doc) {
-                final data = doc.data();
-                final status = data['status']?.toString() ?? 'pending';
-                final customer = data['customerName']?.toString().trim() ?? '';
-                final phone = data['customerPhone']?.toString().trim() ?? '';
-                final pickup = data['pickupAddress']?.toString().trim() ?? '';
-                final destination =
-                    data['destination']?.toString().trim() ?? '';
-                final notes = data['notes']?.toString().trim() ?? '';
-                final vehicle =
-                    data['dispatchedVehicle']?.toString().trim() ?? '';
-                final eta = data['dispatchedEtaMinutes'];
-                final fareAmount = data['fareAmount'];
-                final commissionRate = data['commissionRate'];
-                final commissionAmount = data['commissionAmount'];
-
-                return Card(
-                  margin: const EdgeInsets.fromLTRB(8, 6, 8, 10),
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                data['orderNumber']?.toString() ?? 'طلب تكسي',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 16,
-                                ),
-                              ),
-                            ),
-                            Chip(label: Text(_statusLabel(status))),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          customer.isEmpty
-                              ? 'العميل: عميل بركة'
-                              : 'العميل: $customer',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        if (phone.isNotEmpty) Text('الهاتف: $phone'),
-                        const SizedBox(height: 8),
-                        Text(
-                          'موقع الركوب: ${pickup.isEmpty ? "غير محدد" : pickup}',
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'الوجهة: ${destination.isEmpty ? "غير محددة" : destination}',
-                        ),
-                        if (notes.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text('ملاحظات: $notes'),
-                        ],
-                        if (vehicle.isNotEmpty) ...[
-                          const Divider(height: 22),
-                          Text(
-                            'السيارة: $vehicle',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          if (eta != null)
-                            Text('وقت الوصول المتوقع: $eta دقائق'),
-                        ],
-                        if ((status == 'awaiting_customer_confirmation' ||
-                                status == 'completed') &&
-                            fareAmount != null &&
-                            commissionRate != null &&
-                            commissionAmount != null) ...[
-                          const SizedBox(height: 12),
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade100,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'أجرة الرحلة: $fareAmount ₪',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                Text(
-                                  'نسبة عمولة بركة: $commissionRate%',
-                                ),
-                                Text(
-                                  'عمولة بركة: $commissionAmount ₪',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                if (status == 'awaiting_customer_confirmation')
-                                  const Padding(
-                                    padding: EdgeInsets.only(top: 6),
-                                    child: Text(
-                                      'العمولة بانتظار تأكيد وصول العميل.',
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 12),
-                        if (status == 'pending')
-                          FilledButton.icon(
-                            onPressed: () => _dispatch(
-                              context,
-                              doc.id,
-                            ),
-                            icon: const Icon(
-                              Icons.local_taxi_rounded,
-                            ),
-                            label: const Text('إرسال سيارة'),
-                          ),
-                        if (status == 'dispatched')
-                          FilledButton.icon(
-                            onPressed: () => _complete(
-                              context,
-                              doc.id,
-                            ),
-                            icon: const Icon(
-                              Icons.check_circle_outline,
-                            ),
-                            label: const Text(
-                              'إنهاء المشوار وإدخال الأجرة',
-                            ),
-                          ),
-                        if (status == 'pending' || status == 'dispatched') ...[
-                          const SizedBox(height: 6),
-                          OutlinedButton.icon(
-                            onPressed: () => _cancel(
-                              context,
-                              doc.id,
-                            ),
-                            icon: const Icon(
-                              Icons.close_rounded,
-                              color: Colors.red,
-                            ),
-                            label: const Text(
-                              'إلغاء الطلب',
-                              style: TextStyle(color: Colors.red),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                );
-              }).toList(),
-            );
-          },
-        ),
-      ],
-    );
-  }
-}
-
-class _MerchantAgentOrders extends StatelessWidget {
-  const _MerchantAgentOrders({required this.agentId});
-
-  final String agentId;
-
-  String _statusLabel(String status) => switch (status) {
-        'accepted' => 'تم القبول',
-        'completed' => 'مكتمل',
-        'rejected' => 'مرفوض',
-        _ => 'بانتظار الرد',
-      };
-
-  @override
-  Widget build(BuildContext context) {
-    return ExpansionTile(
-      leading: const Icon(Icons.shopping_bag_outlined),
-      title: const Text(
-        'طلبات الوسيطة',
-        style: TextStyle(fontWeight: FontWeight.w900),
-      ),
-      children: [
-        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-          stream: FirebaseFirestore.instance
-              .collection('agent_orders')
-              .where('agentId', isEqualTo: agentId)
-              .snapshots(),
-          builder: (context, snapshot) {
-            final orders = (snapshot.data?.docs ?? []).toList()
-              ..sort((a, b) {
-                final aTime = a.data()['createdAt'];
-                final bTime = b.data()['createdAt'];
-                final aMillis =
-                    aTime is Timestamp ? aTime.millisecondsSinceEpoch : 0;
-                final bMillis =
-                    bTime is Timestamp ? bTime.millisecondsSinceEpoch : 0;
-                return bMillis.compareTo(aMillis);
-              });
-            if (orders.isEmpty) {
-              return const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text('لا توجد طلبات للوسيطة بعد.'),
-              );
-            }
-            return Column(
-              children: orders.map((order) {
-                final data = order.data();
-                final status = data['status']?.toString() ?? 'pending';
-                return Card(
-                  margin: const EdgeInsets.fromLTRB(8, 4, 8, 8),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          data['details']?.toString() ?? '',
-                          style: const TextStyle(fontWeight: FontWeight.w900),
-                        ),
-                        const SizedBox(height: 6),
-                        Text('الهاتف: ${data['customerPhone'] ?? ''}'),
-                        Text('العنوان: ${data['deliveryAddress'] ?? ''}'),
-                        Text('الدفع: عند الاستلام'),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Chip(label: Text(_statusLabel(status))),
-                            const Spacer(),
-                            if (status == 'accepted')
-                              FilledButton.icon(
-                                onPressed: () async {
-                                  final controller = TextEditingController();
-
-                                  final code = await showDialog<String>(
-                                    context: context,
-                                    builder: (dialogContext) {
-                                      return AlertDialog(
-                                        title: const Text(
-                                          'تأكيد التسليم',
-                                        ),
-                                        content: TextField(
-                                          controller: controller,
-                                          autofocus: true,
-                                          maxLength: 6,
-                                          keyboardType: TextInputType.number,
-                                          decoration: const InputDecoration(
-                                            labelText: 'رمز التسليم',
-                                            hintText:
-                                                'أدخل رمز العميل المكوّن من 6 أرقام',
-                                          ),
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () => Navigator.pop(
-                                              dialogContext,
-                                            ),
-                                            child: const Text('إلغاء'),
-                                          ),
-                                          FilledButton(
-                                            onPressed: () => Navigator.pop(
-                                              dialogContext,
-                                              controller.text.trim(),
-                                            ),
-                                            child: const Text('تأكيد'),
-                                          ),
-                                        ],
-                                      );
-                                    },
-                                  );
-
-                                  controller.dispose();
-
-                                  if (code == null || code.isEmpty) {
-                                    return;
-                                  }
-
-                                  try {
-                                    await AgentOrderService().completeDelivery(
-                                      orderId: order.id,
-                                      code: code,
-                                    );
-
-                                    if (!context.mounted) return;
-
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'تم تأكيد التسليم وتسجيل مستحق الوسيطة ✅',
-                                        ),
-                                      ),
-                                    );
-                                  } catch (error) {
-                                    if (!context.mounted) return;
-
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          error is StateError
-                                              ? error.message.toString()
-                                              : 'تعذر تأكيد التسليم.',
-                                        ),
-                                        backgroundColor: Colors.red,
-                                      ),
-                                    );
-                                  }
-                                },
-                                icon: const Icon(
-                                  Icons.verified_rounded,
-                                ),
-                                label: const Text(
-                                  'تأكيد التسليم',
-                                ),
-                              )
-                            else if (status == 'pending')
-                              PopupMenuButton<String>(
-                                onSelected: (value) async {
-                                  try {
-                                    await AgentOrderService().updateStatus(
-                                      orderId: order.id,
-                                      status: value,
-                                    );
-
-                                    if (!context.mounted) return;
-
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          value == 'accepted'
-                                              ? 'تم قبول الطلب ✅'
-                                              : 'تم رفض الطلب.',
-                                        ),
-                                      ),
-                                    );
-                                  } catch (error) {
-                                    if (!context.mounted) return;
-
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          error is StateError
-                                              ? error.message.toString()
-                                              : 'تعذر تحديث طلب الوسيطة.',
-                                        ),
-                                        backgroundColor: Colors.red,
-                                      ),
-                                    );
-                                  }
-                                },
-                                itemBuilder: (_) => const [
-                                  PopupMenuItem(
-                                    value: 'accepted',
-                                    child: Text('قبول الطلب'),
-                                  ),
-                                  PopupMenuItem(
-                                    value: 'rejected',
-                                    child: Text('رفض الطلب'),
-                                  ),
-                                ],
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }).toList(),
-            );
-          },
-        ),
-      ],
     );
   }
 }
@@ -2269,9 +1188,10 @@ class _MerchantBarberBookings extends StatelessWidget {
             const SnackBar(content: Text('تم تحديث حالة الموعد ✅')));
       }
     } catch (_) {
-      if (context.mounted)
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('تعذر تحديث الموعد.'), backgroundColor: Colors.red));
+      }
     }
   }
 
@@ -2288,10 +1208,11 @@ class _MerchantBarberBookings extends StatelessWidget {
             stream:
                 BarberBookingService.instance.watchMerchantBookings(businessId),
             builder: (context, snapshot) {
-              if (!snapshot.hasData)
+              if (!snapshot.hasData) {
                 return const Padding(
                     padding: EdgeInsets.all(16),
                     child: CircularProgressIndicator());
+              }
               final bookings = snapshot.data!.docs.toList()
                 ..sort((a, b) => ((a.data()['scheduledAt'] as Timestamp?)
                             ?.millisecondsSinceEpoch ??
@@ -2299,10 +1220,11 @@ class _MerchantBarberBookings extends StatelessWidget {
                     .compareTo((b.data()['scheduledAt'] as Timestamp?)
                             ?.millisecondsSinceEpoch ??
                         0));
-              if (bookings.isEmpty)
+              if (bookings.isEmpty) {
                 return const Padding(
                     padding: EdgeInsets.all(16),
                     child: Text('لا توجد حجوزات مواعيد حتى الآن.'));
+              }
               return Column(
                   children: bookings.take(30).map((booking) {
                 final data = booking.data();
@@ -2408,7 +1330,6 @@ class _MerchantOrders extends StatelessWidget {
     'accepted': 'تم القبول',
     'preparing': 'قيد التحضير',
     'ready': 'جاهز للسائق',
-    'awaiting_driver': 'بانتظار سائق',
     'driver_assigned': 'تم تعيين سائق',
     'picked_up': 'مع السائق',
     'delivered': 'تم التسليم',
@@ -2497,6 +1418,7 @@ class _MerchantOrders extends StatelessWidget {
                           Text(
                             '${status == 'ready' && deliveryMethod == 'pickup' ? 'جاهز للاستلام' : labels[status] ?? status} • ${data['total'] ?? 0} ₪',
                           ),
+                          OrderDetails(data: data),
                           const SizedBox(height: 6),
                           Container(
                             width: double.infinity,

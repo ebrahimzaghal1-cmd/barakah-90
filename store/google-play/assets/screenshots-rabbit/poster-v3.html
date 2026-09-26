@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    @font-face { font-family: Cairo; src: url("Cairo-Regular.ttf") format("truetype"); }
+    * { box-sizing: border-box; }
+    html,body { margin:0; width:1080px; height:1920px; overflow:hidden; }
+    body { font-family:Cairo,"Geeza Pro",sans-serif; }
+    .poster { position:relative; width:1080px; height:1920px; overflow:hidden; isolation:isolate; background:#f5ce52; }
+    .bg { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:-6; filter:saturate(1.08) brightness(1.02); }
+    .veil { position:absolute; inset:0; z-index:-5; background:linear-gradient(180deg,rgba(255,255,255,.10) 0,rgba(255,255,255,.02) 40%,rgba(1,19,51,.10) 100%); }
+    .halo { position:absolute; z-index:-3; left:50%; top:480px; width:900px; height:1320px; transform:translateX(-50%); border-radius:50%; background:radial-gradient(ellipse,rgba(255,255,255,.62),rgba(255,255,255,.12) 57%,transparent 73%); }
+
+    .brand { position:absolute; z-index:20; top:42px; right:45px; display:flex; align-items:center; gap:13px; height:76px; padding:8px 18px 8px 9px; border-radius:24px; color:#fff; background:#071d43; border:2px solid #f6cf50; box-shadow:0 13px 32px rgba(0,19,54,.24); font-size:25px; font-weight:900; }
+    .brand img { width:59px; height:59px; border-radius:16px; }
+    .series { position:absolute; z-index:20; top:62px; left:48px; padding:7px 17px; border-radius:999px; color:#071d43; background:#ffe16a; font-size:19px; font-weight:900; box-shadow:0 8px 20px rgba(0,0,0,.12); }
+
+    .copy { position:absolute; z-index:15; top:145px; left:48px; right:48px; text-align:center; color:var(--title); text-shadow:0 4px 18px var(--shadow); }
+    .eyebrow { display:inline-block; min-width:230px; padding:10px 27px; margin-bottom:16px; border-radius:999px; color:var(--pillText); background:var(--pill); border:2px solid rgba(255,255,255,.75); box-shadow:0 12px 26px rgba(0,0,0,.15); font-size:25px; line-height:1.3; font-weight:900; }
+    h1 { margin:0; font-size:74px; line-height:1.10; letter-spacing:-1px; font-weight:900; }
+    .subtitle { width:850px; margin:15px auto 0; color:var(--sub); font-size:29px; line-height:1.52; font-weight:800; text-shadow:0 3px 12px var(--shadow); }
+
+    .background-screens { position:absolute; z-index:0; inset:545px 0 80px; overflow:hidden; }
+    .shot { position:absolute; width:365px; height:760px; object-fit:cover; object-position:top; border:12px solid rgba(255,255,255,.92); border-radius:44px; box-shadow:0 28px 55px rgba(3,24,56,.30); filter:saturate(1.08); opacity:.88; }
+    .shot.a { left:-112px; top:110px; transform:rotate(-8deg); }
+    .shot.b { right:-112px; top:25px; transform:rotate(8deg); }
+    .shot.c { left:-135px; top:875px; transform:rotate(-5deg); width:390px; height:450px; object-position:center 76%; opacity:.73; }
+    .shot.d { right:-135px; top:835px; transform:rotate(5deg); width:390px; height:490px; object-position:center 30%; opacity:.73; }
+
+    .phone { position:absolute; z-index:7; left:50%; top:575px; width:548px; height:1085px; transform:translateX(-50%); padding:18px; border-radius:75px; background:linear-gradient(145deg,#344155,#020409 36%,#17253d); border:4px solid #f5d057; box-shadow:0 45px 80px rgba(0,20,51,.42),0 0 0 4px rgba(255,255,255,.65),inset 0 0 0 2px rgba(255,255,255,.28); }
+    .phone::before { content:""; position:absolute; z-index:10; top:17px; left:50%; width:170px; height:43px; transform:translateX(-50%); border-radius:28px; background:#030509; }
+    .screen { width:100%; height:100%; object-fit:cover; object-position:var(--screenPos); border-radius:56px; background:#fff; }
+    .shine { position:absolute; inset:18px; border-radius:56px; background:linear-gradient(112deg,rgba(255,255,255,.17),transparent 27%,transparent 80%,rgba(255,255,255,.08)); pointer-events:none; }
+
+    .mascot { position:absolute; z-index:12; width:var(--mascotW); left:var(--mascotL); right:var(--mascotR); bottom:var(--mascotB); filter:drop-shadow(0 24px 22px rgba(1,20,48,.30)); }
+    .footer { position:absolute; z-index:14; left:50%; bottom:48px; min-width:560px; max-width:820px; transform:translateX(-50%); padding:17px 34px; border-radius:28px; text-align:center; color:#fff; background:linear-gradient(135deg,#071d43,#123d78); border:2px solid #f6d45e; box-shadow:0 18px 40px rgba(0,18,48,.30); font-size:25px; line-height:1.4; font-weight:900; }
+    .card-slide .mascot { width:500px; right:-55px; bottom:45px; }
+    .card-slide .phone { left:43%; }
+    .card-slide .shot.b { display:none; }
+  </style>
+</head>
+<body>
+  <main id="poster" class="poster">
+    <img id="bg" class="bg" alt=""><div class="veil"></div><div class="halo"></div>
+    <div class="brand"><span>بركة <bdi>Barakah</bdi></span><img src="app-icon.png" alt=""></div>
+    <div id="series" class="series"></div>
+    <section class="copy"><div id="eyebrow" class="eyebrow"></div><h1 id="title"></h1><p id="subtitle" class="subtitle"></p></section>
+    <div class="background-screens">
+      <img id="shotA" class="shot a" alt=""><img id="shotB" class="shot b" alt=""><img id="shotC" class="shot c" alt=""><img id="shotD" class="shot d" alt="">
+    </div>
+    <div class="phone"><img id="screen" class="screen" alt=""><div class="shine"></div></div>
+    <img id="mascot" class="mascot" alt="">
+    <div id="footer" class="footer"></div>
+  </main>
+  <script>
+    const slides = [
+      {bg:'bg-01.png', screen:'screen-home.jpg', shots:['screen-market.jpg','screen-profile.jpg','screen-cart.jpg','screen-home.jpg'], mascot:'bunny-standing.png', series:'اكتشف بركة', eyebrow:'كل خدماتك بمكان واحد', title:'كل البركة\nبين إيديك', subtitle:'مطاعم، ماركت، طلبات ومزايا أكثر في تطبيق واحد', footer:'ابدأ تجربتك مع أرنب بركة', titleColor:'#ffffff', sub:'#ffffff', pill:'#ffe166', pillText:'#071d43', shadow:'rgba(0,20,48,.42)', screenPos:'top', mascotW:'310px', mascotR:'-34px', mascotL:'auto', mascotB:'35px'},
+      {bg:'bg-02.png', screen:'screen-market.jpg', shots:['screen-home.jpg','screen-cart.jpg','screen-profile.jpg','screen-market.jpg'], mascot:'bunny-shopping.png', series:'ماركت بركة', eyebrow:'كل اللي تحتاجه قريب منك', title:'ماركت بركة\nبين إيديك', subtitle:'تسوّق من منتجات مجتمع بركة واكتشف خيارات جديدة', footer:'اختيارات أكثر… بخطوات أسهل', titleColor:'#ffffff', sub:'#ffffff', pill:'#ffe96f', pillText:'#57132f', shadow:'rgba(80,7,39,.48)', screenPos:'top', mascotW:'300px', mascotL:'-28px', mascotR:'auto', mascotB:'45px'},
+      {bg:'bg-03.png', screen:'screen-profile.jpg', shots:['screen-profile.jpg','screen-home.jpg','screen-market.jpg','screen-cart.jpg'], mascot:'bunny-card.png', series:'مزايا بركة', eyebrow:'مكافآت ونقاط', title:'بطاقة بركة\nتكافئك', subtitle:'اجمع نقاط بركة مع طلباتك واستفد من مزاياك', footer:'كل طلب يقرّبك من مكافأتك', titleColor:'#ffffff', sub:'#ffffff', pill:'#ffd74c', pillText:'#40116d', shadow:'rgba(45,4,86,.50)', screenPos:'top', mascotW:'500px', mascotR:'-55px', mascotL:'auto', mascotB:'45px', klass:'card-slide'},
+      {bg:'bg-04.png', screen:'screen-cart.jpg', shots:['screen-cart.jpg','screen-market.jpg','screen-profile.jpg','screen-home.jpg'], mascot:'bunny-order.png', series:'سلة بركة', eyebrow:'راجع طلبك بسهولة', title:'سلّتك مرتبة\nوجاهزة', subtitle:'أضف منتجاتك، راجع التفاصيل وأكمل الطلب بثقة', footer:'كل تفاصيل طلبك واضحة قدامك', titleColor:'#ffffff', sub:'#ffffff', pill:'#ffcb3f', pillText:'#07366c', shadow:'rgba(1,38,83,.48)', screenPos:'top', mascotW:'295px', mascotR:'-20px', mascotL:'auto', mascotB:'42px'},
+      {bg:'bg-05.png', screen:'screen-home.jpg', shots:['screen-market.jpg','screen-cart.jpg','screen-profile.jpg','screen-home.jpg'], mascot:'bunny-offers.png', series:'عروض بركة', eyebrow:'وفر أكثر كل يوم', title:'عروض مختارة\nتفرّحك', subtitle:'تابع أحدث الخصومات والفرص من مجتمع بركة', footer:'لا تفوّت أفضل الاختيارات', titleColor:'#073a31', sub:'#073a31', pill:'#ffffff', pillText:'#073a31', shadow:'rgba(255,255,255,.56)', screenPos:'center 27%', mascotW:'300px', mascotL:'-18px', mascotR:'auto', mascotB:'48px'},
+      {bg:'bg-06.png', screen:'screen-profile.jpg', shots:['screen-profile.jpg','screen-market.jpg','screen-cart.jpg','screen-home.jpg'], mascot:'bunny-favorites.png', series:'حسابك ومفضلاتك', eyebrow:'كل شيء محفوظ', title:'مفضلاتك\nدايمًا معك', subtitle:'احفظ ما تحبه وارجع له بسرعة من حسابك', footer:'تجربة مصممة على ذوقك', titleColor:'#ffffff', sub:'#ffffff', pill:'#ffe169', pillText:'#6a194c', shadow:'rgba(89,9,57,.50)', screenPos:'center 38%', mascotW:'290px', mascotR:'-18px', mascotL:'auto', mascotB:'45px'},
+      {bg:'bg-07.png', screen:'screen-cart.jpg', shots:['screen-cart.jpg','screen-market.jpg','screen-profile.jpg','screen-home.jpg'], mascot:'bunny-delivery.png', series:'من الاختيار للاستلام', eyebrow:'طلب أسهل وأسرع', title:'اطلبها\nبطريقتك', subtitle:'اختر منتجاتك وأكمل طلبك بخطوات واضحة ومريحة', footer:'بركة معك من البداية للنهاية', titleColor:'#ffffff', sub:'#ffffff', pill:'#071d43', pillText:'#ffe16a', shadow:'rgba(86,25,0,.45)', screenPos:'center 66%', mascotW:'320px', mascotL:'-30px', mascotR:'auto', mascotB:'34px'}
+    ];
+    const n=Math.max(1,Math.min(7,Number(new URLSearchParams(location.search).get('slide')||1))),s=slides[n-1],p=document.getElementById('poster');
+    if(s.klass)p.classList.add(s.klass);
+    [['--title',s.titleColor],['--sub',s.sub],['--pill',s.pill],['--pillText',s.pillText],['--shadow',s.shadow],['--screenPos',s.screenPos],['--mascotW',s.mascotW],['--mascotL',s.mascotL],['--mascotR',s.mascotR],['--mascotB',s.mascotB]].forEach(([k,v])=>p.style.setProperty(k,v));
+    document.getElementById('bg').src=s.bg;
+    document.getElementById('screen').src=s.screen;
+    document.getElementById('mascot').src=s.mascot;
+    document.getElementById('series').textContent=s.series;
+    document.getElementById('eyebrow').textContent=s.eyebrow;
+    document.getElementById('title').innerHTML=s.title.replace(/\n/g,'<br>');
+    document.getElementById('subtitle').textContent=s.subtitle;
+    document.getElementById('footer').textContent=s.footer;
+    ['shotA','shotB','shotC','shotD'].forEach((id,i)=>document.getElementById(id).src=s.shots[i]);
+  </script>
+</body>
+</html>

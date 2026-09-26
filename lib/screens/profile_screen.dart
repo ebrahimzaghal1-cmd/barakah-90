@@ -1,3 +1,6 @@
+import 'mediator_join_screen.dart';
+import 'mediators_screen.dart';
+import 'mediator_orders_screen.dart';
 import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -455,6 +458,34 @@ class _ProfileBody extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 12),
+        ListTile(
+            leading: const Icon(Icons.map_outlined),
+            title: const Text('وسيطات بركة'),
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const MediatorsScreen()))),
+        ListTile(
+            leading: const Icon(Icons.receipt_long),
+            title: const Text('طلباتي من الوسيطات'),
+            onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const MediatorOrdersScreen()))),
+        if (data['role'] == 'admin')
+          ListTile(
+              title: const Text('إدارة طلبات الوسيطات والمستحقات'),
+              onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) =>
+                          const MediatorOrdersScreen(admin: true)))),
+        if (isMerchant)
+          ListTile(
+              title: const Text('طلبات الوسيطة وأرباحي'),
+              onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) =>
+                          const MediatorOrdersScreen(mediator: true)))),
         if (isMerchant) ...[
           SizedBox(
             width: double.infinity,
@@ -541,6 +572,25 @@ class _ProfileBody extends StatelessWidget {
           icon: Icons.more_horiz_rounded,
           child: Column(
             children: [
+              _ProfileMenuTile(
+                  icon: Icons.person_add_alt_1,
+                  title: 'الانضمام كوسيطة',
+                  subtitle:
+                      'الخصوصية والاتفاق ثم مراجعة الإدارة • عمولة بركة 5% من الأجرة',
+                  onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const MediatorJoinScreen()))),
+              if (data['role'] == 'admin')
+                _ProfileMenuTile(
+                    icon: Icons.fact_check_outlined,
+                    title: 'طلبات انضمام الوسيطات',
+                    subtitle: 'مراجعة الطلبات والموافقات',
+                    onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) =>
+                                const MediatorApplicationsScreen()))),
               _ProfileMenuTile(
                 icon: Icons.storefront_rounded,
                 title: 'الانضمام كشريك',

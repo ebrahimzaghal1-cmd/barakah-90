@@ -1,3 +1,4 @@
+import 'mediator_orders_screen.dart';
 import 'dart:ui';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -7,14 +8,11 @@ import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../theme/app_theme.dart';
-import '../services/cart_service.dart';
 import '../widgets/barakah_brand.dart';
 import '../widgets/business_rating.dart';
 import '../widgets/favorite_button.dart';
 import '../widgets/barber_booking_section.dart';
-import '../widgets/taxi_booking_section.dart';
-import 'cart_screen.dart';
-import 'agent_order_screen.dart';
+import 'product_details_screen.dart';
 import 'customer_support_chat_screen.dart';
 
 class RestaurantDetailsScreen extends StatelessWidget {
@@ -54,23 +52,8 @@ class RestaurantDetailsScreen extends StatelessWidget {
         categoryValue.contains('barber') ||
         activityValue.contains('حلاق') ||
         activityValue.contains('barber');
-    final isTaxi = typeValue == 'taxi' ||
-        merchantType == 'taxi' ||
-        categoryValue.contains('تكسي') ||
-        categoryValue.contains('تاكسي') ||
-        categoryValue.contains('taxi') ||
-        activityValue.contains('تكسي') ||
-        activityValue.contains('تاكسي') ||
-        name.contains('تكسي') ||
-        name.contains('تاكسي');
-    final agentLocation =
-        (data['agentLocation'] ?? data['address'])?.toString().trim() ?? '';
-
-    final isPhoneLikeDesc = description != null &&
-        RegExp(r'^[0-9+\s\-()]{5,}$').hasMatch(description.trim());
-    final displayDescription = isTaxi && (isPhoneLikeDesc || description == null || description.isEmpty)
-        ? 'خدمة التاكسي السريع والمباشر بكبسة زر في طولكرم وضواحيها. طلب التاكسي يتم مباشرة عبر التطبيق لحفظ حقوقك وتوثيق الرحلة بأمان.'
-        : (description?.isNotEmpty == true ? description! : 'لا يوجد وصف متوفر حالياً.');
+    final agentLocation = data['agentLocation']?.toString().trim() ?? '';
+    final merchantId = data['ownerId']?.toString().trim() ?? '';
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -112,7 +95,9 @@ class RestaurantDetailsScreen extends StatelessWidget {
                             fontWeight: FontWeight.w700)),
                     const SizedBox(height: 18),
                     Text(
-                      displayDescription,
+                      description?.isNotEmpty == true
+                          ? description!
+                          : 'لا يوجد وصف متوفر حالياً.',
                       style: const TextStyle(
                         color: AppTheme.ink,
                         fontSize: 17,
@@ -124,26 +109,14 @@ class RestaurantDetailsScreen extends StatelessWidget {
                       const Text('بيانات الوسيط أو الوسيطة',
                           style: TextStyle(
                               fontSize: 21, fontWeight: FontWeight.w900)),
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.support_agent_rounded),
-                        title: const Text(
-                          'تواصل مع الوسيطة عبر خدمة عملاء بركة',
-                          style: TextStyle(fontWeight: FontWeight.w900),
-                        ),
-                        subtitle: const Text(
-                          'رقم الهاتف خاص ولا يظهر للمستخدمين',
-                        ),
-                        trailing: const Icon(Icons.chat_rounded),
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute<void>(
-                            builder: (_) => CustomerSupportChatScreen(
-                              initialMessage:
-                                  'أرغب بالتواصل مع الوسيطة $name (المعرّف: ${_businessId!}).',
-                            ),
-                          ),
-                        ),
+                      FilledButton.icon(
+                        icon: const Icon(Icons.shopping_bag_outlined),
+                        label: const Text('طلب وسيطة من داخل بركة'),
+                        onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => MediatorOrderForm(
+                                    businessId: _businessId!, business: data))),
                       ),
                       if (agentLocation.isNotEmpty)
                         ListTile(
@@ -155,31 +128,6 @@ class RestaurantDetailsScreen extends StatelessWidget {
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          for (final link in <(String, IconData, Object?)>[
-                            ('واتساب', Icons.chat_rounded, data['whatsappUrl']),
-                            (
-                              'إنستغرام',
-                              Icons.camera_alt_outlined,
-                              data['instagramUrl']
-                            ),
-                            (
-                              'فيسبوك',
-                              Icons.facebook_rounded,
-                              data['facebookUrl']
-                            ),
-                            (
-                              'الموقع',
-                              Icons.language_rounded,
-                              data['websiteUrl']
-                            ),
-                          ])
-                            if (link.$3?.toString().trim().isNotEmpty == true)
-                              OutlinedButton.icon(
-                                icon: Icon(link.$2),
-                                label: Text(link.$1),
-                                onPressed: () => _openLink(
-                                    context, link.$3.toString().trim()),
-                              ),
                           OutlinedButton.icon(
                             icon: const Icon(Icons.qr_code_2_rounded),
                             label: const Text('QR الصفحة'),
@@ -187,29 +135,6 @@ class RestaurantDetailsScreen extends StatelessWidget {
                                 _showAgentQr(context, _businessId!, name),
                           ),
                         ],
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: FilledButton.icon(
-                          onPressed: () => Navigator.push(
-                            context,
-                            MaterialPageRoute<void>(
-                              builder: (_) => AgentOrderScreen(
-                                agentId: _businessId!,
-                                agent: data,
-                              ),
-                            ),
-                          ),
-                          icon: const Icon(Icons.shopping_bag_outlined),
-                          label: const Text(
-                            'اطلب الآن من الوسيطة',
-                            style: TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ),
                       ),
                     ],
                     if (latitude != null && longitude != null) ...[
@@ -222,7 +147,7 @@ class RestaurantDetailsScreen extends StatelessWidget {
                           label: const Text('الاتجاهات إلى المكان'),
                           onPressed: () async {
                             final mapUrl = Uri.parse(
-                                'https://www.google.com/maps/dir/?api=1&destination=$latitude,$longitude');
+                                'https://www.google.com/maps/dir/?api=1&hl=ar&destination=$latitude,$longitude');
                             if (!await launchUrl(mapUrl,
                                     mode: LaunchMode.externalApplication) &&
                                 context.mounted) {
@@ -237,6 +162,27 @@ class RestaurantDetailsScreen extends StatelessWidget {
                     ],
                     if (_businessId != null) ...[
                       const SizedBox(height: 18),
+                      if (merchantId.isNotEmpty) ...[
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: FilledButton.icon(
+                            icon: const Icon(Icons.chat_bubble_outline_rounded),
+                            label: Text('مراسلة $name'),
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => CustomerSupportChatScreen(
+                                  businessId: _businessId!,
+                                  businessTitle: name,
+                                  merchantId: merchantId,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
                       SizedBox(
                         width: double.infinity,
                         child: RateBusinessButton(
@@ -262,8 +208,6 @@ class RestaurantDetailsScreen extends StatelessWidget {
                           businessId: _businessId!,
                           business: data,
                         ),
-                      ] else if (isTaxi) ...[
-                        const TaxiBookingSection(),
                       ] else ...[
                         const Text(
                           'المنتجات والأسعار',
@@ -274,9 +218,7 @@ class RestaurantDetailsScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 12),
-                        _BusinessProducts(
-                            businessId: _businessId!,
-                            isMarket: typeValue == 'market'),
+                        _BusinessProducts(businessId: _businessId!),
                       ],
                     ],
                   ],
@@ -287,16 +229,6 @@ class RestaurantDetailsScreen extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  Future<void> _openLink(BuildContext context, String value) async {
-    final normalized = value.startsWith('http') ? value : 'https://$value';
-    if (!await launchUrl(Uri.parse(normalized),
-            mode: LaunchMode.externalApplication) &&
-        context.mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('تعذر فتح الرابط.')));
-    }
   }
 
   Future<void> _showAgentQr(
@@ -327,11 +259,7 @@ class RestaurantDetailsScreen extends StatelessWidget {
 }
 
 class _BusinessProducts extends StatelessWidget {
-  const _BusinessProducts(
-      {required this.businessId,
-      this.horizontal = false,
-      this.isMarket = false});
-  final bool isMarket;
+  const _BusinessProducts({required this.businessId, this.horizontal = false});
   final String businessId;
   final bool horizontal;
 
@@ -370,180 +298,102 @@ class _BusinessProducts extends StatelessWidget {
             final price = data['price'] ?? 0;
             return GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () => showProductPurchaseOptions(
+              onTap: () => Navigator.push(
                 context,
-                product.id,
-                data,
-                isMarket: isMarket,
+                MaterialPageRoute(
+                  builder: (_) => ProductDetailsScreen(
+                    productId: product.id,
+                    product: data,
+                  ),
+                ),
               ),
               child: Container(
-                margin: const EdgeInsets.only(bottom: 14),
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(.94),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: AppTheme.coolYellow.withOpacity(.6),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(.06),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: double.infinity,
-                      height: 170,
+                    color: Colors.white.withOpacity(.82),
+                    borderRadius: BorderRadius.circular(18),
+                    border:
+                        Border.all(color: AppTheme.coolYellow.withOpacity(.6))),
+                child: Row(children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: SizedBox(
+                      width: 72,
+                      height: 72,
                       child: image.isEmpty
                           ? const ColoredBox(
                               color: AppTheme.coolYellow,
-                              child: Center(
-                                child: Icon(
-                                  Icons.fastfood_rounded,
-                                  size: 48,
-                                  color: AppTheme.navy,
-                                ),
-                              ),
-                            )
-                          : Image.network(
-                              image,
+                              child: Icon(Icons.fastfood_rounded))
+                          : Image.network(image,
                               fit: BoxFit.cover,
                               errorBuilder: (_, __, ___) => const ColoredBox(
-                                color: AppTheme.coolYellow,
-                                child: Center(
-                                  child: Icon(
-                                    Icons.broken_image_outlined,
-                                    size: 44,
-                                    color: AppTheme.navy,
-                                  ),
-                                ),
-                              ),
-                            ),
+                                  color: AppTheme.coolYellow,
+                                  child: Icon(Icons.broken_image_outlined))),
                     ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                      child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    title,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 21,
-                                      fontWeight: FontWeight.w900,
-                                      color: AppTheme.navy,
-                                      height: 1.15,
-                                    ),
-                                  ),
-                                  if (description.isNotEmpty) ...[
-                                    const SizedBox(height: 5),
-                                    Text(
-                                      description,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: Colors.black54,
-                                        fontSize: 13.5,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    '$price ₪',
-                                    style: const TextStyle(
-                                      color: AppTheme.deepYellow,
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 5),
-                                  BusinessRating(
-                                    businessId: product.id,
-                                    fallbackRating: data['rating'],
-                                    compact: true,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            IconButton(
-                              tooltip: 'قيّم الصنف',
-                              color: const Color(0xFFFFB800),
-                              icon: const Icon(Icons.star_rate_rounded),
-                              onPressed: () => showModalBottomSheet<void>(
-                                context: context,
-                                builder: (_) => SafeArea(
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(18),
-                                    child: RateBusinessButton(
-                                      businessId: product.id,
-                                      businessName: title,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            FavoriteButton(
-                              itemId: product.id,
-                              item: data,
-                              backgroundColor: AppTheme.navy,
-                            ),
-                            const SizedBox(width: 4),
-                            Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton.filledTonal(
-                                  tooltip: 'أضف للسلة',
-                                  icon: const Icon(
-                                      Icons.add_shopping_cart_rounded),
-                                  onPressed: () {
-                                    try {
-                                      CartService.instance
-                                          .addProduct(product.id, data);
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        const SnackBar(
-                                            content:
-                                                Text('تمت الإضافة للسلة ✅')),
-                                      );
-                                    } on StateError catch (error) {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        SnackBar(
-                                          content:
-                                              Text(error.message.toString()),
-                                          backgroundColor: Colors.orange,
-                                        ),
-                                      );
-                                    }
-                                  },
-                                ),
-                                IconButton.filled(
-                                  style: IconButton.styleFrom(
-                                    backgroundColor: AppTheme.deepYellow,
-                                    foregroundColor: Colors.white,
-                                  ),
-                                  tooltip: 'شراء الآن',
-                                  icon: const Icon(Icons.shopping_bag_rounded),
-                                  onPressed: () =>
-                                      buyProductNow(context, product.id, data),
-                                ),
-                              ],
-                            ),
-                          ]),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(title,
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w900)),
+                          if (description.isNotEmpty)
+                            Text(description,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: Colors.black54)),
+                          const SizedBox(height: 5),
+                          Text('$price ₪',
+                              style: const TextStyle(
+                                  color: AppTheme.deepYellow,
+                                  fontWeight: FontWeight.w900)),
+                          const SizedBox(height: 4),
+                          BusinessRating(
+                            businessId: product.id,
+                            fallbackRating: data['rating'],
+                            compact: true,
+                          ),
+                        ]),
+                  ),
+                  IconButton(
+                    tooltip: 'قيّم الصنف',
+                    color: const Color(0xFFFFB800),
+                    icon: const Icon(Icons.star_rate_rounded),
+                    onPressed: () => showModalBottomSheet<void>(
+                      context: context,
+                      builder: (_) => SafeArea(
+                        child: Padding(
+                          padding: const EdgeInsets.all(18),
+                          child: RateBusinessButton(
+                            businessId: product.id,
+                            businessName: title,
+                          ),
+                        ),
+                      ),
                     ),
-                  ],
-                ),
+                  ),
+                  FavoriteButton(
+                    itemId: product.id,
+                    item: data,
+                    backgroundColor: AppTheme.navy,
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton.filled(
+                    style: IconButton.styleFrom(
+                        backgroundColor: AppTheme.deepYellow,
+                        foregroundColor: Colors.white),
+                    tooltip: 'أضف للسلة',
+                    icon: const Icon(Icons.add_shopping_cart_rounded),
+                    onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => ProductDetailsScreen(
+                                productId: product.id, product: data))),
+                  ),
+                ]),
               ),
             );
           }).toList();

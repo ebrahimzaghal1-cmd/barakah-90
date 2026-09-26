@@ -655,3 +655,5 @@ exports.aggregateBusinessRating = onDocumentWritten(
     }
   },
 );
+
+exports.mediatorAction = require('./mediator').mediatorAction;

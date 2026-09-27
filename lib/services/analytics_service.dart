@@ -7,7 +7,7 @@ class AnalyticsService {
 
   static final AnalyticsService instance = AnalyticsService._();
 
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  FirebaseFirestore get _firestore => FirebaseFirestore.instance;
   final Random _random = Random.secure();
 
   String? _sessionId;

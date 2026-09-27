@@ -854,7 +854,8 @@ class _TurquoiseQuickLinks extends StatelessWidget {
                 context,
                 MaterialPageRoute(builder: (_) => const AllItemsScreen()),
               ),
-            ),          ],
+            ),
+          ],
         ),
         const SizedBox(height: 8),
         Row(

@@ -131,6 +131,88 @@ class AdminManageOrders extends StatelessWidget {
     };
   }
 
+  String _formatAuditDate(dynamic value) {
+    DateTime? date;
+
+    if (value is Timestamp) {
+      date = value.toDate().toLocal();
+    } else if (value is DateTime) {
+      date = value.toLocal();
+    }
+
+    if (date == null) return '';
+
+    String two(int value) => value.toString().padLeft(2, '0');
+
+    final hour12 = date.hour % 12 == 0 ? 12 : date.hour % 12;
+    final period = date.hour >= 12 ? 'م' : 'ص';
+
+    return '${two(date.day)}/${two(date.month)}/${date.year}'
+        ' — $hour12:${two(date.minute)} $period';
+  }
+
+  Widget _orderTimeline(Map<String, dynamic> data) {
+    final events = <MapEntry<String, dynamic>>[
+      MapEntry('تم إنشاء الطلب', data['createdAt']),
+      MapEntry('تم قبول الطلب', data['acceptedAt']),
+      MapEntry('بدأ التحضير', data['preparingAt']),
+      MapEntry('أصبح الطلب جاهزاً', data['readyAt']),
+      MapEntry(
+        'تم تعيين السائق',
+        data['driverAssignedAt'] ?? data['driverAcceptedAt'],
+      ),
+      MapEntry('استلم السائق الطلب', data['pickedUpAt']),
+      MapEntry('تم رفض الطلب', data['rejectedAt']),
+      MapEntry('تم إلغاء الطلب', data['cancelledAt']),
+      MapEntry('تم تسليم الطلب', data['deliveredAt']),
+    ].where((event) => _formatAuditDate(event.value).isNotEmpty).toList();
+
+    if (events.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(.025),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.black.withOpacity(.06)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'سجل الطلب',
+            style: TextStyle(fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 5),
+          ...events.map(
+            (event) => Padding(
+              padding: const EdgeInsets.only(top: 5),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.access_time_rounded,
+                    size: 17,
+                    color: Colors.black54,
+                  ),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: Text(
+                      '${event.key}: ${_formatAuditDate(event.value)}',
+                      style: const TextStyle(height: 1.35),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _customerInfoCard(Map<String, dynamic> data) {
     return FutureBuilder<Map<String, dynamic>>(
       future: _loadCustomerSummary(data),
@@ -397,6 +479,7 @@ class AdminManageOrders extends StatelessWidget {
                 children: [
                   const Divider(),
                   _customerInfoCard(data),
+                  _orderTimeline(data),
                   ...lines.map((line) {
                     final item = line is Map
                         ? Map<String, dynamic>.from(line)

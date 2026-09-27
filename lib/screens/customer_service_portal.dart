@@ -2,8 +2,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../services/chat_media_service.dart';
 import '../services/customer_service_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/chat_media_widgets.dart';
 
 class CustomerServicePortal extends StatelessWidget {
   const CustomerServicePortal({super.key});
@@ -283,11 +285,13 @@ class _AgentThreadScreen extends StatefulWidget {
 
 class _AgentThreadScreenState extends State<_AgentThreadScreen> {
   final _message = TextEditingController();
+  final _media = ChatMediaDraft();
   bool _busy = false;
 
   @override
   void dispose() {
     _message.dispose();
+    _media.dispose();
     super.dispose();
   }
 
@@ -302,12 +306,26 @@ class _AgentThreadScreenState extends State<_AgentThreadScreen> {
   }
 
   Future<void> _send() async {
-    if (_message.text.trim().isEmpty || _busy) return;
+    if (_busy ||
+        _media.isBusy ||
+        (_message.text.trim().isEmpty && !_media.hasAttachment)) {
+      return;
+    }
     setState(() => _busy = true);
     final text = _message.text;
-    _message.clear();
     try {
-      await CustomerServiceService().sendAgentMessage(widget.threadId, text);
+      final media = await _media.upload();
+      if (!mounted) return;
+      await CustomerServiceService().sendAgentMessage(
+        widget.threadId,
+        text,
+        imageUrl: media['imageUrl'],
+        videoUrl: media['videoUrl'],
+        mediaType: media['mediaType'],
+      );
+      if (!mounted) return;
+      _message.clear();
+      _media.clear();
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -385,9 +403,11 @@ class _AgentThreadScreenState extends State<_AgentThreadScreen> {
                           color: mine ? AppTheme.navy : Colors.white,
                           borderRadius: BorderRadius.circular(17),
                         ),
-                        child: Text(data['text']?.toString() ?? '',
-                            style: TextStyle(
-                                color: mine ? Colors.white : Colors.black87)),
+                        child: ChatMessageContent(
+                          data: data,
+                          textStyle: TextStyle(
+                              color: mine ? Colors.white : Colors.black87),
+                        ),
                       ),
                     );
                   },
@@ -395,23 +415,36 @@ class _AgentThreadScreenState extends State<_AgentThreadScreen> {
               },
             ),
           ),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _message,
-                      decoration: const InputDecoration(hintText: 'اكتب الرد…'),
+          ListenableBuilder(
+            listenable: _media,
+            builder: (context, _) => SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ChatMediaPicker(draft: _media, enabled: !_busy),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _message,
+                            enabled: !_busy && !_media.isBusy,
+                            minLines: 1,
+                            maxLines: 4,
+                            decoration:
+                                const InputDecoration(hintText: 'اكتب الرد…'),
+                          ),
+                        ),
+                        IconButton.filled(
+                          onPressed: _busy || _media.isBusy ? null : _send,
+                          icon: const Icon(Icons.send_rounded),
+                        ),
+                      ],
                     ),
-                  ),
-                  IconButton.filled(
-                    onPressed: _busy ? null : _send,
-                    icon: const Icon(Icons.send_rounded),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

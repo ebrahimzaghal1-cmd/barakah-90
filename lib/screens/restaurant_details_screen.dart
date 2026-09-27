@@ -63,14 +63,22 @@ class RestaurantDetailsScreen extends StatelessWidget {
         activityValue.contains('تاكسي') ||
         name.contains('تكسي') ||
         name.contains('تاكسي');
+    // اسم مكتب التكسي الحقيقي يبقى داخلياً للإدارة والمكتب.
+    // العميل يرى جميع مكاتب التكسي تحت علامة واحدة فقط: تكسي بركة.
+    final displayName = isTaxi ? 'تكسي بركة' : name;
+    final displayCategory = isTaxi ? 'خدمة تكسي بركة' : category;
+
     final agentLocation =
         (data['agentLocation'] ?? data['address'])?.toString().trim() ?? '';
 
     final isPhoneLikeDesc = description != null &&
         RegExp(r'^[0-9+\s\-()]{5,}$').hasMatch(description.trim());
-    final displayDescription = isTaxi && (isPhoneLikeDesc || description == null || description.isEmpty)
+    final displayDescription = isTaxi &&
+            (isPhoneLikeDesc || description == null || description.isEmpty)
         ? 'خدمة التاكسي السريع والمباشر بكبسة زر في طولكرم وضواحيها. طلب التاكسي يتم مباشرة عبر التطبيق لحفظ حقوقك وتوثيق الرحلة بأمان.'
-        : (description?.isNotEmpty == true ? description! : 'لا يوجد وصف متوفر حالياً.');
+        : (description?.isNotEmpty == true
+            ? description!
+            : 'لا يوجد وصف متوفر حالياً.');
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -83,8 +91,11 @@ class RestaurantDetailsScreen extends StatelessWidget {
               backgroundColor: AppTheme.navy,
               foregroundColor: Colors.white,
               flexibleSpace: FlexibleSpaceBar(
-                background:
-                    _GlassCover(image: image, title: name, category: category),
+                background: _GlassCover(
+                  image: image,
+                  title: displayName,
+                  category: displayCategory,
+                ),
               ),
             ),
             SliverToBoxAdapter(
@@ -95,7 +106,7 @@ class RestaurantDetailsScreen extends StatelessWidget {
                   children: [
                     Row(children: [
                       Expanded(
-                        child: Text(name,
+                        child: Text(displayName,
                             style: const TextStyle(
                                 fontSize: 27, fontWeight: FontWeight.w900)),
                       ),
@@ -106,7 +117,7 @@ class RestaurantDetailsScreen extends StatelessWidget {
                         ),
                     ]),
                     const SizedBox(height: 8),
-                    Text(category,
+                    Text(displayCategory,
                         style: const TextStyle(
                             color: Colors.black54,
                             fontWeight: FontWeight.w700)),
@@ -241,7 +252,7 @@ class RestaurantDetailsScreen extends StatelessWidget {
                         width: double.infinity,
                         child: RateBusinessButton(
                           businessId: _businessId!,
-                          businessName: name,
+                          businessName: displayName,
                         ),
                       ),
                       const SizedBox(height: 30),
@@ -263,11 +274,7 @@ class RestaurantDetailsScreen extends StatelessWidget {
                           business: data,
                         ),
                       ] else if (isTaxi) ...[
-                        TaxiBookingSection(
-                          businessId: _businessId!,
-                          businessName: name,
-                          business: data,
-                        ),
+                        const TaxiBookingSection(),
                       ] else ...[
                         const Text(
                           'المنتجات والأسعار',

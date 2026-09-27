@@ -144,9 +144,25 @@ class _DoctorClinicScreenState extends State<DoctorClinicScreen> {
     }
     setState(() => _sending = true);
     try {
+      final profileSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+      final profile = profileSnapshot.data() ?? <String, dynamic>{};
+
+      final patientName =
+          (profile['displayName'] ?? user.displayName ?? '').toString().trim();
+      final patientPhone =
+          (profile['phone'] ?? user.phoneNumber ?? '').toString().trim();
+      final patientEmail =
+          (profile['email'] ?? user.email ?? '').toString().trim();
+
       await FirebaseFirestore.instance.collection('doctor_consultations').add({
         'doctorId': widget.doctor.id,
         'patientId': user.uid,
+        'patientName': patientName,
+        'patientPhone': patientPhone,
+        'patientEmail': patientEmail,
         'message': _consultation.text.trim(),
         'status': 'pending',
         'createdAt': FieldValue.serverTimestamp(),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../services/driver_service.dart';
 import '../theme/app_theme.dart';
 import 'authentication_screen.dart';
+import 'legal_documents_screen.dart';
 
 class DriverRegistrationScreen extends StatefulWidget {
   const DriverRegistrationScreen({super.key});
@@ -14,7 +15,7 @@ class DriverRegistrationScreen extends StatefulWidget {
 }
 
 class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
-  static const _agreementVersion = '2026-08-17-v1';
+  static const _agreementVersion = '2026-09-02-v2';
 
   final _formKey = GlobalKey<FormState>();
 
@@ -379,7 +380,22 @@ class _DriverRegistrationScreenState extends State<DriverRegistrationScreen> {
                   ),
                 ),
                 subtitle: const Text(
-                  'الإصدار 2026-08-17-v1',
+                  'الإصدار 2026-09-02-v2',
+                ),
+              ),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: TextButton.icon(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const LegalDocumentScreen(
+                        type: LegalDocumentType.driverTerms,
+                      ),
+                    ),
+                  ),
+                  icon: const Icon(Icons.description_outlined),
+                  label: const Text('عرض وثيقة شروط السائق والربط بالمكتب'),
                 ),
               ),
               CheckboxListTile(

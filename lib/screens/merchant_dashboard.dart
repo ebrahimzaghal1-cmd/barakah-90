@@ -17,6 +17,8 @@ import '../theme/app_theme.dart';
 import '../services/agent_order_service.dart';
 import '../widgets/agent_earnings_panel.dart';
 
+import '../services/taxi_office_driver_service.dart';
+
 class MerchantDashboard extends StatelessWidget {
   const MerchantDashboard({super.key});
 
@@ -1098,16 +1100,11 @@ class _MerchantTaxiOrders extends StatelessWidget {
     String orderId,
   ) async {
     try {
-      final driversSnapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .where('role', isEqualTo: 'driver')
-          .where('taxiDriverEnabled', isEqualTo: true)
-          .where('taxiBusinessId', isEqualTo: businessId)
-          .get();
+      final drivers = await TaxiOfficeDriverService.instance.listDrivers(
+        businessId: businessId,
+      );
 
       if (!context.mounted) return;
-
-      final drivers = driversSnapshot.docs;
 
       if (drivers.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2211,6 +2208,25 @@ class _MerchantBarberBookings extends StatelessWidget {
     'no_show': 'لم يحضر',
   };
 
+  String _formatAppointmentAuditDate(dynamic value) {
+    DateTime? date;
+
+    if (value is Timestamp) {
+      date = value.toDate().toLocal();
+    } else if (value is DateTime) {
+      date = value.toLocal();
+    }
+
+    if (date == null) return '';
+
+    String two(int value) => value.toString().padLeft(2, '0');
+    final hour12 = date.hour % 12 == 0 ? 12 : date.hour % 12;
+    final period = date.hour >= 12 ? 'م' : 'ص';
+
+    return '${two(date.day)}/${two(date.month)}/${date.year}'
+        ' — $hour12:${two(date.minute)} $period';
+  }
+
   Future<void> _setStatus(
       BuildContext context, String id, String status) async {
     try {
@@ -2262,6 +2278,7 @@ class _MerchantBarberBookings extends StatelessWidget {
                   children: bookings.take(30).map((booking) {
                 final data = booking.data();
                 final status = data['status']?.toString() ?? 'pending';
+                final email = data['customerEmail']?.toString().trim() ?? '';
                 final scheduled = (data['scheduledAt'] as Timestamp?)?.toDate();
                 final date = scheduled == null
                     ? data['dateKey']?.toString() ?? ''
@@ -2272,9 +2289,51 @@ class _MerchantBarberBookings extends StatelessWidget {
                     title: Text(
                         '${data['customerName'] ?? 'زبون'} — ${data['serviceTitle'] ?? 'خدمة'}',
                         style: const TextStyle(fontWeight: FontWeight.w900)),
-                    subtitle: Text(
-                        '$date\n${data['customerPhone'] ?? ''} • ${_labels[status] ?? status}\nقيمة: ${data['price'] ?? 0} ₪ — عمولة بركة: ${data['commissionAmount'] ?? 0} ₪'),
-                    isThreeLine: true,
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('موعد الخدمة: $date'),
+                        if ('${data['customerPhone'] ?? ''}'.trim().isNotEmpty)
+                          Text('الهاتف: ${data['customerPhone']}'),
+                        if (email.isNotEmpty) Text('الإيميل: $email'),
+                        Text('الحالة: ${_labels[status] ?? status}'),
+                        Text(
+                          'قيمة الخدمة: ${data['price'] ?? 0} ₪ — '
+                          'عمولة بركة: ${data['commissionAmount'] ?? 0} ₪',
+                        ),
+                        const SizedBox(height: 6),
+                        if (_formatAppointmentAuditDate(data['createdAt'])
+                            .isNotEmpty)
+                          Text(
+                            'إنشاء الحجز: '
+                            '${_formatAppointmentAuditDate(data['createdAt'])}',
+                          ),
+                        if (_formatAppointmentAuditDate(data['confirmedAt'])
+                            .isNotEmpty)
+                          Text(
+                            'تأكيد الحجز: '
+                            '${_formatAppointmentAuditDate(data['confirmedAt'])}',
+                          ),
+                        if (_formatAppointmentAuditDate(data['completedAt'])
+                            .isNotEmpty)
+                          Text(
+                            'إكمال الخدمة: '
+                            '${_formatAppointmentAuditDate(data['completedAt'])}',
+                          ),
+                        if (_formatAppointmentAuditDate(data['cancelledAt'])
+                            .isNotEmpty)
+                          Text(
+                            'إلغاء الحجز: '
+                            '${_formatAppointmentAuditDate(data['cancelledAt'])}',
+                          ),
+                        if (_formatAppointmentAuditDate(data['noShowAt'])
+                            .isNotEmpty)
+                          Text(
+                            'تسجيل عدم الحضور: '
+                            '${_formatAppointmentAuditDate(data['noShowAt'])}',
+                          ),
+                      ],
+                    ),
                     trailing: PopupMenuButton<String>(
                       onSelected: (value) =>
                           _setStatus(context, booking.id, value),
@@ -2299,6 +2358,25 @@ class _MerchantBarberBookings extends StatelessWidget {
 class _MerchantDoctorConsultations extends StatelessWidget {
   const _MerchantDoctorConsultations({required this.doctorId});
   final String doctorId;
+
+  String _formatConsultationDate(dynamic value) {
+    DateTime? date;
+
+    if (value is Timestamp) {
+      date = value.toDate().toLocal();
+    } else if (value is DateTime) {
+      date = value.toLocal();
+    }
+
+    if (date == null) return '';
+
+    String two(int value) => value.toString().padLeft(2, '0');
+    final hour12 = date.hour % 12 == 0 ? 12 : date.hour % 12;
+    final period = date.hour >= 12 ? 'م' : 'ص';
+
+    return '${two(date.day)}/${two(date.month)}/${date.year}'
+        ' — $hour12:${two(date.minute)} $period';
+  }
 
   @override
   Widget build(BuildContext context) => ExpansionTile(
@@ -2330,12 +2408,60 @@ class _MerchantDoctorConsultations extends StatelessWidget {
                   child: ListTile(
                     title: Text(data['message']?.toString() ?? '',
                         maxLines: 3, overflow: TextOverflow.ellipsis),
-                    subtitle: Text('الحالة: ${data['status'] ?? 'pending'}'),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if ('${data['patientName'] ?? ''}'.trim().isNotEmpty)
+                          Text('المريض: ${data['patientName']}'),
+                        if ('${data['patientPhone'] ?? ''}'.trim().isNotEmpty)
+                          Text('الهاتف: ${data['patientPhone']}'),
+                        if ('${data['patientEmail'] ?? ''}'.trim().isNotEmpty)
+                          Text('الإيميل: ${data['patientEmail']}'),
+                        Text('الحالة: ${data['status'] ?? 'pending'}'),
+                        const SizedBox(height: 6),
+                        if (_formatConsultationDate(data['createdAt'])
+                            .isNotEmpty)
+                          Text(
+                            'إرسال الاستشارة: '
+                            '${_formatConsultationDate(data['createdAt'])}',
+                          ),
+                        if (_formatConsultationDate(data['inProgressAt'])
+                            .isNotEmpty)
+                          Text(
+                            'بدء المتابعة: '
+                            '${_formatConsultationDate(data['inProgressAt'])}',
+                          ),
+                        if (_formatConsultationDate(data['answeredAt'])
+                            .isNotEmpty)
+                          Text(
+                            'تم الرد: '
+                            '${_formatConsultationDate(data['answeredAt'])}',
+                          ),
+                        if (_formatConsultationDate(data['closedAt'])
+                            .isNotEmpty)
+                          Text(
+                            'إغلاق الاستشارة: '
+                            '${_formatConsultationDate(data['closedAt'])}',
+                          ),
+                      ],
+                    ),
                     trailing: PopupMenuButton<String>(
-                      onSelected: (status) => doc.reference.update({
-                        'status': status,
-                        'updatedAt': FieldValue.serverTimestamp(),
-                      }),
+                      onSelected: (status) {
+                        final update = <String, dynamic>{
+                          'status': status,
+                          'updatedAt': FieldValue.serverTimestamp(),
+                        };
+
+                        if (status == 'in_progress') {
+                          update['inProgressAt'] = FieldValue.serverTimestamp();
+                        } else if (status == 'answered') {
+                          update['answeredAt'] = FieldValue.serverTimestamp();
+                        } else if (status == 'closed') {
+                          update['closedAt'] = FieldValue.serverTimestamp();
+                        }
+
+                        doc.reference.update(update);
+                      },
                       itemBuilder: (_) => const [
                         PopupMenuItem(
                             value: 'in_progress', child: Text('قيد المتابعة')),
@@ -2372,6 +2498,81 @@ class _MerchantOrders extends StatelessWidget {
 
   Future<void> _status(String orderId, String status) =>
       OrderService().updateStatus(orderId, status);
+
+  static String _twoDigits(int value) => value.toString().padLeft(2, '0');
+
+  static String _formatOrderDate(dynamic value) {
+    DateTime? date;
+
+    if (value is Timestamp) {
+      date = value.toDate().toLocal();
+    } else if (value is DateTime) {
+      date = value.toLocal();
+    }
+
+    if (date == null) return '';
+
+    final hour12 = date.hour % 12 == 0 ? 12 : date.hour % 12;
+    final period = date.hour >= 12 ? 'م' : 'ص';
+
+    return '${_twoDigits(date.day)}/${_twoDigits(date.month)}/${date.year}'
+        ' — $hour12:${_twoDigits(date.minute)} $period';
+  }
+
+  static Widget _customerLine(
+    IconData icon,
+    String label,
+    dynamic value,
+  ) {
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 17, color: Colors.black54),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              '$label: $text',
+              style: const TextStyle(height: 1.35),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Widget _timelineLine(
+    String label,
+    dynamic value,
+  ) {
+    final formatted = _formatOrderDate(value);
+    if (formatted.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.access_time_rounded,
+            size: 17,
+            color: Colors.black54,
+          ),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
+              '$label: $formatted',
+              style: const TextStyle(height: 1.35),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<void> _changeStatus(
     BuildContext context,
@@ -2452,7 +2653,117 @@ class _MerchantOrders extends StatelessWidget {
                           Text(
                             '${status == 'ready' && deliveryMethod == 'pickup' ? 'جاهز للاستلام' : labels[status] ?? status} • ${data['total'] ?? 0} ₪',
                           ),
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 8),
+
+                          // بيانات العميل محفوظة مع الطلب نفسه حتى تبقى
+                          // واضحة للتاجر حتى لو تغير ملف العميل لاحقاً.
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(.025),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.black.withOpacity(.06),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'بيانات العميل',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                _customerLine(
+                                  Icons.person_outline_rounded,
+                                  'الاسم',
+                                  data['customerName'],
+                                ),
+                                _customerLine(
+                                  Icons.phone_outlined,
+                                  'الهاتف',
+                                  data['customerPhone'],
+                                ),
+                                _customerLine(
+                                  Icons.email_outlined,
+                                  'الإيميل',
+                                  data['customerEmail'],
+                                ),
+                                _customerLine(
+                                  Icons.location_on_outlined,
+                                  'العنوان',
+                                  data['deliveryAddress'] ??
+                                      data['customerAddress'],
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 8),
+
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(.025),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.black.withOpacity(.06),
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'سجل الطلب',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                _timelineLine(
+                                  'تم إنشاء الطلب',
+                                  data['createdAt'],
+                                ),
+                                _timelineLine(
+                                  'تم القبول',
+                                  data['acceptedAt'],
+                                ),
+                                _timelineLine(
+                                  'بدأ التحضير',
+                                  data['preparingAt'],
+                                ),
+                                _timelineLine(
+                                  'أصبح الطلب جاهزاً',
+                                  data['readyAt'],
+                                ),
+                                _timelineLine(
+                                  'تم تعيين السائق',
+                                  data['driverAssignedAt'] ??
+                                      data['driverAcceptedAt'],
+                                ),
+                                _timelineLine(
+                                  'استلم السائق الطلب',
+                                  data['pickedUpAt'],
+                                ),
+                                _timelineLine(
+                                  'تم الرفض',
+                                  data['rejectedAt'],
+                                ),
+                                _timelineLine(
+                                  'تم الإلغاء',
+                                  data['cancelledAt'],
+                                ),
+                                _timelineLine(
+                                  'تم التسليم',
+                                  data['deliveredAt'],
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 8),
                           Container(
                             width: double.infinity,
                             padding: const EdgeInsets.all(10),

@@ -29,10 +29,13 @@ import 'merchant_dashboard.dart';
 import 'partner_registration_screen.dart';
 import 'driver_dashboard.dart';
 import 'driver_registration_screen.dart';
+import 'taxi_driver_registration_screen.dart';
+import 'taxi_driver_dashboard.dart';
 import 'agent_registration_screen.dart';
 import 'customer_service_join_screen.dart';
 import 'customer_service_portal.dart';
 import 'customer_support_chat_screen.dart';
+import 'barakah_inbox_screen.dart';
 import 'favorites_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -167,6 +170,9 @@ class _ProfileBody extends StatelessWidget {
     final role = data['role']?.toString() ?? '';
     final isMerchant = role == 'merchant';
     final isDriver = role == 'driver';
+    final taxiBusinessId = data['taxiBusinessId']?.toString().trim() ?? '';
+    final isTaxiDriver =
+        data['taxiDriverEnabled'] == true && taxiBusinessId.isNotEmpty;
     final isCustomerService =
         role == 'customer_service' && data['customerServiceEnabled'] == true;
 
@@ -341,6 +347,23 @@ class _ProfileBody extends StatelessWidget {
                   ),
                 ),
               _ProfileAction(
+                icon: Icons.mark_email_unread_outlined,
+                title: 'رسائل بركة',
+                onTap: () => requireLogin(() async {
+                  final currentUser = user;
+                  if (currentUser == null) return;
+
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => BarakahInboxScreen(
+                        userId: currentUser.uid,
+                      ),
+                    ),
+                  );
+                }),
+              ),
+              _ProfileAction(
                 icon: Icons.notifications_none_rounded,
                 title: 'الإشعارات',
                 onTap: () => requireLogin(() async {
@@ -469,6 +492,33 @@ class _ProfileBody extends StatelessWidget {
           ),
           const SizedBox(height: 12),
         ],
+        if (isTaxiDriver) ...[
+          SizedBox(
+            width: double.infinity,
+            height: 58,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.ink,
+                foregroundColor: AppTheme.coolYellow,
+              ),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const TaxiDriverDashboard(),
+                ),
+              ),
+              icon: const Icon(Icons.local_taxi_rounded),
+              label: const Text(
+                'لوحة سائق تكسي بركة',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         if (isCustomerService) ...[
           SizedBox(
             width: double.infinity,
@@ -514,6 +564,18 @@ class _ProfileBody extends StatelessWidget {
                       context,
                       MaterialPageRoute(
                           builder: (_) => const DriverRegistrationScreen())),
+                ),
+              if (user != null && !isTaxiDriver && !isCustomerService)
+                _ProfileMenuTile(
+                  icon: Icons.local_taxi_rounded,
+                  title: 'الانضمام كسائق تكسي بركة',
+                  subtitle: 'أرسل طلبًا مستقلًا لسائقي تكسي بركة',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const TaxiDriverRegistrationScreen(),
+                    ),
+                  ),
                 ),
               if (user != null && !isDriver && !isCustomerService)
                 _ProfileMenuTile(

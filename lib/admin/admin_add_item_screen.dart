@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -45,6 +45,12 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
   final TextEditingController doctorLicenseController = TextEditingController();
   final TextEditingController doctorFeeController =
       TextEditingController(text: '0');
+  final TextEditingController taxiAreaController =
+      TextEditingController(text: 'طولكرم وضواحيها');
+  final TextEditingController taxiCommissionController =
+      TextEditingController(text: '1.0');
+  final TextEditingController taxiInternalPhoneController =
+      TextEditingController();
   final ImagePicker _imagePicker = ImagePicker();
 
   String selectedType = 'restaurant';
@@ -54,7 +60,8 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
   bool hasDeliveryOffer = false;
   bool isTrending = false;
   bool isNewInBarakah = false;
-  File? selectedImage;
+  XFile? selectedImage;
+  Uint8List? selectedImageBytes;
   double? latitude;
   double? longitude;
 
@@ -65,6 +72,7 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
   }
 
   bool get _isDoctor => selectedType == 'doctor';
+  bool get _isTaxi => selectedType == 'taxi';
 
   @override
   void initState() {
@@ -94,9 +102,9 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
     super.dispose();
   }
 
-  Future<String> _uploadImage(File image) async {
+  Future<String> _uploadImage(XFile image) async {
     return MediaUploadService().upload(
-      XFile(image.path),
+      image,
       isVideo: false,
     );
   }
@@ -107,9 +115,13 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
         source: ImageSource.gallery,
         imageQuality: 85,
       );
-      if (image != null && mounted) {
-        setState(() => selectedImage = File(image.path));
-      }
+      if (image == null || !mounted) return;
+      final bytes = await image.readAsBytes();
+      if (!mounted) return;
+      setState(() {
+        selectedImage = image;
+        selectedImageBytes = bytes;
+      });
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -740,7 +752,7 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(color: Colors.grey.shade300),
                     ),
-                    child: selectedImage == null
+                    child: selectedImageBytes == null
                         ? const Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
@@ -749,7 +761,7 @@ class _AdminAddItemScreenState extends State<AdminAddItemScreen> {
                                 SizedBox(height: 8),
                                 Text('اختيار صورة'),
                               ])
-                        : Image.file(selectedImage!, fit: BoxFit.cover),
+                        : Image.memory(selectedImageBytes!, fit: BoxFit.cover),
                   ),
                 ),
                 const SizedBox(height: 22),

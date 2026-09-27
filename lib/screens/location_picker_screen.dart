@@ -14,8 +14,10 @@ class LocationPickerScreen extends StatefulWidget {
 }
 
 class _LocationPickerScreenState extends State<LocationPickerScreen> {
+  // يبدأ من طولكرم عند عدم وجود موقع محفوظ.
+  // يبقى بإمكان المستخدم اختيار أي مكان يدويًا من الخريطة.
   late LatLng _selected =
-      LatLng(widget.latitude ?? 31.7683, widget.longitude ?? 35.2137);
+      LatLng(widget.latitude ?? 32.3104, widget.longitude ?? 35.0286);
   final MapController _mapController = MapController();
   var _loadingLocation = false;
 
@@ -55,8 +57,11 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
             mapController: _mapController,
             options: MapOptions(
                 initialCenter: _selected,
-                initialZoom: 13,
-                onTap: (_, point) => setState(() => _selected = point)),
+                initialZoom: 14,
+                onTap: (_, point) {
+                  setState(() => _selected = point);
+                  _mapController.move(point, _mapController.camera.zoom);
+                }),
             children: [
               TileLayer(
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -74,6 +79,21 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
           Padding(
               padding: const EdgeInsets.all(16),
               child: Column(children: [
+                const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.touch_app_rounded),
+                    SizedBox(width: 7),
+                    Flexible(
+                      child: Text(
+                        'اضغطي على المكان المطلوب في الخريطة لوضع علامة الموقع',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
                 OutlinedButton.icon(
                     onPressed: _loadingLocation ? null : _useCurrentLocation,
                     icon: const Icon(Icons.my_location),
@@ -88,7 +108,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                               'latitude': _selected.latitude,
                               'longitude': _selected.longitude
                             }),
-                        child: const Text('حفظ الموقع'))),
+                        child: const Text('تأكيد وحفظ الموقع'))),
               ])),
         ]),
       );

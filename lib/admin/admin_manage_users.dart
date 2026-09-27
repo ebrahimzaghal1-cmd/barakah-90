@@ -256,12 +256,11 @@ class _AdminManageUsersState extends State<AdminManageUsers> {
     BuildContext context,
     QueryDocumentSnapshot<Map<String, dynamic>> document,
   ) async {
-    const pin = '1234';
+    final random = Random.secure();
+    final pin = random.nextInt(10000).toString().padLeft(4, '0');
 
     final data = document.data();
     final existingCard = (data['barakahCardNumber'] ?? '').toString().trim();
-
-    final random = Random.secure();
 
     String block() => List.generate(4, (_) => random.nextInt(10)).join();
 
@@ -298,8 +297,8 @@ class _AdminManageUsersState extends State<AdminManageUsers> {
         title: const Text('بطاقة بركة جاهزة ✅'),
         content: Text(
           'رقم البطاقة:\n$cardNumber\n\n'
-          'PIN التجريبي:\n1234\n\n'
-          'استخدمي 1234 الآن لاختبار الدفع بنقاط بركة.',
+          'الرمز الجديد:\n$pin\n\n'
+          'يُستخدم هذا الرمز للبطاقة بعد إعادة الضبط.',
         ),
         actions: [
           FilledButton(

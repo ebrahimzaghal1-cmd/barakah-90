@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -39,53 +41,20 @@ class BarberBookingService {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) throw StateError('يجب تسجيل الدخول لحجز موعد.');
 
-    final dateKey = _dateKey(start);
-    final startMinutes = start.hour * 60 + start.minute;
-    final endMinutes = startMinutes + durationMinutes;
-    final lockId = '${businessId}_${dateKey}_$startMinutes';
-    final lockRef = _firestore.collection('barber_slot_locks').doc(lockId);
-
-    await _firestore.runTransaction((transaction) async {
-      final existing = await transaction.get(lockRef);
-      if (existing.exists) throw StateError('هذا الوقت محجوز.');
-      transaction.set(lockRef, {
-        'businessId': businessId,
-        'dateKey': dateKey,
-        'startMinutes': startMinutes,
-        'endMinutes': endMinutes,
-        'status': 'reserved',
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+    // Keep the same request id for retries of this submission.
+    final requestId = _firestore.collection('barber_bookings').doc().id;
+    final result = await _post('/v1/barber-bookings', {
+      'requestId': requestId,
+      'businessId': businessId,
+      'serviceId': serviceId,
+      'dateKey': _dateKey(start),
+      'startMinutes': start.hour * 60 + start.minute,
+      'scheduledAt': start.toUtc().toIso8601String(),
+      'expectedPrice': price,
+      'customerName': customerName.trim(),
+      'customerPhone': customerPhone.trim(),
     });
-
-    try {
-      final commission = double.parse((price * .1).toStringAsFixed(2));
-      final booking = await _firestore.collection('barber_bookings').add({
-        'businessId': businessId,
-        'serviceId': serviceId,
-        'serviceTitle': serviceTitle,
-        'customerId': user.uid,
-        'customerName': customerName.trim(),
-        'customerPhone': customerPhone.trim(),
-        'dateKey': dateKey,
-        'startMinutes': startMinutes,
-        'endMinutes': endMinutes,
-        'scheduledAt': Timestamp.fromDate(start),
-        'price': price,
-        'commissionRate': 10,
-        'commissionAmount': commission,
-        'businessNetAmount':
-            double.parse((price - commission).toStringAsFixed(2)),
-        'status': 'pending',
-        'orderType': 'barber_booking',
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-      return booking.id;
-    } catch (_) {
-      await lockRef.delete();
-      rethrow;
-    }
+    return result['bookingId'] as String;
   }
 
   Future<void> updateBookingStatus({
@@ -95,16 +64,24 @@ class BarberBookingService {
     String? dateKey,
     int? startMinutes,
   }) async {
-    await _firestore.collection('barber_bookings').doc(bookingId).update({
-      'status': status,
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-    if (status == 'cancelled' && dateKey != null && startMinutes != null) {
-      await _firestore
-          .collection('barber_slot_locks')
-          .doc('${businessId}_${dateKey}_$startMinutes')
-          .update({'status': 'cancelled'});
+    await _post('/v1/barber-bookings/${Uri.encodeComponent(bookingId)}/status',
+        {'status': status});
+  }
+
+  Future<Map<String, dynamic>> _post(String path, Map<String, dynamic> body) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw StateError('يجب تسجيل الدخول.');
+    final token = await user.getIdToken();
+    final response = await http.post(
+      Uri.parse('https://barakah-secure-api.ebrahimzaghal1.workers.dev$path'),
+      headers: {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    ).timeout(const Duration(seconds: 30));
+    final result = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw StateError(result['message']?.toString() ?? 'تعذر تنفيذ الحجز.');
     }
+    return result;
   }
 
   static String _dateKey(DateTime date) =>

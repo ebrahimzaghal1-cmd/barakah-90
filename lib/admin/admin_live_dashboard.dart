@@ -358,6 +358,18 @@ class _AdminLiveDashboardState extends State<AdminLiveDashboard> {
                     child: _orderCard(o)))
                 .toList());
       });
+  String _formatOrderDateTime(DateTime date) {
+    final local = date.toLocal();
+
+    String two(int value) => value.toString().padLeft(2, '0');
+
+    final hour12 = local.hour % 12 == 0 ? 12 : local.hour % 12;
+    final period = local.hour >= 12 ? 'م' : 'ص';
+
+    return '${two(local.day)}/${two(local.month)}/${local.year}'
+        ' — $hour12:${two(local.minute)} $period';
+  }
+
   Widget _orderCard(AdminLiveOrder order) {
     final items = order.items;
     final line = items.isEmpty ? <String, dynamic>{} : items.first;
@@ -379,6 +391,31 @@ class _AdminLiveDashboardState extends State<AdminLiveDashboard> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(color: _muted, fontSize: 12)),
+          const SizedBox(height: 8),
+          if ('${order.data['customerPhone'] ?? ''}'.trim().isNotEmpty)
+            _text(
+              'الهاتف: ${order.data['customerPhone']}',
+              color: _muted,
+              size: 12,
+            ),
+          if ('${order.data['customerEmail'] ?? ''}'.trim().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 3),
+              child: _text(
+                'الإيميل: ${order.data['customerEmail']}',
+                color: _muted,
+                size: 12,
+              ),
+            ),
+          if (order.createdAt != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 3),
+              child: _text(
+                'وقت الطلب: ${_formatOrderDateTime(order.createdAt!)}',
+                color: _muted,
+                size: 12,
+              ),
+            ),
           const SizedBox(height: 16),
           Container(
               padding: const EdgeInsets.all(10),

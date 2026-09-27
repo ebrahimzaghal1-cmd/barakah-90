@@ -7,14 +7,23 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+import 'package:firebase_core/firebase_core.dart';
+import 'package:http/http.dart' as http;
 import '../theme/app_theme.dart';
 import 'admin_activate_partner_screen.dart';
 import '../utils/pdf_download_stub.dart'
     if (dart.library.js_interop) '../utils/pdf_download_web.dart';
 
-class AdminManagePartnerApplications extends StatelessWidget {
+class AdminManagePartnerApplications extends StatefulWidget {
   const AdminManagePartnerApplications({super.key});
 
+  @override
+  State<AdminManagePartnerApplications> createState() =>
+      _AdminManagePartnerApplicationsState();
+}
+
+class _AdminManagePartnerApplicationsState
+    extends State<AdminManagePartnerApplications> {
   String _statusLabel(String status) {
     switch (status) {
       case 'approved':
@@ -775,6 +784,42 @@ class AdminManagePartnerApplications extends StatelessWidget {
             ),
           );
 
+      pw.Widget signatureBox(String title) {
+        return pw.Container(
+          height: 85,
+          padding: const pw.EdgeInsets.all(10),
+          decoration: pw.BoxDecoration(
+            border: pw.Border.all(
+              color: PdfColor.fromHex('#CBD5E1'),
+            ),
+            borderRadius: pw.BorderRadius.circular(7),
+          ),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+            children: [
+              pw.Text(
+                title,
+                textAlign: pw.TextAlign.right,
+                style: pw.TextStyle(
+                  font: arabicFont,
+                  fontSize: 11,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              pw.Spacer(),
+              pw.Text(
+                'التوقيع: ________________________',
+                textAlign: pw.TextAlign.right,
+                style: pw.TextStyle(
+                  font: arabicFont,
+                  fontSize: 10,
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+
       document.addPage(
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
@@ -873,12 +918,110 @@ class AdminManagePartnerApplications extends StatelessWidget {
                       lineSpacing: 4,
                     ),
                   ),
+                  pw.NewPage(),
+                  pw.Container(
+                    padding: const pw.EdgeInsets.all(14),
+                    decoration: pw.BoxDecoration(
+                      color: PdfColor.fromHex('#12284C'),
+                      borderRadius: pw.BorderRadius.circular(10),
+                      border: pw.Border.all(
+                        color: PdfColor.fromHex('#D4AF37'),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                      children: [
+                        pw.Text(
+                          'BARAKAH | بركة',
+                          textAlign: pw.TextAlign.center,
+                          style: pw.TextStyle(
+                            font: arabicFont,
+                            fontSize: 20,
+                            fontWeight: pw.FontWeight.bold,
+                            color: PdfColors.white,
+                          ),
+                        ),
+                        pw.SizedBox(height: 5),
+                        pw.Text(
+                          'صفحة توقيع عقد الشريك',
+                          textAlign: pw.TextAlign.center,
+                          style: pw.TextStyle(
+                            font: arabicFont,
+                            fontSize: 14,
+                            color: PdfColor.fromHex('#D4AF37'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  pw.SizedBox(height: 18),
+                  pw.Text(
+                    'إقرار وتوقيع العقد',
+                    textAlign: pw.TextAlign.center,
+                    style: pw.TextStyle(
+                      font: arabicFont,
+                      fontSize: 16,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                  pw.SizedBox(height: 8),
+                  pw.Text(
+                    'يقر الشريك بأن البيانات الواردة في العقد صحيحة، '
+                    'وأنه اطّلع على شروط الانضمام وسياسة الخصوصية '
+                    'ويوافق عليها.',
+                    textAlign: pw.TextAlign.right,
+                    style: pw.TextStyle(
+                      font: arabicFont,
+                      fontSize: 10.5,
+                      lineSpacing: 4,
+                    ),
+                  ),
+                  pw.SizedBox(height: 18),
+                  field(
+                    'اسم المطعم / المحل',
+                    valueOf('businessName'),
+                  ),
+                  field(
+                    'اسم المسؤول',
+                    valueOf('ownerName'),
+                  ),
+                  field(
+                    'رقم الهوية',
+                    valueOf('nationalId'),
+                  ),
+                  field(
+                    'رقم الطلب',
+                    application.id,
+                  ),
+                  pw.SizedBox(height: 18),
+                  pw.Row(
+                    children: [
+                      pw.Expanded(
+                        child: signatureBox(
+                          'اعتماد إدارة بركة',
+                        ),
+                      ),
+                      pw.SizedBox(width: 12),
+                      pw.Expanded(
+                        child: signatureBox(
+                          'توقيع الشريك / المسؤول',
+                        ),
+                      ),
+                    ],
+                  ),
+                  pw.SizedBox(height: 16),
+                  field(
+                    'تاريخ توقيع الشريك',
+                    '____ / ____ / ______',
+                  ),
                   pw.SizedBox(height: 18),
                   pw.Divider(
                     color: PdfColor.fromHex('#D4AF37'),
                   ),
                   pw.Text(
-                    'هذه النسخة مرتبطة بطلب الشريك رقم ${application.id} ومحفوظة لأغراض السجل الإداري في بركة.',
+                    'هذه النسخة مرتبطة بطلب الشريك رقم ${application.id} '
+                    'ومحفوظة لأغراض السجل الإداري في بركة.',
                     textAlign: pw.TextAlign.center,
                     style: pw.TextStyle(
                       font: arabicFont,
@@ -913,6 +1056,409 @@ class AdminManagePartnerApplications extends StatelessWidget {
         ),
       );
     }
+  }
+
+  final Set<String> _partnerContractBusy = <String>{};
+
+  String _partnerContractStatusLabel(
+    Map<String, dynamic> data,
+  ) {
+    switch (data['signedContractStatus']?.toString()) {
+      case 'approved':
+        return 'العقد الموقّع معتمد';
+      case 'uploaded':
+        return 'العقد الموقّع بانتظار الاعتماد';
+      default:
+        return 'لم تُرفع النسخة الموقّعة';
+    }
+  }
+
+  Color _partnerContractStatusColor(
+    Map<String, dynamic> data,
+  ) {
+    switch (data['signedContractStatus']?.toString()) {
+      case 'approved':
+        return const Color(0xFF138A5B);
+      case 'uploaded':
+        return const Color(0xFFD18B00);
+      default:
+        return const Color(0xFF64748B);
+    }
+  }
+
+  Future<String> _partnerStorageToken() async {
+    final user = FirebaseAuth.instance.currentUser;
+
+    if (user == null) {
+      throw StateError('يجب تسجيل الدخول بحساب الأدمن.');
+    }
+
+    final token = await user.getIdToken(true);
+
+    if (token == null || token.isEmpty) {
+      throw StateError('تعذر إنشاء جلسة آمنة.');
+    }
+
+    return token;
+  }
+
+  String _partnerStorageBucket() {
+    final bucket = Firebase.app().options.storageBucket;
+
+    if (bucket == null || bucket.trim().isEmpty) {
+      throw StateError(
+        'Firebase Storage غير مهيأ في المشروع.',
+      );
+    }
+
+    return bucket.trim();
+  }
+
+  Future<Uint8List> _downloadPartnerSignedBytes(
+    String storagePath,
+  ) async {
+    final token = await _partnerStorageToken();
+    final bucket = _partnerStorageBucket();
+
+    final uri = Uri.https(
+      'firebasestorage.googleapis.com',
+      '/v0/b/$bucket/o/${Uri.encodeComponent(storagePath)}',
+      {'alt': 'media'},
+    );
+
+    final response = await http.get(
+      uri,
+      headers: {
+        'authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw StateError(
+        'تعذر قراءة العقد الموقّع '
+        '(${response.statusCode}).',
+      );
+    }
+
+    return response.bodyBytes;
+  }
+
+  Future<void> _uploadPartnerSignedContract(
+    BuildContext context,
+    DocumentSnapshot<Map<String, dynamic>> _,
+  ) async {
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'رفع العقود الموقعة غير مفعّل حاليًا. '
+          'يمكنك تحميل العقد وطباعته، وسيتم ربط التخزين الآمن لاحقًا.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _approvePartnerSignedContract(
+    BuildContext context,
+    DocumentSnapshot<Map<String, dynamic>> application,
+  ) async {
+    final data = application.data() ?? <String, dynamic>{};
+
+    final storagePath =
+        data['signedContractStoragePath']?.toString().trim() ?? '';
+
+    if (storagePath.isEmpty) {
+      throw StateError(
+        'ارفعي النسخة الموقعة أولًا.',
+      );
+    }
+
+    final name = data['businessName']?.toString().trim() ?? 'الشريك';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('اعتماد عقد الشريك'),
+        content: Text(
+          'هل تؤكدين اعتماد النسخة الموقعة الخاصة بـ $name؟\n\n'
+          'سيتم حفظ حساب الأدمن ووقت الاعتماد.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('تراجع'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            icon: const Icon(Icons.verified_rounded),
+            label: const Text('اعتماد العقد'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final adminId = FirebaseAuth.instance.currentUser?.uid ?? '';
+
+    await application.reference.update({
+      'signedContractStatus': 'approved',
+      'signedContractApprovedAt': FieldValue.serverTimestamp(),
+      'signedContractApprovedBy': adminId,
+      'signedContractUpdatedAt': FieldValue.serverTimestamp(),
+    });
+
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'تم اعتماد عقد الشريك الموقّع ✅',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _downloadPartnerSignedContract(
+    BuildContext context,
+    DocumentSnapshot<Map<String, dynamic>> application,
+  ) async {
+    final data = application.data() ?? <String, dynamic>{};
+
+    final storagePath =
+        data['signedContractStoragePath']?.toString().trim() ?? '';
+
+    if (storagePath.isEmpty) {
+      throw StateError(
+        'لا توجد نسخة موقعة مرفوعة.',
+      );
+    }
+
+    final bytes = await _downloadPartnerSignedBytes(storagePath);
+
+    final filename = data['signedContractFileName']?.toString().trim() ?? '';
+
+    await downloadPdfBytes(
+      bytes,
+      filename.isEmpty
+          ? 'barakah_partner_signed_${application.id}.pdf'
+          : filename,
+    );
+  }
+
+  Future<void> _printPartnerSignedContract(
+    BuildContext context,
+    DocumentSnapshot<Map<String, dynamic>> application,
+  ) async {
+    final data = application.data() ?? <String, dynamic>{};
+
+    final storagePath =
+        data['signedContractStoragePath']?.toString().trim() ?? '';
+
+    if (storagePath.isEmpty) {
+      throw StateError(
+        'لا توجد نسخة موقعة مرفوعة.',
+      );
+    }
+
+    final bytes = await _downloadPartnerSignedBytes(storagePath);
+
+    await Printing.layoutPdf(
+      name: 'عقد ${data['businessName'] ?? 'الشريك'} الموقّع',
+      onLayout: (_) async => bytes,
+    );
+  }
+
+  Future<void> _runPartnerContractTask(
+    BuildContext context,
+    String applicationId,
+    Future<void> Function() action,
+  ) async {
+    if (_partnerContractBusy.contains(applicationId)) {
+      return;
+    }
+
+    setState(() {
+      _partnerContractBusy.add(applicationId);
+    });
+
+    try {
+      await action();
+    } catch (error) {
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error is StateError
+                ? error.message.toString()
+                : 'تعذر تنفيذ عملية العقد: $error',
+          ),
+          backgroundColor: Colors.red.shade700,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _partnerContractBusy.remove(applicationId);
+        });
+      }
+    }
+  }
+
+  Widget _partnerSignedContractControls(
+    BuildContext context,
+    DocumentSnapshot<Map<String, dynamic>> application,
+  ) {
+    final data = application.data() ?? <String, dynamic>{};
+
+    final storagePath =
+        data['signedContractStoragePath']?.toString().trim() ?? '';
+
+    final hasSigned = storagePath.isNotEmpty;
+    final approved = data['signedContractStatus'] == 'approved';
+    final busy = _partnerContractBusy.contains(application.id);
+
+    final statusColor = _partnerContractStatusColor(data);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFFE2E8F0),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(
+                approved ? Icons.verified_rounded : Icons.draw_rounded,
+                color: statusColor,
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'النسخة الموقعة من العقد',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: .10),
+                  borderRadius: BorderRadius.circular(99),
+                ),
+                child: Text(
+                  _partnerContractStatusLabel(data),
+                  style: TextStyle(
+                    color: statusColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.icon(
+                onPressed: busy
+                    ? null
+                    : () => _runPartnerContractTask(
+                          context,
+                          application.id,
+                          () => _uploadPartnerSignedContract(
+                            context,
+                            application,
+                          ),
+                        ),
+                icon: const Icon(
+                  Icons.upload_file_rounded,
+                ),
+                label: Text(
+                  hasSigned ? 'استبدال العقد الموقّع' : 'رفع العقد الموقّع',
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: busy || !hasSigned
+                    ? null
+                    : () => _runPartnerContractTask(
+                          context,
+                          application.id,
+                          () => _downloadPartnerSignedContract(
+                            context,
+                            application,
+                          ),
+                        ),
+                icon: const Icon(
+                  Icons.download_rounded,
+                ),
+                label: const Text(
+                  'تنزيل الموقّع',
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: busy || !hasSigned
+                    ? null
+                    : () => _runPartnerContractTask(
+                          context,
+                          application.id,
+                          () => _printPartnerSignedContract(
+                            context,
+                            application,
+                          ),
+                        ),
+                icon: const Icon(
+                  Icons.print_rounded,
+                ),
+                label: const Text(
+                  'فتح / طباعة',
+                ),
+              ),
+              FilledButton.icon(
+                onPressed: busy || !hasSigned || approved
+                    ? null
+                    : () => _runPartnerContractTask(
+                          context,
+                          application.id,
+                          () => _approvePartnerSignedContract(
+                            context,
+                            application,
+                          ),
+                        ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF138A5B),
+                ),
+                icon: const Icon(
+                  Icons.verified_rounded,
+                ),
+                label: const Text(
+                  'اعتماد العقد',
+                ),
+              ),
+            ],
+          ),
+          if (busy) ...[
+            const SizedBox(height: 10),
+            const LinearProgressIndicator(),
+          ],
+        ],
+      ),
+    );
   }
 
   @override
@@ -1127,6 +1673,8 @@ class AdminManagePartnerApplications extends StatelessWidget {
                           ),
                         ),
                       ),
+                      const SizedBox(height: 8),
+                      _partnerSignedContractControls(context, doc),
                       const SizedBox(height: 8),
                       Row(
                         children: [

@@ -1,0 +1,1270 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+
+import '../theme/app_theme.dart';
+import '../services/taxi_driver_admin_service.dart';
+
+class AdminManageTaxiDrivers extends StatelessWidget {
+  const AdminManageTaxiDrivers({super.key});
+
+  Future<void> _setVerification(
+    DocumentReference<Map<String, dynamic>> ref,
+    String field,
+    bool value,
+  ) async {
+    await ref.update({
+      field: value,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> _approve(
+    BuildContext context,
+    DocumentSnapshot<Map<String, dynamic>> application,
+  ) async {
+    final data = application.data() ?? const <String, dynamic>{};
+
+    final identityVerified = data['identityVerified'] == true;
+    final driverLicenseVerified = data['driverLicenseVerified'] == true;
+    final vehicleDocumentsVerified = data['vehicleDocumentsVerified'] == true;
+    final payoutVerified = data['payoutVerified'] == true;
+
+    final acceptedTerms = data['acceptedDriverTerms'] == true;
+    final acceptedPrivacy = data['acceptedPrivacyPolicy'] == true;
+
+    if (!identityVerified ||
+        !driverLicenseVerified ||
+        !vehicleDocumentsVerified ||
+        !payoutVerified ||
+        !acceptedTerms ||
+        !acceptedPrivacy) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'لا يمكن اعتماد السائق قبل اكتمال التحقق من جميع المتطلبات.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text(
+          'اعتماد سائق التكسي',
+          textAlign: TextAlign.center,
+        ),
+        content: const Text(
+          'تم التحقق من جميع بيانات سائق التكسي. هل تريد اعتماد طلبه؟ بعد الاعتماد اربطه بمكتب تكسي بركة.',
+          textAlign: TextAlign.center,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('اعتماد'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final batch = FirebaseFirestore.instance.batch();
+
+    batch.set(
+      FirebaseFirestore.instance.collection('users').doc(application.id),
+      {
+        'taxiDriverPhone': data['phone'],
+        'taxiDriverVehicle': data['vehicle'],
+        'taxiDriverPlateNumber': data['plateNumber'],
+        'taxiDriverVehicleColor': data['vehicleColor'],
+        'taxiVehicleLicenseNumber': data['vehicleLicenseNumber'],
+        'taxiVehicleInsuranceNumber': data['vehicleInsuranceNumber'],
+        'taxiIdentityVerified': true,
+        'taxiDriverLicenseVerified': true,
+        'taxiVehicleDocumentsVerified': true,
+        'taxiPayoutVerified': true,
+        'taxiDriverAgreementVersion': data['agreementVersion'],
+        'taxiDriverApplicationApprovedAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+
+    batch.set(
+      application.reference,
+      {
+        'status': 'approved',
+        'approvedAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+
+    await batch.commit();
+
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content:
+            Text('تم اعتماد طلب سائق التكسي ✅ اربطه الآن بمكتب تكسي بركة.'),
+      ),
+    );
+  }
+
+  Future<void> _reject(
+    BuildContext context,
+    DocumentSnapshot<Map<String, dynamic>> application,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text(
+          'رفض طلب السائق',
+          textAlign: TextAlign.center,
+        ),
+        content: const Text(
+          'هل تريد رفض طلب انضمام هذا السائق؟',
+          textAlign: TextAlign.center,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('رفض'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    await application.reference.update({
+      'status': 'rejected',
+      'rejectedAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('تم رفض طلب السائق'),
+      ),
+    );
+  }
+
+  Future<void> _revoke(
+    BuildContext context,
+    DocumentSnapshot<Map<String, dynamic>> application,
+  ) async {
+    final data = application.data() ?? const <String, dynamic>{};
+    final name = _value(data, 'fullName');
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('إلغاء صلاحية سائق التكسي؟'),
+        content: Text(
+          'سيتم إيقاف $name عن استقبال رحلات تكسي بركة وفصله عن مكتب التكسي. '
+          'لن تتأثر أي صلاحية توصيل يملكها الحساب.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('تراجع'),
+          ),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            icon: const Icon(Icons.person_off_rounded),
+            label: const Text('تأكيد إلغاء الصلاحية'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final adminId = FirebaseAuth.instance.currentUser?.uid ?? '';
+
+    // افصل السائق عن مكتب التكسي من خلال الخادم أولًا.
+    await TaxiDriverAdminService.instance.removeDriver(
+      driverUid: application.id,
+    );
+
+    await application.reference.set(
+      {
+        'status': 'revoked',
+        'revokedAt': FieldValue.serverTimestamp(),
+        'revokedBy': adminId,
+        'updatedAt': FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('تم إلغاء صلاحية السائق بأمان.')),
+    );
+  }
+
+  Future<void> _delete(
+    BuildContext context,
+    DocumentSnapshot<Map<String, dynamic>> application,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text(
+          'إزالة طلب السائق',
+          textAlign: TextAlign.center,
+        ),
+        content: const Text(
+          'هل تريد حذف طلب السائق نهائيًا؟',
+          textAlign: TextAlign.center,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('إزالة'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    await application.reference.delete();
+
+    if (!context.mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('تم حذف طلب السائق'),
+      ),
+    );
+  }
+
+  String _value(
+    Map<String, dynamic> data,
+    String key,
+  ) {
+    final value = data[key]?.toString().trim() ?? '';
+    return value.isEmpty ? 'غير مضاف' : value;
+  }
+
+  Widget _infoRow(
+    IconData icon,
+    String label,
+    String value,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            icon,
+            size: 20,
+            color: AppTheme.deepYellow,
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.black54,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                SelectableText(
+                  value,
+                  style: const TextStyle(
+                    color: AppTheme.navy,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _activeTaxiDriversSection(BuildContext context) {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .where('taxiDriverEnabled', isEqualTo: true)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'تعذر تحميل سائقي التكسي المفعّلين: ${snapshot.error}',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          );
+        }
+
+        if (!snapshot.hasData) {
+          return const Center(
+            child: Padding(
+              padding: EdgeInsets.all(18),
+              child: CircularProgressIndicator(),
+            ),
+          );
+        }
+
+        final drivers = snapshot.data!.docs.toList()
+          ..sort((a, b) {
+            final aData = a.data();
+            final bData = b.data();
+
+            final aName = (aData['displayName'] ??
+                    aData['fullName'] ??
+                    aData['email'] ??
+                    '')
+                .toString()
+                .trim()
+                .toLowerCase();
+
+            final bName = (bData['displayName'] ??
+                    bData['fullName'] ??
+                    bData['email'] ??
+                    '')
+                .toString()
+                .trim()
+                .toLowerCase();
+
+            return aName.compareTo(bName);
+          });
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'سائقو تكسي بركة المفعّلون حاليًا',
+              style: TextStyle(
+                color: AppTheme.navy,
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 5),
+            const Text(
+              'تشمل هذه القائمة السائقين الحاليين والجدد المرتبطين بمكاتب تكسي بركة.',
+              style: TextStyle(
+                color: Colors.black54,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (drivers.isEmpty)
+              const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(18),
+                  child: Text(
+                    'لا يوجد سائق تكسي مفعّل حاليًا.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              )
+            else
+              ...drivers.map((driver) {
+                final data = driver.data();
+
+                String firstNonEmpty(List<dynamic> values) {
+                  for (final value in values) {
+                    final text = value?.toString().trim() ?? '';
+                    if (text.isNotEmpty) return text;
+                  }
+                  return '';
+                }
+
+                final name = firstNonEmpty([
+                  data['displayName'],
+                  data['fullName'],
+                  data['email'],
+                ]);
+
+                final phone = firstNonEmpty([
+                  data['taxiDriverPhone'],
+                  data['phone'],
+                ]);
+
+                final email = firstNonEmpty([
+                  data['email'],
+                ]);
+
+                final vehicle = firstNonEmpty([
+                  data['taxiDriverVehicle'],
+                  data['vehicle'],
+                ]);
+
+                final office = firstNonEmpty([
+                  data['taxiBusinessName'],
+                ]);
+
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  elevation: 0,
+                  color: Colors.white,
+                  child: Padding(
+                    padding: const EdgeInsets.all(15),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            const CircleAvatar(
+                              backgroundColor: AppTheme.coolYellow,
+                              child: Icon(
+                                Icons.local_taxi_rounded,
+                                color: AppTheme.navy,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    name.isEmpty ? 'سائق تكسي بركة' : name,
+                                    style: const TextStyle(
+                                      color: AppTheme.navy,
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  Text(
+                                    office.isEmpty
+                                        ? 'مكتب التكسي غير محدد'
+                                        : office,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (phone.isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          _infoRow(
+                            Icons.phone_outlined,
+                            'رقم الهاتف',
+                            phone,
+                          ),
+                        ],
+                        if (email.isNotEmpty)
+                          _infoRow(
+                            Icons.email_outlined,
+                            'البريد الإلكتروني',
+                            email,
+                          ),
+                        if (vehicle.isNotEmpty)
+                          _infoRow(
+                            Icons.directions_car_outlined,
+                            'المركبة',
+                            vehicle,
+                          ),
+                        const SizedBox(height: 4),
+                        OutlinedButton.icon(
+                          onPressed: () => _removeTaxiOffice(
+                            context,
+                            driver.id,
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red.shade700,
+                          ),
+                          icon: const Icon(Icons.link_off_rounded),
+                          label: const Text(
+                            'فصل السائق عن مكتب التكسي',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _verificationTile({
+    required DocumentReference<Map<String, dynamic>> reference,
+    required Map<String, dynamic> data,
+    required String field,
+    required String title,
+    required String subtitle,
+  }) {
+    final value = data[field] == true;
+
+    return SwitchListTile(
+      contentPadding: EdgeInsets.zero,
+      value: value,
+      onChanged: (next) => _setVerification(
+        reference,
+        field,
+        next,
+      ),
+      activeColor: const Color(0xFF1B8A5A),
+      title: Text(
+        title,
+        style: const TextStyle(
+          color: AppTheme.navy,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: const TextStyle(
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _chooseTaxiOffice(
+    BuildContext context,
+    String driverUid,
+  ) async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('items')
+          .where('type', isEqualTo: 'taxi')
+          .get();
+
+      final offices = snapshot.docs
+          .where((doc) => doc.data()['kind']?.toString() != 'product')
+          .toList();
+
+      if (!context.mounted) return;
+
+      if (offices.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'لا توجد مكاتب تكسي مسجلة حاليًا. أضف مكتبًا من مكاتب تكسي بركة أولًا.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      final selected = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text(
+            'اختيار مكتب التكسي',
+            textAlign: TextAlign.center,
+          ),
+          content: SizedBox(
+            width: 420,
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: offices.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (_, index) {
+                final office = offices[index];
+                final data = office.data();
+                final title =
+                    (data['title'] ?? data['name'] ?? 'مكتب تكسي').toString();
+
+                return ListTile(
+                  leading: const Icon(Icons.local_taxi_rounded),
+                  title: Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  onTap: () => Navigator.pop(
+                    dialogContext,
+                    office.id,
+                  ),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('إلغاء'),
+            ),
+          ],
+        ),
+      );
+
+      if (selected == null || selected.isEmpty) return;
+
+      await TaxiDriverAdminService.instance.assignDriver(
+        driverUid: driverUid,
+        businessId: selected,
+      );
+
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('تم ربط السائق بمكتب التكسي بنجاح.'),
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error.toString().replaceFirst('Bad state: ', ''),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _removeTaxiOffice(
+    BuildContext context,
+    String driverUid,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text(
+          'فصل السائق عن التكسي',
+          textAlign: TextAlign.center,
+        ),
+        content: const Text(
+          'سيبقى الحساب سائق بركة، لكن لن يعود مرتبطًا بمكتب التكسي. هل تريد المتابعة؟',
+          textAlign: TextAlign.center,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('فصل'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await TaxiDriverAdminService.instance.removeDriver(
+        driverUid: driverUid,
+      );
+
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('تم فصل السائق عن مكتب التكسي.'),
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error.toString().replaceFirst('Bad state: ', ''),
+          ),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF7F8FA),
+      appBar: AppBar(
+        backgroundColor: AppTheme.navy,
+        foregroundColor: Colors.white,
+        title: const Text(
+          'طلبات سائقي تكسي بركة',
+          style: TextStyle(
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            tooltip: 'سائقو التكسي المفعّلون',
+            icon: const Icon(Icons.groups_rounded),
+            onPressed: () => showDialog<void>(
+              context: context,
+              builder: (dialogContext) => Dialog(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: 700,
+                    maxHeight: 760,
+                  ),
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: _activeTaxiDriversSection(dialogContext),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: FirebaseFirestore.instance
+            .collection('taxi_driver_applications')
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return const Center(
+              child: Text(
+                'تعذر تحميل طلبات سائقي التكسي.',
+              ),
+            );
+          }
+
+          if (!snapshot.hasData) {
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
+          }
+
+          final applications = snapshot.data!.docs.toList()
+            ..sort((a, b) {
+              final left = a.data()['createdAt'] as Timestamp?;
+              final right = b.data()['createdAt'] as Timestamp?;
+
+              return (right?.millisecondsSinceEpoch ?? 0).compareTo(
+                left?.millisecondsSinceEpoch ?? 0,
+              );
+            });
+
+          if (applications.isEmpty) {
+            return const Center(
+              child: Text(
+                'لا توجد طلبات سائقي تكسي حاليًا.',
+                style: TextStyle(
+                  color: AppTheme.navy,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            );
+          }
+
+          return ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: applications.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 14),
+            itemBuilder: (context, index) {
+              final application = applications[index];
+              final data = application.data();
+
+              final status = data['status']?.toString() ?? 'pending';
+
+              final approved = status == 'approved';
+              final rejected = status == 'rejected';
+              final revoked = status == 'revoked';
+
+              final identityVerified = data['identityVerified'] == true;
+              final licenseVerified = data['driverLicenseVerified'] == true;
+              final vehicleVerified = data['vehicleDocumentsVerified'] == true;
+              final payoutVerified = data['payoutVerified'] == true;
+
+              final acceptedTerms = data['acceptedDriverTerms'] == true;
+              final acceptedPrivacy = data['acceptedPrivacyPolicy'] == true;
+
+              final readyToApprove = identityVerified &&
+                  licenseVerified &&
+                  vehicleVerified &&
+                  payoutVerified &&
+                  acceptedTerms &&
+                  acceptedPrivacy;
+
+              return Card(
+                elevation: 0,
+                color: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(17),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 56,
+                            height: 56,
+                            decoration: BoxDecoration(
+                              color: approved
+                                  ? const Color(0xFFE0F6EA)
+                                  : rejected || revoked
+                                      ? const Color(0xFFFFE8E8)
+                                      : AppTheme.coolYellow.withOpacity(.25),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              approved
+                                  ? Icons.verified_rounded
+                                  : rejected || revoked
+                                      ? Icons.close_rounded
+                                      : Icons.local_taxi_rounded,
+                              color: approved
+                                  ? const Color(0xFF1B8A5A)
+                                  : rejected || revoked
+                                      ? Colors.red
+                                      : AppTheme.navy,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _value(
+                                    data,
+                                    'fullName',
+                                  ),
+                                  style: const TextStyle(
+                                    color: AppTheme.navy,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                Text(
+                                  approved
+                                      ? 'سائق تكسي معتمد'
+                                      : revoked
+                                          ? 'تم إلغاء صلاحية سائق التكسي'
+                                          : rejected
+                                              ? 'الطلب مرفوض'
+                                              : readyToApprove
+                                                  ? 'جاهز للاعتماد'
+                                                  : 'بانتظار التحقق',
+                                  style: TextStyle(
+                                    color: approved
+                                        ? const Color(
+                                            0xFF1B8A5A,
+                                          )
+                                        : rejected || revoked
+                                            ? Colors.red
+                                            : const Color(
+                                                0xFF9A6A00,
+                                              ),
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Divider(height: 28),
+                      _infoRow(
+                        Icons.email_outlined,
+                        'البريد الإلكتروني',
+                        _value(data, 'email'),
+                      ),
+                      _infoRow(
+                        Icons.phone_outlined,
+                        'رقم الهاتف',
+                        _value(data, 'phone'),
+                      ),
+                      _infoRow(
+                        Icons.badge_outlined,
+                        'رقم الهوية',
+                        _value(data, 'nationalId'),
+                      ),
+                      _infoRow(
+                        Icons.two_wheeler_rounded,
+                        'المركبة',
+                        _value(data, 'vehicle'),
+                      ),
+                      _infoRow(
+                        Icons.confirmation_number_outlined,
+                        'رقم اللوحة',
+                        _value(data, 'plateNumber'),
+                      ),
+                      _infoRow(
+                        Icons.palette_outlined,
+                        'لون السيارة',
+                        _value(data, 'vehicleColor'),
+                      ),
+                      _infoRow(
+                        Icons.credit_card_rounded,
+                        'رخصة القيادة',
+                        _value(
+                          data,
+                          'driverLicenseNumber',
+                        ),
+                      ),
+                      _infoRow(
+                        Icons.description_outlined,
+                        'رخصة المركبة',
+                        _value(
+                          data,
+                          'vehicleLicenseNumber',
+                        ),
+                      ),
+                      _infoRow(
+                        Icons.verified_user_outlined,
+                        'التأمين',
+                        _value(
+                          data,
+                          'vehicleInsuranceNumber',
+                        ),
+                      ),
+                      _infoRow(
+                        Icons.account_balance_wallet_outlined,
+                        'طريقة استلام المستحقات',
+                        _value(
+                          data,
+                          'payoutMethod',
+                        ),
+                      ),
+                      _infoRow(
+                        Icons.account_balance_outlined,
+                        'رقم الحساب / IBAN / المحفظة',
+                        _value(
+                          data,
+                          'payoutAccount',
+                        ),
+                      ),
+                      if (approved) ...[
+                        const SizedBox(height: 14),
+                        StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                          stream: FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(application.id)
+                              .snapshots(),
+                          builder: (context, driverSnapshot) {
+                            final driverData = driverSnapshot.data?.data() ??
+                                const <String, dynamic>{};
+
+                            final taxiEnabled =
+                                driverData['taxiDriverEnabled'] == true;
+
+                            final taxiBusinessName =
+                                driverData['taxiBusinessName']
+                                    ?.toString()
+                                    .trim();
+
+                            final officeLabel = taxiEnabled &&
+                                    taxiBusinessName != null &&
+                                    taxiBusinessName.isNotEmpty
+                                ? taxiBusinessName
+                                : 'غير مربوط بمكتب تكسي';
+
+                            return Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: AppTheme.coolYellow.withOpacity(.16),
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  const Row(
+                                    children: [
+                                      Icon(
+                                        Icons.local_taxi_rounded,
+                                        color: AppTheme.navy,
+                                      ),
+                                      SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          'تكسي بركة',
+                                          style: TextStyle(
+                                            color: AppTheme.navy,
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'مكتب التكسي: $officeLabel',
+                                    style: const TextStyle(
+                                      color: AppTheme.navy,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  FilledButton.icon(
+                                    onPressed: () => _chooseTaxiOffice(
+                                      context,
+                                      application.id,
+                                    ),
+                                    icon: const Icon(
+                                      Icons.link_rounded,
+                                    ),
+                                    label: Text(
+                                      taxiEnabled
+                                          ? 'تغيير مكتب التكسي'
+                                          : 'ربط بمكتب تكسي',
+                                    ),
+                                  ),
+                                  if (taxiEnabled) ...[
+                                    const SizedBox(height: 6),
+                                    TextButton.icon(
+                                      onPressed: () => _removeTaxiOffice(
+                                        context,
+                                        application.id,
+                                      ),
+                                      icon: const Icon(
+                                        Icons.link_off_rounded,
+                                      ),
+                                      label: const Text(
+                                        'فصل عن التكسي',
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF7F8FA),
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: Column(
+                          children: [
+                            _verificationTile(
+                              reference: application.reference,
+                              data: data,
+                              field: 'identityVerified',
+                              title: 'تم التحقق من الهوية',
+                              subtitle: 'طابق بيانات الهوية مع صاحب الحساب.',
+                            ),
+                            const Divider(height: 1),
+                            _verificationTile(
+                              reference: application.reference,
+                              data: data,
+                              field: 'driverLicenseVerified',
+                              title: 'تم التحقق من رخصة القيادة',
+                              subtitle:
+                                  'تأكد من صلاحية الرخصة وارتباطها بالسائق.',
+                            ),
+                            const Divider(height: 1),
+                            _verificationTile(
+                              reference: application.reference,
+                              data: data,
+                              field: 'vehicleDocumentsVerified',
+                              title: 'تم التحقق من وثائق المركبة',
+                              subtitle: 'رخصة المركبة والتأمين حسب المطلوب.',
+                            ),
+                            const Divider(height: 1),
+                            _verificationTile(
+                              reference: application.reference,
+                              data: data,
+                              field: 'payoutVerified',
+                              title: 'تم التحقق من بيانات المستحقات',
+                              subtitle: 'تحقق من وسيلة استلام مستحقات السائق.',
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Icon(
+                            acceptedTerms
+                                ? Icons.check_circle_rounded
+                                : Icons.cancel_outlined,
+                            color: acceptedTerms
+                                ? const Color(0xFF1B8A5A)
+                                : Colors.red,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              acceptedTerms
+                                  ? 'وافق على شروط سائق التكسي'
+                                  : 'لم يوافق على شروط سائق التكسي',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Icon(
+                            acceptedPrivacy
+                                ? Icons.check_circle_rounded
+                                : Icons.cancel_outlined,
+                            color: acceptedPrivacy
+                                ? const Color(0xFF1B8A5A)
+                                : Colors.red,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              acceptedPrivacy
+                                  ? 'وافق على سياسة الخصوصية'
+                                  : 'لم يوافق على سياسة الخصوصية',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (!approved && !rejected && !revoked) ...[
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          height: 50,
+                          child: FilledButton.icon(
+                            onPressed: readyToApprove
+                                ? () => _approve(
+                                      context,
+                                      application,
+                                    )
+                                : null,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFF1B8A5A),
+                            ),
+                            icon: const Icon(
+                              Icons.verified_rounded,
+                            ),
+                            label: const Text(
+                              'اعتماد سائق التكسي',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (!readyToApprove) ...[
+                          const SizedBox(height: 6),
+                          const Text(
+                            'أكمل جميع خطوات التحقق أولًا ليتم تفعيل زر الاعتماد.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.black54,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          onPressed: () => _reject(
+                            context,
+                            application,
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red,
+                          ),
+                          icon: const Icon(
+                            Icons.close_rounded,
+                          ),
+                          label: const Text('رفض الطلب'),
+                        ),
+                      ],
+                      if (approved) ...[
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: () => _revoke(context, application),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red.shade700,
+                            side: BorderSide(color: Colors.red.shade300),
+                          ),
+                          icon: const Icon(Icons.person_off_rounded),
+                          label: const Text('إلغاء صلاحية سائق التكسي'),
+                        ),
+                      ],
+                      if (revoked) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          'الصلاحية متوقفة، والحساب وسجل التوصيلات محفوظان.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.red.shade700,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        FilledButton.icon(
+                          onPressed: () => _approve(context, application),
+                          icon: const Icon(Icons.person_add_alt_1_rounded),
+                          label: const Text('إعادة تفعيل سائق التكسي'),
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      TextButton.icon(
+                        onPressed: () => _delete(
+                          context,
+                          application,
+                        ),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.red,
+                        ),
+                        icon: const Icon(
+                          Icons.delete_outline_rounded,
+                        ),
+                        label: const Text(
+                          'إزالة الطلب',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}

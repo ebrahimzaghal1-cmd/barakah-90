@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -29,9 +29,9 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final ImagePicker _imagePicker = ImagePicker();
 
-  Future<String> _uploadImage(File image) async {
+  Future<String> _uploadImage(XFile image) async {
     return MediaUploadService().upload(
-      XFile(image.path),
+      image,
       isVideo: false,
     );
   }
@@ -52,8 +52,11 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
         TextEditingController(text: '${restaurant['discountPercent'] ?? ''}');
     final deliveryFeeController =
         TextEditingController(text: '${restaurant['deliveryFee'] ?? ''}');
-    final commissionController =
-        TextEditingController(text: '${restaurant['commissionRate'] ?? 10}');
+    final commissionController = TextEditingController(
+      text: widget.itemType == 'taxi'
+          ? '0'
+          : '${restaurant['commissionRate'] ?? 10}',
+    );
     final ownerEmailController =
         TextEditingController(text: restaurant['ownerEmail'] ?? '');
     final managerEmailController = TextEditingController();
@@ -112,7 +115,8 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
     }
 
     var imageUrl = restaurant['image']?.toString() ?? '';
-    File? selectedImage;
+    XFile? selectedImage;
+    Uint8List? selectedImageBytes;
     var isSaving = false;
     var hasDeliveryOffer = restaurant['hasDeliveryOffer'] == true;
     var isTrending = restaurant['isTrending'] == true;
@@ -130,9 +134,13 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
                 source: ImageSource.gallery,
                 imageQuality: 85,
               );
-              if (image != null) {
-                setDialogState(() => selectedImage = File(image.path));
-              }
+              if (image == null || !context.mounted) return;
+              final bytes = await image.readAsBytes();
+              if (!context.mounted) return;
+              setDialogState(() {
+                selectedImage = image;
+                selectedImageBytes = bytes;
+              });
             } catch (_) {
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -153,8 +161,9 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
             }
             setDialogState(() => isSaving = true);
             try {
-              final commissionRate =
-                  double.tryParse(commissionController.text.trim());
+              final commissionRate = widget.itemType == 'taxi'
+                  ? 0.0
+                  : double.tryParse(commissionController.text.trim());
               if (commissionRate == null ||
                   commissionRate < 0 ||
                   commissionRate > 100) {
@@ -173,9 +182,11 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
                 'description': descriptionController.text.trim(),
                 'image': imageUrl,
                 'category': categoryController.text.trim(),
-                'type': typeController.text.trim().isEmpty
-                    ? widget.itemType
-                    : typeController.text.trim(),
+                'type': widget.itemType == 'taxi'
+                    ? 'taxi'
+                    : (typeController.text.trim().isEmpty
+                        ? widget.itemType
+                        : typeController.text.trim()),
                 'rating': num.tryParse(ratingController.text.trim()) ?? 0,
                 'discountPercent':
                     num.tryParse(discountController.text.trim()) ?? 0,
@@ -244,8 +255,8 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
             }
           }
 
-          final preview = selectedImage != null
-              ? Image.file(selectedImage!, fit: BoxFit.cover)
+          final preview = selectedImageBytes != null
+              ? Image.memory(selectedImageBytes!, fit: BoxFit.cover)
               : imageUrl.isNotEmpty
                   ? Image.network(imageUrl,
                       fit: BoxFit.cover,
@@ -360,13 +371,16 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
                   const SizedBox(height: 12),
                   TextField(
                     controller: commissionController,
+                    readOnly: widget.itemType == 'taxi',
                     keyboardType:
                         const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'نسبة عمولة بركة %',
-                      helperText:
-                          'تُحفظ مع كل طلب جديد لحماية الحسابات القديمة',
-                      prefixIcon: Icon(Icons.account_balance_wallet_outlined),
+                      helperText: widget.itemType == 'taxi'
+                          ? 'عمولة تكسي بركة ثابتة 0%'
+                          : 'تُحفظ مع كل طلب جديد لحماية الحسابات القديمة',
+                      prefixIcon:
+                          const Icon(Icons.account_balance_wallet_outlined),
                     ),
                   ),
                   if (widget.itemType != 'taxi') ...[
@@ -485,7 +499,10 @@ class _AdminManageRestaurantsState extends State<AdminManageRestaurants> {
                                     managerEmailController.clear();
                                     setDialogState(() {
                                       if (!managerEmails.contains(email)) {
-                                        managerEmails = [...managerEmails, email];
+                                        managerEmails = [
+                                          ...managerEmails,
+                                          email
+                                        ];
                                       }
                                     });
                                     if (!context.mounted) return;

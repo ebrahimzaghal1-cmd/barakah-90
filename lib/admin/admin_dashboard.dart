@@ -14,6 +14,7 @@ import 'admin_manage_ads.dart';
 import 'admin_coming_soon_screen.dart';
 import 'admin_communication_center.dart';
 import 'admin_manage_drivers.dart';
+import 'admin_manage_taxi_drivers.dart';
 import 'admin_account_deletion_requests.dart';
 import 'admin_loyalty_settings.dart';
 import 'admin_app_hours.dart';
@@ -24,9 +25,10 @@ import 'admin_customer_service.dart';
 import 'admin_support_inbox.dart';
 import 'admin_app_share_settings.dart';
 import 'admin_appointments_accounting_screen.dart';
-import 'admin_agent_finance_screen.dart';
 import 'admin_manage_agent_applications.dart';
+import 'admin_agents_screen.dart';
 import 'admin_taxi_orders_screen.dart';
+import 'admin_taxi_offices_screen.dart';
 
 import '../theme/app_theme.dart';
 import '../services/user_profile_service.dart';
@@ -43,37 +45,30 @@ class AdminDashboard extends StatelessWidget {
 
     return FutureBuilder<AdminAccess>(
       future: user == null
-          ? Future.value(const AdminAccess(
-              isOwner: false,
-              canManageOrders: false,
-            ))
+          ? Future.value(
+              const AdminAccess(isOwner: false, canManageOrders: false),
+            )
           : UserProfileService().adminAccess(user.uid),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(),
-            ),
+            body: Center(child: CircularProgressIndicator()),
           );
         }
 
-        final access = snapshot.data ??
+        final access =
+            snapshot.data ??
             const AdminAccess(isOwner: false, canManageOrders: false);
         if (!access.canOpenAdmin) {
           return Scaffold(
-            appBar: AppBar(
-              title: const Text('صلاحيات الأدمن'),
-            ),
+            appBar: AppBar(title: const Text('صلاحيات الأدمن')),
             body: const Center(
               child: Padding(
                 padding: EdgeInsets.all(32),
                 child: Text(
                   'هذه اللوحة متاحة لحساب الأدمن فقط.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
-                  ),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                 ),
               ),
             ),
@@ -87,10 +82,11 @@ class AdminDashboard extends StatelessWidget {
         if (showTools) return _buildDashboard(context);
         return AdminLiveDashboard(
           onTools: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const AdminDashboard(showTools: true),
-              )),
+            context,
+            MaterialPageRoute(
+              builder: (_) => const AdminDashboard(showTools: true),
+            ),
+          ),
         );
       },
     );
@@ -106,21 +102,12 @@ class AdminDashboard extends StatelessWidget {
       _AdminItem(
         title: 'مكاتب تكسي بركة',
         icon: Icons.local_taxi_outlined,
-        page: const AdminManageRestaurants(
-          itemType: 'taxi',
-          singularLabel: 'مكتب تكسي',
-          pluralLabel: 'مكاتب التكسي',
-        ),
+        page: const AdminTaxiOfficesScreen(),
       ),
       _AdminItem(
-        title: 'مالية الوسيطات',
-        icon: Icons.account_balance_wallet_rounded,
-        page: const AdminAgentFinanceScreen(),
-      ),
-      _AdminItem(
-        title: 'طلبات انضمام الوسيطات',
+        title: 'الوسيطات',
         icon: Icons.support_agent_rounded,
-        page: const AdminManageAgentApplications(),
+        page: const AdminAgentsScreen(),
       ),
       _AdminItem(
         title: 'إدارة المطاعم',
@@ -405,12 +392,23 @@ class AdminDashboard extends StatelessWidget {
                     ),
                     const SizedBox(width: 10),
                     _AdminRequestShortcut(
-                      title: 'طلبات السائقين',
+                      title: 'طلبات سائقي التوصيل',
                       icon: Icons.delivery_dining_rounded,
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (_) => const AdminManageDrivers(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    _AdminRequestShortcut(
+                      title: 'طلبات سائقي تكسي بركة',
+                      icon: Icons.local_taxi_rounded,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const AdminManageTaxiDrivers(),
                         ),
                       ),
                     ),
@@ -448,8 +446,10 @@ class AdminDashboard extends StatelessWidget {
                   child: ListTile(
                     leading: const CircleAvatar(
                       backgroundColor: AppTheme.coolYellow,
-                      child:
-                          Icon(Icons.groups_2_outlined, color: AppTheme.navy),
+                      child: Icon(
+                        Icons.groups_2_outlined,
+                        color: AppTheme.navy,
+                      ),
                     ),
                     title: const Text(
                       'عدد المشتركين',
@@ -496,8 +496,8 @@ class AdminDashboard extends StatelessWidget {
                   final columns = constraints.maxWidth >= 900
                       ? 4
                       : constraints.maxWidth >= 600
-                          ? 3
-                          : 2;
+                      ? 3
+                      : 2;
                   return GridView.builder(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
@@ -550,9 +550,7 @@ class _AdminBusinessStats extends StatelessWidget {
       stream: FirebaseFirestore.instance.collection('items').snapshots(),
       builder: (context, itemSnapshot) {
         final businesses = (itemSnapshot.data?.docs ?? [])
-            .where(
-              (doc) => doc.data()['kind']?.toString() != 'product',
-            )
+            .where((doc) => doc.data()['kind']?.toString() != 'product')
             .toList();
 
         final subscribed = businesses
@@ -568,9 +566,7 @@ class _AdminBusinessStats extends StatelessWidget {
             final orders = orderSnapshot.data?.docs ?? [];
 
             final todayOrders = orders
-                .where(
-                  (doc) => _isToday(doc.data()['createdAt'] as Timestamp?),
-                )
+                .where((doc) => _isToday(doc.data()['createdAt'] as Timestamp?))
                 .length;
 
             final totals = <String, int>{};
@@ -601,14 +597,8 @@ class _AdminBusinessStats extends StatelessWidget {
               final title =
                   business.data()['title']?.toString() ?? 'محل بدون اسم';
 
-              return (
-                title,
-                totals[business.id] ?? totals[title] ?? 0,
-              );
-            }).toList()
-              ..sort(
-                (a, b) => b.$2.compareTo(a.$2),
-              );
+              return (title, totals[business.id] ?? totals[title] ?? 0);
+            }).toList()..sort((a, b) => b.$2.compareTo(a.$2));
 
             return Card(
               color: Colors.white.withOpacity(.10),
@@ -661,28 +651,30 @@ class _AdminBusinessStats extends StatelessWidget {
                               ),
                             ]
                           : rows
-                              .map(
-                                (row) => ListTile(
-                                  dense: true,
-                                  leading: const Icon(
-                                    Icons.store_outlined,
-                                    color: AppTheme.coolYellow,
-                                  ),
-                                  title: Text(
-                                    row.$1,
-                                    style: const TextStyle(color: Colors.white),
-                                  ),
-                                  trailing: Text(
-                                    '${row.$2}',
-                                    style: const TextStyle(
+                                .map(
+                                  (row) => ListTile(
+                                    dense: true,
+                                    leading: const Icon(
+                                      Icons.store_outlined,
                                       color: AppTheme.coolYellow,
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w900,
+                                    ),
+                                    title: Text(
+                                      row.$1,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    trailing: Text(
+                                      '${row.$2}',
+                                      style: const TextStyle(
+                                        color: AppTheme.coolYellow,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w900,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              )
-                              .toList(),
+                                )
+                                .toList(),
                     ),
                   ],
                 ),
@@ -717,10 +709,7 @@ class _StatBox extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Icon(
-            icon,
-            color: AppTheme.deepYellow,
-          ),
+          Icon(icon, color: AppTheme.deepYellow),
           const SizedBox(height: 6),
           Text(
             value,
@@ -749,11 +738,7 @@ class _AdminItem {
   final IconData icon;
   final Widget page;
 
-  _AdminItem({
-    required this.title,
-    required this.icon,
-    required this.page,
-  });
+  _AdminItem({required this.title, required this.icon, required this.page});
 }
 
 class _AdminCard extends StatelessWidget {
@@ -809,10 +794,7 @@ class _AdminCard extends StatelessWidget {
                       color: AppTheme.coolYellow,
                       borderRadius: BorderRadius.circular(15),
                       boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x44E8C64A),
-                          blurRadius: 16,
-                        ),
+                        BoxShadow(color: Color(0x44E8C64A), blurRadius: 16),
                       ],
                     ),
                     child: Icon(icon, color: AppTheme.navy, size: 26),
@@ -863,108 +845,107 @@ class _AdminHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        height: 190,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(28),
-          gradient: const LinearGradient(
-            begin: AlignmentDirectional.topStart,
-            end: AlignmentDirectional.bottomEnd,
-            colors: [Color(0xFF1D477E), Color(0xFF0A1B38)],
+    height: 190,
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(28),
+      gradient: const LinearGradient(
+        begin: AlignmentDirectional.topStart,
+        end: AlignmentDirectional.bottomEnd,
+        colors: [Color(0xFF1D477E), Color(0xFF0A1B38)],
+      ),
+      border: Border.all(color: Colors.white12),
+      boxShadow: const [
+        BoxShadow(
+          color: Color(0x55040D20),
+          blurRadius: 28,
+          offset: Offset(0, 14),
+        ),
+      ],
+    ),
+    clipBehavior: Clip.antiAlias,
+    child: Stack(
+      children: [
+        PositionedDirectional(
+          end: -32,
+          top: -34,
+          bottom: -40,
+          width: 265,
+          child: Opacity(
+            opacity: .34,
+            child: Image.asset(
+              'assets/images/barakah_header_bunny.png',
+              fit: BoxFit.cover,
+              alignment: Alignment.centerRight,
+            ),
           ),
-          border: Border.all(color: Colors.white12),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x55040D20),
-              blurRadius: 28,
-              offset: Offset(0, 14),
-            ),
-          ],
         ),
-        clipBehavior: Clip.antiAlias,
-        child: Stack(
-          children: [
-            PositionedDirectional(
-              end: -32,
-              top: -34,
-              bottom: -40,
-              width: 265,
-              child: Opacity(
-                opacity: .34,
-                child: Image.asset(
-                  'assets/images/barakah_header_bunny.png',
-                  fit: BoxFit.cover,
-                  alignment: Alignment.centerRight,
-                ),
-              ),
+        PositionedDirectional(
+          start: -40,
+          top: -60,
+          child: Container(
+            width: 160,
+            height: 160,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppTheme.coolYellow.withOpacity(.08),
             ),
-            PositionedDirectional(
-              start: -40,
-              top: -60,
-              child: Container(
-                width: 160,
-                height: 160,
+          ),
+        ),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              DecoratedBox(
                 decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppTheme.coolYellow.withOpacity(.08),
+                  color: Color(0x22FFFFFF),
+                  borderRadius: BorderRadius.all(Radius.circular(99)),
+                ),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                  child: Text(
+                    'BARAKAH CONTROL',
+                    style: TextStyle(
+                      color: AppTheme.coolYellow,
+                      fontSize: 11,
+                      letterSpacing: 1.1,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
                 ),
               ),
-            ),
-            const Padding(
-              padding: EdgeInsets.all(22),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Color(0x22FFFFFF),
-                      borderRadius: BorderRadius.all(Radius.circular(99)),
-                    ),
-                    child: Padding(
-                      padding:
-                          EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-                      child: Text(
-                        'BARAKAH CONTROL',
-                        style: TextStyle(
-                          color: AppTheme.coolYellow,
-                          fontSize: 11,
-                          letterSpacing: 1.1,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
+              SizedBox(height: 12),
+              SizedBox(
+                width: 235,
+                child: Text(
+                  'إدارة أذكى، أسرع، وأوضح',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    height: 1.25,
+                    fontWeight: FontWeight.w900,
                   ),
-                  SizedBox(height: 12),
-                  SizedBox(
-                    width: 235,
-                    child: Text(
-                      'إدارة أذكى، أسرع، وأوضح',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        height: 1.25,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: 7),
-                  SizedBox(
-                    width: 225,
-                    child: Text(
-                      'كل ما تحتاجينه لإدارة بركة من شاشة واحدة.',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        height: 1.4,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ],
+              SizedBox(height: 7),
+              SizedBox(
+                width: 225,
+                child: Text(
+                  'كل ما تحتاجينه لإدارة بركة من شاشة واحدة.',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    height: 1.4,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-      );
+      ],
+    ),
+  );
 }
 
 class _AdminRequestShortcut extends StatelessWidget {
@@ -992,9 +973,7 @@ class _AdminRequestShortcut extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.white.withOpacity(.12),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: Colors.white.withOpacity(.20),
-              ),
+              border: Border.all(color: Colors.white.withOpacity(.20)),
               boxShadow: const [
                 BoxShadow(
                   color: Color(0x22000000),
@@ -1014,10 +993,7 @@ class _AdminRequestShortcut extends StatelessWidget {
                     color: AppTheme.coolYellow,
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(
-                    icon,
-                    color: AppTheme.navy,
-                  ),
+                  child: Icon(icon, color: AppTheme.navy),
                 ),
                 const SizedBox(height: 10),
                 Text(
@@ -1046,70 +1022,70 @@ class _OperationsShortcut extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
+    color: Colors.transparent,
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(24),
+      child: Ink(
+        padding: const EdgeInsets.all(17),
+        decoration: BoxDecoration(
+          color: AppTheme.coolYellow,
           borderRadius: BorderRadius.circular(24),
-          child: Ink(
-            padding: const EdgeInsets.all(17),
-            decoration: BoxDecoration(
-              color: AppTheme.coolYellow,
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x44E8C64A),
-                  blurRadius: 22,
-                  offset: Offset(0, 10),
-                ),
-              ],
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x44E8C64A),
+              blurRadius: 22,
+              offset: Offset(0, 10),
             ),
-            child: const Row(
-              children: [
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: AppTheme.navy,
-                    borderRadius: BorderRadius.all(Radius.circular(17)),
-                  ),
-                  child: SizedBox(
-                    width: 58,
-                    height: 58,
-                    child: Icon(
-                      Icons.space_dashboard_rounded,
-                      color: AppTheme.coolYellow,
-                      size: 31,
+          ],
+        ),
+        child: const Row(
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: AppTheme.navy,
+                borderRadius: BorderRadius.all(Radius.circular(17)),
+              ),
+              child: SizedBox(
+                width: 58,
+                height: 58,
+                child: Icon(
+                  Icons.space_dashboard_rounded,
+                  color: AppTheme.coolYellow,
+                  size: 31,
+                ),
+              ),
+            ),
+            SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'الطلبات والمحاسبة',
+                    style: TextStyle(
+                      color: AppTheme.navy,
+                      fontSize: 19,
+                      fontWeight: FontWeight.w900,
                     ),
                   ),
-                ),
-                SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'الطلبات والمحاسبة',
-                        style: TextStyle(
-                          color: AppTheme.navy,
-                          fontSize: 19,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        'مركز التشغيل اليومي • افتحيه أولًا',
-                        style: TextStyle(
-                          color: Color(0xB3122447),
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
+                  SizedBox(height: 4),
+                  Text(
+                    'مركز التشغيل اليومي • افتحيه أولًا',
+                    style: TextStyle(
+                      color: Color(0xB3122447),
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ),
-                Icon(Icons.arrow_back_ios_new_rounded, color: AppTheme.navy),
-              ],
+                ],
+              ),
             ),
-          ),
+            Icon(Icons.arrow_back_ios_new_rounded, color: AppTheme.navy),
+          ],
         ),
-      );
+      ),
+    ),
+  );
 }
 
 class _TechBackground extends StatelessWidget {
@@ -1117,15 +1093,15 @@ class _TechBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF5B6068), Color(0xFF30343A)],
-          ),
-        ),
-        child: CustomPaint(painter: _TechGridPainter()),
-      );
+    decoration: BoxDecoration(
+      gradient: LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Color(0xFF5B6068), Color(0xFF30343A)],
+      ),
+    ),
+    child: CustomPaint(painter: _TechGridPainter()),
+  );
 }
 
 class _TechGridPainter extends CustomPainter {
@@ -1166,10 +1142,7 @@ class _AdminAnalyticsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('إحصائيات بركة'),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text('إحصائيات بركة'), centerTitle: true),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance.collection('users').snapshots(),
         builder: (context, userSnapshot) {
@@ -1220,8 +1193,9 @@ class _AdminAnalyticsScreen extends StatelessWidget {
                 ..sort((a, b) => b.value.compareTo(a.value));
 
               return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream:
-                    FirebaseFirestore.instance.collection('orders').snapshots(),
+                stream: FirebaseFirestore.instance
+                    .collection('orders')
+                    .snapshots(),
                 builder: (context, orderSnapshot) {
                   final productTotals = <String, int>{};
 
@@ -1239,13 +1213,11 @@ class _AdminAnalyticsScreen extends StatelessWidget {
 
                       final count = quantity is num
                           ? quantity.toInt()
-                          : int.tryParse(
-                                quantity?.toString() ?? '',
-                              ) ??
-                              1;
+                          : int.tryParse(quantity?.toString() ?? '') ?? 1;
 
                       if (title.isNotEmpty) {
-                        productTotals[title] = (productTotals[title] ?? 0) +
+                        productTotals[title] =
+                            (productTotals[title] ?? 0) +
                             (count <= 0 ? 1 : count);
                       }
                     }
@@ -1289,12 +1261,7 @@ class _AdminAnalyticsScreen extends StatelessWidget {
                         icon: Icons.shopping_bag_rounded,
                         rows: topProducts
                             .take(10)
-                            .map(
-                              (entry) => (
-                                entry.key,
-                                entry.value,
-                              ),
-                            )
+                            .map((entry) => (entry.key, entry.value))
                             .toList(),
                         emptyText: 'لا توجد طلبات كافية بعد.',
                       ),
@@ -1304,12 +1271,7 @@ class _AdminAnalyticsScreen extends StatelessWidget {
                         icon: Icons.category_rounded,
                         rows: topCategories
                             .take(10)
-                            .map(
-                              (entry) => (
-                                entry.key,
-                                entry.value,
-                              ),
-                            )
+                            .map((entry) => (entry.key, entry.value))
                             .toList(),
                         emptyText: 'ستظهر الزيارات هنا بعد استخدام الأقسام.',
                       ),
@@ -1317,10 +1279,7 @@ class _AdminAnalyticsScreen extends StatelessWidget {
                       const Text(
                         'إحصائيات الزوار والأقسام تبدأ من وقت تفعيل نظام التتبع.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.black54,
-                        ),
+                        style: TextStyle(fontSize: 12, color: Colors.black54),
                       ),
                     ],
                   );
@@ -1351,19 +1310,13 @@ class _AnalyticsSummaryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 18,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
         child: Row(
-          mainAxisAlignment:
-              fullWidth ? MainAxisAlignment.center : MainAxisAlignment.start,
+          mainAxisAlignment: fullWidth
+              ? MainAxisAlignment.center
+              : MainAxisAlignment.start,
           children: [
-            Icon(
-              icon,
-              color: AppTheme.deepYellow,
-              size: 30,
-            ),
+            Icon(icon, color: AppTheme.deepYellow, size: 30),
             const SizedBox(width: 12),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1414,10 +1367,7 @@ class _AnalyticsRankingCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(
-                  icon,
-                  color: AppTheme.deepYellow,
-                ),
+                Icon(icon, color: AppTheme.deepYellow),
                 const SizedBox(width: 8),
                 Text(
                   title,
@@ -1436,9 +1386,7 @@ class _AnalyticsRankingCard extends StatelessWidget {
                   child: Text(
                     emptyText,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.black54,
-                    ),
+                    style: const TextStyle(color: Colors.black54),
                   ),
                 ),
               )
@@ -1460,9 +1408,7 @@ class _AnalyticsRankingCard extends StatelessWidget {
                   ),
                   title: Text(
                     rows[i].$1,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                    ),
+                    style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
                   trailing: Text(
                     '${rows[i].$2}',
@@ -1658,30 +1604,27 @@ class _AdminAuctionRequestsScreen extends StatelessWidget {
       );
     } catch (error) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('تعذر إلغاء الحجز: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('تعذر إلغاء الحجز: $error')));
     }
   }
 
   Widget _requestsTab(BuildContext context) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream:
-          FirebaseFirestore.instance.collection('auction_requests').snapshots(),
+      stream: FirebaseFirestore.instance
+          .collection('auction_requests')
+          .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
-          return const Center(
-            child: CircularProgressIndicator(),
-          );
+          return const Center(child: CircularProgressIndicator());
         }
 
         final docs = snapshot.data?.docs ?? const [];
 
         if (docs.isEmpty) {
-          return const Center(
-            child: Text('لا توجد طلبات مزاد حالياً.'),
-          );
+          return const Center(child: Text('لا توجد طلبات مزاد حالياً.'));
         }
 
         return ListView.separated(
@@ -1769,9 +1712,7 @@ class _AdminAuctionRequestsScreen extends StatelessWidget {
                                 if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
-                                      content: Text(
-                                        'تم رفض طلب المزاد.',
-                                      ),
+                                      content: Text('تم رفض طلب المزاد.'),
                                     ),
                                   );
                                 }
@@ -1794,34 +1735,31 @@ class _AdminAuctionRequestsScreen extends StatelessWidget {
 
   Widget _salesTab(BuildContext context) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream:
-          FirebaseFirestore.instance.collection('auction_sales').snapshots(),
+      stream: FirebaseFirestore.instance
+          .collection('auction_sales')
+          .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
-          return const Center(
-            child: CircularProgressIndicator(),
-          );
+          return const Center(child: CircularProgressIndicator());
         }
 
         final docs = (snapshot.data?.docs ?? const []).toList()
           ..sort((a, b) {
             final aTime =
                 (a.data()['createdAt'] as Timestamp?)?.millisecondsSinceEpoch ??
-                    0;
+                0;
 
             final bTime =
                 (b.data()['createdAt'] as Timestamp?)?.millisecondsSinceEpoch ??
-                    0;
+                0;
 
             return bTime.compareTo(aTime);
           });
 
         if (docs.isEmpty) {
           return const Center(
-            child: Text(
-              'لا توجد عمليات بيع في المزاد حالياً.',
-            ),
+            child: Text('لا توجد عمليات بيع في المزاد حالياً.'),
           );
         }
 
@@ -1868,25 +1806,15 @@ class _AdminAuctionRequestsScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      'سعر البيع: ${data['salePrice'] ?? 0} ₪',
-                    ),
-                    Text(
-                      'عمولة بركة: ${data['commissionAmount'] ?? 0} ₪',
-                    ),
+                    Text('سعر البيع: ${data['salePrice'] ?? 0} ₪'),
+                    Text('عمولة بركة: ${data['commissionAmount'] ?? 0} ₪'),
                     const SizedBox(height: 6),
-                    Text(
-                      'البائع: ${data['sellerId'] ?? ''}',
-                    ),
-                    Text(
-                      'المشتري: ${data['buyerId'] ?? ''}',
-                    ),
+                    Text('البائع: ${data['sellerId'] ?? ''}'),
+                    Text('المشتري: ${data['buyerId'] ?? ''}'),
                     const SizedBox(height: 6),
                     Text(
                       'الحالة: $statusLabel',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w900,
-                      ),
+                      style: const TextStyle(fontWeight: FontWeight.w900),
                     ),
                     if (status == 'pending_commission') ...[
                       const SizedBox(height: 12),
@@ -1915,12 +1843,8 @@ class _AdminAuctionRequestsScreen extends StatelessWidget {
                       const SizedBox(height: 12),
                       FilledButton.icon(
                         onPressed: () => _completeSale(context, sale),
-                        icon: const Icon(
-                          Icons.check_circle_rounded,
-                        ),
-                        label: const Text(
-                          'تأكيد إتمام البيع',
-                        ),
+                        icon: const Icon(Icons.check_circle_rounded),
+                        label: const Text('تأكيد إتمام البيع'),
                       ),
                     ],
                   ],
@@ -1943,21 +1867,12 @@ class _AdminAuctionRequestsScreen extends StatelessWidget {
           centerTitle: true,
           bottom: const TabBar(
             tabs: [
-              Tab(
-                text: 'طلبات الإعلانات',
-              ),
-              Tab(
-                text: 'عمليات البيع',
-              ),
+              Tab(text: 'طلبات الإعلانات'),
+              Tab(text: 'عمليات البيع'),
             ],
           ),
         ),
-        body: TabBarView(
-          children: [
-            _requestsTab(context),
-            _salesTab(context),
-          ],
-        ),
+        body: TabBarView(children: [_requestsTab(context), _salesTab(context)]),
       ),
     );
   }

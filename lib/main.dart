@@ -21,6 +21,7 @@ import 'games/gold_worm_game.dart';
 import 'services/app_language_service.dart';
 import 'services/user_profile_service.dart';
 import 'services/admin_notification_service.dart';
+import 'services/ios_foreground_order_alarm_service.dart';
 
 import 'widgets/barakah_waiting_screen.dart';
 
@@ -49,6 +50,7 @@ Future<void> _initializeAppServices() async {
           : DefaultFirebaseOptions.currentPlatform,
     ).timeout(const Duration(seconds: 12));
     FirebaseState.isReady = true;
+    IosForegroundOrderAlarmService.instance.initialize();
     // لا نؤخر أول شاشة بانتظار APNs/FCM على iPhone. قد يستغرق تسجيل
     // الإشعارات وقتًا عند التشغيل الأول أو مع الاتصال اللاسلكي.
     unawaited(

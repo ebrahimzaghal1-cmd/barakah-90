@@ -35,36 +35,154 @@
   <link rel="manifest" href="manifest.json">
 
 </head>
+
 <body>
+
+  <!-- Barakah order sounds for Web -->
+  <script>
+    (() => {
+      const coinAudio = new Audio('/barakah_coin.wav');
+      coinAudio.preload = 'auto';
+
+      const adminOrderAudio = new Audio('/barakah_admin_order.wav');
+      adminOrderAudio.preload = 'auto';
+      adminOrderAudio.loop = true;
+
+      let soundUnlocked = false;
+
+      async function primeAudio(audio) {
+        const oldVolume = audio.volume;
+        audio.volume = 0.001;
+        audio.currentTime = 0;
+
+        try {
+          await audio.play();
+          audio.pause();
+          audio.currentTime = 0;
+        } finally {
+          audio.volume = oldVolume;
+        }
+      }
+
+      const unlockBarakahSound = async () => {
+        if (soundUnlocked) return;
+
+        try {
+          await Promise.all([
+            primeAudio(coinAudio),
+            primeAudio(adminOrderAudio),
+          ]);
+
+          soundUnlocked = true;
+          console.log('BARAKAH_SOUND_UNLOCKED');
+        } catch (error) {
+          console.log('BARAKAH_SOUND_UNLOCK_FAILED', error);
+        }
+      };
+
+      document.addEventListener('pointerdown', unlockBarakahSound);
+      document.addEventListener('touchstart', unlockBarakahSound, {
+        passive: true
+      });
+      document.addEventListener('keydown', unlockBarakahSound);
+
+      window.barakahPlayCoin = () => {
+        try {
+          coinAudio.pause();
+          coinAudio.currentTime = 0;
+          coinAudio.volume = 1.0;
+
+          const result = coinAudio.play();
+          if (result && typeof result.catch === 'function') {
+            result.catch((error) => {
+              console.log('BARAKAH_COIN_PLAY_FAILED', error);
+            });
+          }
+        } catch (error) {
+          console.log('BARAKAH_COIN_ERROR', error);
+        }
+      };
+
+      window.barakahStartAdminOrderAlarm = () => {
+        try {
+          if (!adminOrderAudio.paused) return;
+
+          adminOrderAudio.loop = true;
+          adminOrderAudio.currentTime = 0;
+          adminOrderAudio.volume = 1.0;
+
+          const result = adminOrderAudio.play();
+          if (result && typeof result.catch === 'function') {
+            result.catch((error) => {
+              console.log('BARAKAH_ADMIN_ALARM_PLAY_FAILED', error);
+            });
+          }
+
+          console.log('BARAKAH_ADMIN_ALARM_STARTED');
+        } catch (error) {
+          console.log('BARAKAH_ADMIN_ALARM_ERROR', error);
+        }
+      };
+
+      window.barakahStopAdminOrderAlarm = () => {
+        try {
+          adminOrderAudio.pause();
+          adminOrderAudio.currentTime = 0;
+          console.log('BARAKAH_ADMIN_ALARM_STOPPED');
+        } catch (error) {
+          console.log('BARAKAH_ADMIN_ALARM_STOP_ERROR', error);
+        }
+      };
+    })();
+  </script>
+
 
   <script>
     (async () => {
-      // Wait until Flutter's retired offline cache is gone before loading the
-      // application. Firebase Messaging keeps its own isolated worker.
-      if ('serviceWorker' in navigator) {
-        const registrations = await navigator.serviceWorker.getRegistrations();
-        for (const registration of registrations) {
-          const workers = [
-            registration.active,
-            registration.waiting,
-            registration.installing,
-          ].filter(Boolean);
-          const isFlutterWorker = workers.some((worker) =>
-            worker.scriptURL.includes('flutter_service_worker.js')
-          );
-          if (isFlutterWorker) {
-            await registration.unregister();
+      // Never allow notification/service-worker setup to block Flutter startup.
+      try {
+        if ('serviceWorker' in navigator) {
+          try {
+            const registrations =
+              await navigator.serviceWorker.getRegistrations();
+
+            for (const registration of registrations) {
+              const workers = [
+                registration.active,
+                registration.waiting,
+                registration.installing,
+              ].filter(Boolean);
+
+              const isFlutterWorker = workers.some((worker) =>
+                worker.scriptURL.includes('flutter_service_worker.js')
+              );
+
+              if (isFlutterWorker) {
+                await registration.unregister();
+              }
+            }
+          } catch (error) {
+            console.warn('BARAKAH_SW_CLEANUP_FAILED', error);
+          }
+
+          try {
+            await navigator.serviceWorker.register(
+              '/firebase-messaging-sw.js',
+              {scope: '/firebase-cloud-messaging-push-scope'}
+            );
+          } catch (error) {
+            console.warn('BARAKAH_FCM_SW_FAILED', error);
           }
         }
-
-        await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
-          scope: '/firebase-cloud-messaging-push-scope',
-        });
+      } finally {
+        // Flutter must start even when Safari blocks the notification worker.
+        const bootstrap = document.createElement('script');
+        bootstrap.src = '/flutter_bootstrap.js?v=20261001-2153';
+        bootstrap.async = true;
+        bootstrap.onerror = () =>
+          console.error('BARAKAH_FLUTTER_BOOTSTRAP_FAILED');
+        document.body.appendChild(bootstrap);
       }
-
-      const bootstrap = document.createElement('script');
-      bootstrap.src = '/flutter_bootstrap.js?v=20260901-1055';
-      document.body.appendChild(bootstrap);
     })();
   </script>
 </body>

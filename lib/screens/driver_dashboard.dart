@@ -6,6 +6,7 @@ import '../services/admin_notification_service.dart';
 import '../services/driver_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/taxi_driver_tracking.dart';
+import '../widgets/order_navigation.dart';
 
 class DriverDashboard extends StatelessWidget {
   const DriverDashboard({super.key});
@@ -288,6 +289,13 @@ class DriverDashboard extends StatelessWidget {
                                   Text(
                                     '${order['businessTitle'] ?? 'المطعم'} • ${order['total'] ?? 0} ₪',
                                   ),
+                                  OrderNavigation(
+                                      label: 'المحل',
+                                      address: order['restaurantAddress']
+                                              ?.toString() ??
+                                          '',
+                                      latitude: order['restaurantLatitude'],
+                                      longitude: order['restaurantLongitude']),
                                   const SizedBox(height: 10),
                                   FilledButton.icon(
                                     onPressed: () async {
@@ -495,6 +503,16 @@ class DriverDashboard extends StatelessWidget {
                                 '🏁 الوجهة: '
                                 '${destination.isEmpty ? 'غير محددة' : destination}',
                               ),
+                              OrderNavigation(
+                                  label: 'الانطلاق',
+                                  address: pickupAddress,
+                                  latitude: data['pickupLatitude'],
+                                  longitude: data['pickupLongitude']),
+                              OrderNavigation(
+                                  label: 'الوجهة',
+                                  address: destination,
+                                  latitude: data['destinationLatitude'],
+                                  longitude: data['destinationLongitude']),
                               if (vehicle.isNotEmpty) ...[
                                 const SizedBox(height: 5),
                                 Text('🚕 السيارة: $vehicle'),
@@ -591,6 +609,21 @@ class DriverDashboard extends StatelessWidget {
                                       fontSize: 18)),
                               Text(
                                   '${data['businessTitle'] ?? 'المطعم'} • ${data['total'] ?? 0} ₪'),
+                              OrderNavigation(
+                                  label: 'المحل',
+                                  address:
+                                      data['restaurantAddress']?.toString() ??
+                                          '',
+                                  latitude: data['restaurantLatitude'],
+                                  longitude: data['restaurantLongitude']),
+                              if (data['driverId'] == user.uid)
+                                OrderNavigation(
+                                    label: 'الزبون',
+                                    address:
+                                        data['deliveryAddress']?.toString() ??
+                                            '',
+                                    latitude: data['deliveryLatitude'],
+                                    longitude: data['deliveryLongitude']),
                               if (data['estimatedReadyAt'] is Timestamp)
                                 Text(
                                     'موعد الجاهزية: ${(data['estimatedReadyAt'] as Timestamp).toDate().toLocal()}'),

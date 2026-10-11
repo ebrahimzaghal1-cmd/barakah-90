@@ -175,5 +175,8 @@
       ],
       "target": "admin"
     }
-  ]
+  ],
+  "storage": {
+    "rules": "storage.rules"
+  }
 }

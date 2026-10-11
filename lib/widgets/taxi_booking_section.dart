@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../screens/authentication_screen.dart';
+import '../screens/location_picker_screen.dart';
 import '../services/location_service.dart';
 import '../services/taxi_order_service.dart';
 import '../theme/app_theme.dart';
@@ -514,7 +515,7 @@ class _TaxiBookingSectionState extends State<TaxiBookingSection> {
             ),
             const SizedBox(height: 8),
             const Text(
-              'لا تُثبت عمولة بركة إلا بعد تأكيد انتهاء الرحلة.',
+              'عمولة بركة على رحلات التكسي 0%.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 12,
@@ -644,6 +645,9 @@ class _TaxiOrderSheetState extends State<_TaxiOrderSheet> {
   final _notesController = TextEditingController();
   double? _pickupLat;
   double? _pickupLng;
+  double? _destinationLat;
+  double? _destinationLng;
+  int _locationRevision = 0;
   bool _loadingLocation = false;
   bool _submitting = false;
 
@@ -673,10 +677,11 @@ class _TaxiOrderSheetState extends State<_TaxiOrderSheet> {
   }
 
   Future<void> _fetchCurrentLocation() async {
+    final revision = ++_locationRevision;
     setState(() => _loadingLocation = true);
     try {
       final pos = await LocationService.getCurrentLocation();
-      if (!mounted) return;
+      if (!mounted || revision != _locationRevision) return;
       setState(() {
         _pickupLat = pos.latitude;
         _pickupLng = pos.longitude;
@@ -684,19 +689,51 @@ class _TaxiOrderSheetState extends State<_TaxiOrderSheet> {
         _loadingLocation = false;
       });
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || revision != _locationRevision) return;
       setState(() {
         _loadingLocation = false;
-        if (_pickupController.text.isEmpty) {
-          _pickupController.text = 'طولكرم - موقعي الحالي';
-        }
       });
     }
+  }
+
+  Future<void> _pickPoint(bool pickup) async {
+    ++_locationRevision;
+    setState(() => _loadingLocation = false);
+    final point =
+        await Navigator.of(context).push<Map<String, double>>(MaterialPageRoute(
+      builder: (_) => LocationPickerScreen(
+          latitude: pickup ? _pickupLat : _destinationLat,
+          longitude: pickup ? _pickupLng : _destinationLng),
+    ));
+    if (!mounted || point == null) return;
+    setState(() {
+      if (pickup) {
+        _pickupLat = point['latitude'];
+        _pickupLng = point['longitude'];
+        if (_pickupController.text.isEmpty ||
+            _pickupController.text == 'موقعي الحالي عبر الـ GPS')
+          _pickupController.text = 'نقطة الانطلاق المحددة على الخريطة';
+      } else {
+        _destinationLat = point['latitude'];
+        _destinationLng = point['longitude'];
+        if (_destinationController.text.isEmpty)
+          _destinationController.text = 'الوجهة المحددة على الخريطة';
+      }
+    });
   }
 
   Future<void> _submitOrder() async {
     final pickup = _pickupController.text.trim();
     final destination = _destinationController.text.trim();
+
+    if (_pickupLat == null ||
+        _pickupLng == null ||
+        _destinationLat == null ||
+        _destinationLng == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('حددي نقطة الانطلاق والوجهة على الخريطة أولاً.')));
+      return;
+    }
 
     if (pickup.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -719,6 +756,8 @@ class _TaxiOrderSheetState extends State<_TaxiOrderSheet> {
         pickupLatitude: _pickupLat,
         pickupLongitude: _pickupLng,
         destination: destination,
+        destinationLatitude: _destinationLat,
+        destinationLongitude: _destinationLng,
         notes: _notesController.text.trim(),
         customerName: widget.user.displayName,
         customerPhone: widget.user.phoneNumber,
@@ -794,6 +833,12 @@ class _TaxiOrderSheetState extends State<_TaxiOrderSheet> {
             // Pickup location
             TextField(
               controller: _pickupController,
+              onChanged: (_) => setState(() {
+                ++_locationRevision;
+                _loadingLocation = false;
+                _pickupLat = null;
+                _pickupLng = null;
+              }),
               decoration: InputDecoration(
                 labelText: 'موقع الركوب (أين أنت؟)',
                 prefixIcon:
@@ -818,9 +863,19 @@ class _TaxiOrderSheetState extends State<_TaxiOrderSheet> {
               ),
             ),
             const SizedBox(height: 14),
+            OutlinedButton.icon(
+                onPressed: () => _pickPoint(true),
+                icon: const Icon(Icons.map),
+                label: Text(_pickupLat == null
+                    ? 'اختيار الانطلاق على الخريطة'
+                    : 'تعديل نقطة الانطلاق المحددة')),
             // Destination
             TextField(
               controller: _destinationController,
+              onChanged: (_) => setState(() {
+                _destinationLat = null;
+                _destinationLng = null;
+              }),
               decoration: InputDecoration(
                 labelText: 'الوجهة (إلى أين تريد الذهاب؟)',
                 hintText: 'مثال: جامعة خضوري، مفرق فرعون...',
@@ -831,6 +886,12 @@ class _TaxiOrderSheetState extends State<_TaxiOrderSheet> {
               ),
             ),
             const SizedBox(height: 10),
+            OutlinedButton.icon(
+                onPressed: () => _pickPoint(false),
+                icon: const Icon(Icons.map),
+                label: Text(_destinationLat == null
+                    ? 'اختيار الوجهة على الخريطة'
+                    : 'تعديل الوجهة المحددة')),
             // Quick suggestions
             Wrap(
               spacing: 6,
@@ -843,6 +904,8 @@ class _TaxiOrderSheetState extends State<_TaxiOrderSheet> {
                   onPressed: () {
                     setState(() {
                       _destinationController.text = dest;
+                      _destinationLat = null;
+                      _destinationLng = null;
                     });
                   },
                 );
@@ -876,7 +939,7 @@ class _TaxiOrderSheetState extends State<_TaxiOrderSheet> {
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'الطلب بضغطة زر يضمن توثيق الرحلة، استحقاق المنصة، وحمايتك.',
+                      'الطلب بضغطة زر يوثق الرحلة ويحميك. عمولة التكسي 0%.',
                       style:
                           TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
                     ),

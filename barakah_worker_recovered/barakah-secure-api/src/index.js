@@ -13,6 +13,17 @@ function isPrimaryAdmin(user, actor) {
 }
 __name(isPrimaryAdmin, "isPrimaryAdmin");
 var index_default = {
+  async scheduled(controller, env, ctx) {
+    ctx.waitUntil(
+      processNotificationOutbox(env).catch((error) => {
+        console.error(
+          "notification_outbox_scheduled_failed",
+          String(error?.message || error)
+        );
+      })
+    );
+  },
+
   async fetch(request, env) {
     const cors = corsHeaders(request, env);
     if (request.method === "OPTIONS") {
@@ -31,6 +42,41 @@ var index_default = {
         );
       }
       const user = await authenticate(request, env);
+
+      // ===== BARAKAH COMMUNICATION CAMPAIGNS =====
+      if (
+        request.method === "POST" &&
+        url.pathname === "/v1/admin/communications/campaigns"
+      ) {
+        return json(
+          await createCommunicationCampaign(request, env, user),
+          201,
+          cors
+        );
+      }
+
+      if (
+        request.method === "POST" &&
+        url.pathname === "/v1/admin/communications/campaigns/process"
+      ) {
+        return json(
+          await processCommunicationCampaign(request, env, user),
+          200,
+          cors
+        );
+      }
+
+      if (
+        request.method === "POST" &&
+        url.pathname === "/v1/admin/communications/fcm-cleanup"
+      ) {
+        return json(
+          await cleanupCurrentAdminFcmTokens(request, env, user),
+          200,
+          cors
+        );
+      }
+
       if (request.method === "POST" && url.pathname === "/v1/barber-bookings") {
         const store = createFirestoreStore({ baseUrl: firestoreBase(env), token: await serviceToken(env) });
         return json(await createAppointment(store, user, await readJson(request), { primaryAdminUid: PRIMARY_ADMIN_UID }), 201, cors);
@@ -43,31 +89,105 @@ var index_default = {
       }
 
       if (request.method === "POST" && url.pathname === "/v1/taxi-orders") {
-        const store = createFirestoreStore({ baseUrl: firestoreBase(env), token: await serviceToken(env) });
-        return json(
-          await createTaxiOrder(
-            store,
-            user,
-            await readJson(request),
-            { primaryAdminUid: PRIMARY_ADMIN_UID }
-          ),
-          201,
-          cors
+        const token = await serviceToken(env);
+        const store = createFirestoreStore({
+          baseUrl: firestoreBase(env),
+          token
+        });
+        const input = await readJson(request);
+
+        const result = await createTaxiOrder(
+          store,
+          user,
+          input,
+          { primaryAdminUid: PRIMARY_ADMIN_UID }
         );
+
+        try {
+          const order = await firestoreGet(
+            env,
+            token,
+            `taxi_orders/${encodeURIComponent(result.orderId)}`
+          );
+
+          await notifyTaxiLifecycle(
+            env,
+            token,
+            order,
+            "created",
+            user.uid
+          );
+        } catch (error) {
+          console.error(
+            "taxi_create_post_notification_failed",
+            String(error?.message || error)
+          );
+        }
+
+        return json(result, 201, cors);
       }
 
       const taxiOrderActionMatch = url.pathname.match(
         /^\/v1\/taxi-orders\/([^/]+)\/action$/
       );
+
       if (request.method === "POST" && taxiOrderActionMatch) {
-        const store = createFirestoreStore({ baseUrl: firestoreBase(env), token: await serviceToken(env) });
+        const token = await serviceToken(env);
+        const store = createFirestoreStore({
+          baseUrl: firestoreBase(env),
+          token
+        });
+
+        const orderId =
+          decodeURIComponent(taxiOrderActionMatch[1]);
+
+        const input = await readJson(request);
+        const action = String(input?.action || "").trim();
+
+        const result = await updateTaxiOrder(
+          store,
+          user,
+          orderId,
+          input,
+          { primaryAdminUid: PRIMARY_ADMIN_UID }
+        );
+
+        if (action !== "update_location") {
+          try {
+            const order = await firestoreGet(
+              env,
+              token,
+              `taxi_orders/${encodeURIComponent(orderId)}`
+            );
+
+            await notifyTaxiLifecycle(
+              env,
+              token,
+              order,
+              action,
+              user.uid
+            );
+          } catch (error) {
+            console.error(
+              "taxi_action_post_notification_failed",
+              String(error?.message || error)
+            );
+          }
+        }
+
+        return json(result, 200, cors);
+      }
+
+
+      if (
+        request.method === "POST" &&
+        url.pathname === "/v1/taxi/drivers/list"
+      ) {
         return json(
-          await updateTaxiOrder(
-            store,
-            user,
-            decodeURIComponent(taxiOrderActionMatch[1]),
-            await readJson(request),
-            { primaryAdminUid: PRIMARY_ADMIN_UID }
+          await listTaxiOfficeDrivers(
+            request,
+            env,
+            user
           ),
           200,
           cors
@@ -726,7 +846,7 @@ async function firestoreCommit(env, token, writes) {
   return responseText ? JSON.parse(responseText) : {};
 }
 __name(firestoreCommit, "firestoreCommit");
-async function firestoreQuery(env, token, collectionId, filters = []) {
+async function firestoreQuery(env, token, collectionId, filters = [], decode = decodeDocument) {
   const where = filters.length === 0 ? null : filters.length === 1 ? filters[0] : {
     compositeFilter: { op: "AND", filters }
   };
@@ -741,7 +861,7 @@ async function firestoreQuery(env, token, collectionId, filters = []) {
   });
   if (!response.ok) fail(502, "firestore-query-failed", "\u062A\u0639\u0630\u0631 \u0642\u0631\u0627\u0621\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A.");
   const rows = await response.json();
-  return rows.filter((row) => row.document).map((row) => decodeDocument(row.document));
+  return rows.filter((row) => row.document).map((row) => decode(row.document));
 }
 __name(firestoreQuery, "firestoreQuery");
 function fieldEquals(fieldPath, value) {
@@ -752,6 +872,1099 @@ function fieldArrayContains(fieldPath, value) {
   return { fieldFilter: { field: { fieldPath }, op: "ARRAY_CONTAINS", value: encodeValue(value) } };
 }
 __name(fieldArrayContains, "fieldArrayContains");
+
+// ===== BARAKAH COMMUNICATION CAMPAIGNS =====
+
+function communicationCampaignProgress(campaign) {
+  return {
+    campaignId: String(campaign?.id || ""),
+    complete: campaign?.complete === true,
+    recipientCount: Number(campaign?.recipientCount || 0),
+    scannedCount: Number(campaign?.scannedCount || 0),
+    pushTargetCount: Number(campaign?.pushTargetCount || 0),
+    pageCount: Number(campaign?.pageCount || 0),
+    pushSuccessCount: Number(campaign?.pushSuccessCount || 0),
+    pushFailureCount: Number(campaign?.pushFailureCount || 0),
+    pushUnknownCount: Number(campaign?.pushUnknownCount || 0)
+  };
+}
+__name(communicationCampaignProgress, "communicationCampaignProgress");
+
+async function communicationSha256Hex(value) {
+  const bytes = new TextEncoder().encode(String(value));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+__name(communicationSha256Hex, "communicationSha256Hex");
+
+function normalizeCommunicationCampaignInput(raw) {
+  const title = String(raw?.title || "").trim();
+  const body = String(raw?.body || "").trim();
+  const audience = String(raw?.audience || "").trim();
+  const type = String(raw?.type || "").trim();
+  const imageUrl = String(raw?.imageUrl || "").trim();
+  const videoUrl = String(raw?.videoUrl || "").trim();
+  const mediaType = String(raw?.mediaType || "").trim();
+
+  const allowedAudiences = new Set([
+    "admin_only",
+    "all",
+    "customers",
+    "merchants",
+    "delivery_drivers",
+    "taxi_drivers",
+    "agents",
+    "customer_service"
+  ]);
+
+  const allowedTypes = new Set([
+    "message",
+    "offer",
+    "ad",
+    "alert"
+  ]);
+
+  if (!title || title.length > 120) {
+    fail(400, "invalid-campaign-title", "عنوان الحملة غير صالح.");
+  }
+
+  if (body.length > 4000) {
+    fail(400, "campaign-body-too-long", "نص الحملة أطول من الحد المسموح.");
+  }
+
+  if (!body && !imageUrl && !videoUrl) {
+    fail(400, "campaign-content-required", "أضف نصًا أو صورة أو فيديو للحملة.");
+  }
+
+  if (!allowedAudiences.has(audience)) {
+    fail(400, "invalid-campaign-audience", "جمهور الحملة غير صالح.");
+  }
+
+  if (!allowedTypes.has(type)) {
+    fail(400, "invalid-campaign-type", "نوع الحملة غير صالح.");
+  }
+
+  if (imageUrl && (!/^https:\/\//i.test(imageUrl) || imageUrl.length > 2000)) {
+    fail(400, "invalid-campaign-image", "رابط صورة الحملة غير صالح.");
+  }
+
+  if (videoUrl && (!/^https:\/\//i.test(videoUrl) || videoUrl.length > 2000)) {
+    fail(400, "invalid-campaign-video", "رابط فيديو الحملة غير صالح.");
+  }
+
+  if (mediaType && !["image", "video"].includes(mediaType)) {
+    fail(400, "invalid-campaign-media-type", "نوع وسائط الحملة غير صالح.");
+  }
+
+  return {
+    title,
+    body,
+    audience,
+    type,
+    imageUrl: imageUrl || null,
+    videoUrl: videoUrl || null,
+    mediaType: mediaType || null
+  };
+}
+__name(normalizeCommunicationCampaignInput, "normalizeCommunicationCampaignInput");
+
+function communicationAudienceMatches(profile, audience) {
+  if (!profile || !profile.id) return false;
+
+  const role = String(profile.role || "").trim();
+  const agentNumber = String(profile.agentNumber || "").trim();
+
+  if (audience === "admin_only") {
+    return profile.id === PRIMARY_ADMIN_UID;
+  }
+
+  if (audience === "all") {
+    return role.length > 0;
+  }
+
+  if (audience === "customers") {
+    return role === "customer" && agentNumber.length === 0;
+  }
+
+  if (audience === "merchants") {
+    return role === "merchant";
+  }
+
+  if (audience === "delivery_drivers") {
+    return role === "driver" && profile.taxiDriverEnabled !== true;
+  }
+
+  if (audience === "taxi_drivers") {
+    return profile.taxiDriverEnabled === true;
+  }
+
+  if (audience === "customer_service") {
+    return role === "customer_service" &&
+      profile.customerServiceEnabled === true;
+  }
+
+  return false;
+}
+__name(communicationAudienceMatches, "communicationAudienceMatches");
+
+async function firestoreListPage(
+  env,
+  token,
+  collectionId,
+  pageToken = "",
+  pageSize = 40
+) {
+  const params = new URLSearchParams();
+  params.set("pageSize", String(Math.max(1, Math.min(100, pageSize))));
+  params.set("orderBy", "__name__");
+
+  if (pageToken) {
+    params.set("pageToken", pageToken);
+  }
+
+  const response = await fetch(
+    `${firestoreBase(env)}/${encodeURIComponent(collectionId)}?${params.toString()}`,
+    {
+      headers: {
+        authorization: `Bearer ${token}`
+      }
+    }
+  );
+
+  if (!response.ok) {
+    fail(
+      502,
+      "firestore-list-failed",
+      "تعذر قراءة قائمة مستخدمي الحملة."
+    );
+  }
+
+  const payload = await response.json();
+
+  return {
+    documents: Array.isArray(payload.documents)
+      ? payload.documents.map(decodeDocument)
+      : [],
+    nextPageToken: String(payload.nextPageToken || "")
+  };
+}
+__name(firestoreListPage, "firestoreListPage");
+
+
+const CAMPAIGN_PAGE_SIZE = 3;
+const CAMPAIGN_PUSH_TOKEN_LIMIT = 4;
+const FCM_CLEANUP_BATCH_LIMIT = 8;
+
+function selectCampaignPushTokens(deviceTokens) {
+  const uniqueTokens = [
+    ...new Set(
+      (deviceTokens || []).filter(
+        (value) => typeof value === "string" && value.length > 20
+      )
+    )
+  ];
+
+  return uniqueTokens.slice(-CAMPAIGN_PUSH_TOKEN_LIMIT);
+}
+__name(selectCampaignPushTokens, "selectCampaignPushTokens");
+
+function isUnregisteredFcmError(responseText) {
+  try {
+    const payload = JSON.parse(String(responseText || ""));
+    const details = payload?.error?.details;
+
+    return Array.isArray(details) &&
+      details.some(
+        (detail) =>
+          detail?.errorCode === "UNREGISTERED" ||
+          detail?.errorCode === "registration-token-not-registered"
+      );
+  } catch (_) {
+    return false;
+  }
+}
+__name(isUnregisteredFcmError, "isUnregisteredFcmError");
+
+function arrayRemoveTransform(fieldPath, values) {
+  const uniqueValues = [
+    ...new Set(
+      (values || []).filter(
+        (value) => typeof value === "string" && value.length > 0
+      )
+    )
+  ];
+
+  return {
+    fieldPath,
+    removeAllFromArray: {
+      values: uniqueValues.map((value) => encodeValue(value))
+    }
+  };
+}
+__name(arrayRemoveTransform, "arrayRemoveTransform");
+
+async function sendCampaignPushToTokens(
+  env,
+  token,
+  deviceTokens,
+  { title, body, data = {}, userId = null }
+) {
+  const sendable = selectCampaignPushTokens(deviceTokens);
+
+  let successCount = 0;
+  let failureCount = 0;
+  let unknownCount = 0;
+  const invalidTokens = [];
+
+  await Promise.all(
+    sendable.map(async (deviceToken) => {
+      try {
+        const response = await fetch(
+          `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/messages:send`,
+          {
+            method: "POST",
+            headers: {
+              ...JSON_HEADERS,
+              authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              message: {
+                token: deviceToken,
+                notification: {
+                  title,
+                  body: body || title
+                },
+                data,
+                android: {
+                  priority: "HIGH",
+                  notification: {
+                    sound: "default",
+                    channel_id: "barakah_orders",
+                    notification_priority: "PRIORITY_HIGH",
+                    default_vibrate_timings: true,
+                    visibility: "PUBLIC"
+                  }
+                },
+                apns: {
+                  headers: {
+                    "apns-priority": "10"
+                  },
+                  payload: {
+                    aps: {
+                      sound: "default",
+                      badge: 1,
+                      "interruption-level": "active"
+                    }
+                  }
+                },
+                webpush: {
+                  notification: {
+                    icon: "/icons/Icon-192.png",
+                    badge: "/icons/Icon-192.png",
+                    dir: "rtl",
+                    lang: "ar"
+                  },
+                  fcm_options: {
+                    link: "https://barakah-new.web.app/"
+                  }
+                }
+              }
+            })
+          }
+        );
+
+        if (response.ok) {
+          successCount += 1;
+          return;
+        }
+
+        const responseText = await response.text();
+        failureCount += 1;
+
+        if (isUnregisteredFcmError(responseText)) {
+          invalidTokens.push(deviceToken);
+        }
+
+        console.error(
+          "campaign_push_failed",
+          response.status,
+          responseText.substring(0, 300)
+        );
+      } catch (error) {
+        unknownCount += 1;
+        console.error(
+          "campaign_push_unknown",
+          String(error?.message || error)
+        );
+      }
+    })
+  );
+
+  if (userId && invalidTokens.length) {
+    try {
+      await firestoreCommit(
+        env,
+        token,
+        [
+          updateWrite(
+            env,
+            `users/${encodeURIComponent(userId)}`,
+            {
+              fcmTokenUpdatedAt: new Date()
+            },
+            undefined,
+            [
+              arrayRemoveTransform("fcmTokens", invalidTokens)
+            ]
+          )
+        ]
+      );
+    } catch (error) {
+      console.error(
+        "campaign_invalid_token_cleanup_failed",
+        userId,
+        String(error?.message || error)
+      );
+    }
+  }
+
+  return {
+    targetCount: sendable.length,
+    successCount,
+    failureCount,
+    unknownCount,
+    invalidTokenCount: invalidTokens.length
+  };
+}
+__name(sendCampaignPushToTokens, "sendCampaignPushToTokens");
+
+async function validateFcmRegistrationToken(
+  env,
+  serviceAccessToken,
+  deviceToken
+) {
+  try {
+    const response = await fetch(
+      `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/messages:send`,
+      {
+        method: "POST",
+        headers: {
+          ...JSON_HEADERS,
+          authorization: `Bearer ${serviceAccessToken}`
+        },
+        body: JSON.stringify({
+          validate_only: true,
+          message: {
+            token: deviceToken,
+            data: {
+              barakah_token_validation: "1"
+            }
+          }
+        })
+      }
+    );
+
+    if (response.ok) {
+      return {
+        state: "valid",
+        status: response.status
+      };
+    }
+
+    const responseText = await response.text();
+
+    if (isUnregisteredFcmError(responseText)) {
+      return {
+        state: "unregistered",
+        status: response.status
+      };
+    }
+
+    return {
+      state: "failed",
+      status: response.status
+    };
+  } catch (_) {
+    return {
+      state: "unknown",
+      status: 0
+    };
+  }
+}
+__name(validateFcmRegistrationToken, "validateFcmRegistrationToken");
+
+async function cleanupCurrentAdminFcmTokens(request, env, user) {
+  const token = await serviceToken(env);
+
+  const actor = await firestoreGet(
+    env,
+    token,
+    `users/${encodeURIComponent(user.uid)}`
+  );
+
+  if (!isPrimaryAdmin(user, actor)) {
+    fail(
+      403,
+      "permission-denied",
+      "Primary admin access required."
+    );
+  }
+
+  const input = await readJson(request);
+
+  const apply = input?.apply === true;
+  const rawOffset = Number(input?.offset ?? 0);
+
+  if (!Number.isInteger(rawOffset) || rawOffset < 0) {
+    fail(
+      400,
+      "invalid-offset",
+      "Cleanup offset is invalid."
+    );
+  }
+
+  const sourceTokens = Array.isArray(actor?.fcmTokens)
+    ? actor.fcmTokens
+    : [];
+
+  const allTokens = [
+    ...new Set(
+      sourceTokens.filter(
+        (value) =>
+          typeof value === "string" &&
+          value.length > 20
+      )
+    )
+  ];
+
+  const batch = allTokens.slice(
+    rawOffset,
+    rawOffset + FCM_CLEANUP_BATCH_LIMIT
+  );
+
+  const results = await Promise.all(
+    batch.map((deviceToken) =>
+      validateFcmRegistrationToken(
+        env,
+        token,
+        deviceToken
+      )
+    )
+  );
+
+  const invalidTokens = [];
+  let validCount = 0;
+  let failedCount = 0;
+  let unknownCount = 0;
+
+  for (let index = 0; index < results.length; index += 1) {
+    const result = results[index];
+
+    if (result.state === "valid") {
+      validCount += 1;
+      continue;
+    }
+
+    if (result.state === "unregistered") {
+      invalidTokens.push(batch[index]);
+      continue;
+    }
+
+    if (result.state === "unknown") {
+      unknownCount += 1;
+      continue;
+    }
+
+    failedCount += 1;
+  }
+
+  let removedCount = 0;
+
+  if (apply && invalidTokens.length) {
+    await firestoreCommit(
+      env,
+      token,
+      [
+        updateWrite(
+          env,
+          `users/${encodeURIComponent(user.uid)}`,
+          {
+            fcmTokenUpdatedAt: new Date()
+          },
+          undefined,
+          [
+            arrayRemoveTransform(
+              "fcmTokens",
+              invalidTokens
+            )
+          ]
+        )
+      ]
+    );
+
+    removedCount = invalidTokens.length;
+  }
+
+  const remainingTokenCount =
+    allTokens.length - removedCount;
+
+  const nextOffset =
+    rawOffset +
+    batch.length -
+    removedCount;
+
+  return {
+    mode: apply ? "apply" : "dry-run",
+    totalTokenCount: allTokens.length,
+    checkedCount: batch.length,
+    validCount,
+    unregisteredCount: invalidTokens.length,
+    failedCount,
+    unknownCount,
+    removedCount,
+    nextOffset,
+    remainingTokenCount,
+    complete:
+      batch.length === 0 ||
+      nextOffset >= remainingTokenCount
+  };
+}
+__name(cleanupCurrentAdminFcmTokens, "cleanupCurrentAdminFcmTokens");
+
+function campaignDeliveryCounters(delivery) {
+  return {
+    recipientCount: Number(delivery?.recipientCount || 0),
+    pushTargetCount: Number(delivery?.pushTargetCount || 0),
+    pushSuccessCount: Number(delivery?.pushSuccessCount || 0),
+    pushFailureCount: Number(delivery?.pushFailureCount || 0),
+    pushUnknownCount: Number(delivery?.pushUnknownCount || 0)
+  };
+}
+__name(campaignDeliveryCounters, "campaignDeliveryCounters");
+
+async function createCommunicationCampaign(request, env, user) {
+  const token = await serviceToken(env);
+
+  const actor = await firestoreGet(
+    env,
+    token,
+    `users/${encodeURIComponent(user.uid)}`
+  );
+
+  if (!isPrimaryAdmin(user, actor)) {
+    fail(
+      403,
+      "permission-denied",
+      "غير مسموح بإنشاء الحملات."
+    );
+  }
+
+  const idempotencyKey =
+    String(request.headers.get("idempotency-key") || "").trim();
+
+  if (!/^[A-Za-z0-9._:-]{16,128}$/.test(idempotencyKey)) {
+    fail(
+      400,
+      "invalid-idempotency-key",
+      "مفتاح إنشاء الحملة غير صالح."
+    );
+  }
+
+  const input = normalizeCommunicationCampaignInput(
+    await readJson(request)
+  );
+
+  const payloadHash = await communicationSha256Hex(JSON.stringify(input));
+  const creationHash = await communicationSha256Hex(
+    `${user.uid}:${idempotencyKey}`
+  );
+
+  const campaignId = `cmp_${creationHash.slice(0, 32)}`;
+
+  const existing = await firestoreGet(
+    env,
+    token,
+    `communication_campaigns/${encodeURIComponent(campaignId)}`
+  );
+
+  if (existing) {
+    if (
+      existing.createdBy !== user.uid ||
+      existing.payloadHash !== payloadHash
+    ) {
+      fail(
+        409,
+        "campaign-idempotency-conflict",
+        "تم استخدام مفتاح الحملة لبيانات مختلفة."
+      );
+    }
+
+    return communicationCampaignProgress(existing);
+  }
+
+  const now = new Date();
+
+  const record = {
+    ...input,
+    createdBy: user.uid,
+    payloadHash,
+    status: "pending",
+    complete: false,
+    sourceCollection: input.audience === "agents"
+      ? "agents"
+      : "users",
+    cursor: "",
+    recipientCount: 0,
+    scannedCount: 0,
+    pushTargetCount: 0,
+    pushSuccessCount: 0,
+    pushFailureCount: 0,
+    pushUnknownCount: 0,
+    pageCount: 0,
+    processingLeaseId: null,
+    processingLeaseUntil: null,
+    createdAt: now,
+    updatedAt: now
+  };
+
+  const created = await firestoreCommit(
+    env,
+    token,
+    [
+      createWrite(
+        env,
+        `communication_campaigns/${encodeURIComponent(campaignId)}`,
+        record
+      )
+    ]
+  );
+
+  if (!created) {
+    const raced = await firestoreGet(
+      env,
+      token,
+      `communication_campaigns/${encodeURIComponent(campaignId)}`
+    );
+
+    if (
+      !raced ||
+      raced.createdBy !== user.uid ||
+      raced.payloadHash !== payloadHash
+    ) {
+      fail(
+        409,
+        "campaign-create-conflict",
+        "تم إنشاء الحملة بالتزامن. حاول مجددًا."
+      );
+    }
+
+    return communicationCampaignProgress(raced);
+  }
+
+  return {
+    campaignId,
+    complete: false,
+    recipientCount: 0,
+    scannedCount: 0,
+    pushTargetCount: 0,
+    pageCount: 0,
+    pushSuccessCount: 0,
+    pushFailureCount: 0,
+    pushUnknownCount: 0
+  };
+}
+__name(createCommunicationCampaign, "createCommunicationCampaign");
+
+async function processCommunicationCampaign(request, env, user) {
+  const token = await serviceToken(env);
+
+  const actor = await firestoreGet(
+    env,
+    token,
+    `users/${encodeURIComponent(user.uid)}`
+  );
+
+  if (!isPrimaryAdmin(user, actor)) {
+    fail(
+      403,
+      "permission-denied",
+      "غير مسموح بمعالجة الحملات."
+    );
+  }
+
+  const body = await readJson(request);
+  const campaignId = String(body?.campaignId || "").trim();
+
+  if (!/^cmp_[a-f0-9]{32}$/.test(campaignId)) {
+    fail(
+      400,
+      "invalid-campaign-id",
+      "معرّف الحملة غير صالح."
+    );
+  }
+
+  let campaign = await firestoreGet(
+    env,
+    token,
+    `communication_campaigns/${encodeURIComponent(campaignId)}`
+  );
+
+  if (!campaign) {
+    fail(
+      404,
+      "campaign-not-found",
+      "الحملة غير موجودة."
+    );
+  }
+
+  if (campaign.complete === true) {
+    return communicationCampaignProgress(campaign);
+  }
+
+  const existingLease = Date.parse(
+    String(campaign.processingLeaseUntil || "")
+  );
+
+  if (
+    Number.isFinite(existingLease) &&
+    existingLease > Date.now()
+  ) {
+    fail(
+      409,
+      "campaign-busy",
+      "الحملة قيد المعالجة الآن."
+    );
+  }
+
+  const leaseId = crypto.randomUUID();
+  const leaseUntil = new Date(Date.now() + 60_000);
+
+  const locked = await firestoreCommit(
+    env,
+    token,
+    [
+      updateWrite(
+        env,
+        `communication_campaigns/${encodeURIComponent(campaignId)}`,
+        {
+          processingLeaseId: leaseId,
+          processingLeaseUntil: leaseUntil,
+          status: "processing",
+          updatedAt: new Date()
+        },
+        campaign.updateTime
+      )
+    ]
+  );
+
+  if (!locked) {
+    fail(
+      409,
+      "campaign-busy",
+      "تم بدء معالجة الحملة من جلسة أخرى."
+    );
+  }
+
+  campaign = await firestoreGet(
+    env,
+    token,
+    `communication_campaigns/${encodeURIComponent(campaignId)}`
+  );
+
+  if (!campaign || campaign.processingLeaseId !== leaseId) {
+    fail(
+      409,
+      "campaign-lock-lost",
+      "تعذر تثبيت قفل معالجة الحملة."
+    );
+  }
+
+  const sourceCollection =
+    campaign.audience === "agents" ? "agents" : "users";
+
+  const page = await firestoreListPage(
+    env,
+    token,
+    sourceCollection,
+    String(campaign.cursor || ""),
+    CAMPAIGN_PAGE_SIZE
+  );
+
+  const recipients = [];
+
+  if (sourceCollection === "agents") {
+    const profiles = await Promise.all(
+      page.documents.map(async (agent) => {
+        const uid = String(
+          agent.userId ||
+          agent.agentId ||
+          agent.id ||
+          ""
+        ).trim();
+
+        if (!uid) return null;
+
+        return firestoreGet(
+          env,
+          token,
+          `users/${encodeURIComponent(uid)}`
+        );
+      })
+    );
+
+    for (const profile of profiles) {
+      if (profile?.id) {
+        recipients.push(profile);
+      }
+    }
+  } else {
+    for (const profile of page.documents) {
+      if (
+        communicationAudienceMatches(
+          profile,
+          String(campaign.audience || "")
+        )
+      ) {
+        recipients.push(profile);
+      }
+    }
+  }
+
+  let pageRecipientCount = 0;
+  let pagePushTargetCount = 0;
+  let pagePushSuccessCount = 0;
+  let pagePushFailureCount = 0;
+  let pagePushUnknownCount = 0;
+
+  for (const profile of recipients) {
+    const uid = String(profile.id || "").trim();
+    if (!uid) continue;
+
+    const deliveryPath =
+      `communication_campaigns/${encodeURIComponent(campaignId)}` +
+      `/deliveries/${encodeURIComponent(uid)}`;
+
+    const existingDelivery = await firestoreGet(
+      env,
+      token,
+      deliveryPath
+    );
+
+    if (existingDelivery) {
+      const counters = campaignDeliveryCounters(
+        existingDelivery
+      );
+
+      pageRecipientCount += counters.recipientCount;
+      pagePushTargetCount += counters.pushTargetCount;
+      pagePushSuccessCount += counters.pushSuccessCount;
+      pagePushFailureCount += counters.pushFailureCount;
+      pagePushUnknownCount += counters.pushUnknownCount;
+      continue;
+    }
+
+    const deviceTokens = [
+      ...new Set(
+        (Array.isArray(profile.fcmTokens)
+          ? profile.fcmTokens
+          : []
+        ).filter(
+          (value) =>
+            typeof value === "string" &&
+            value.length > 20
+        )
+      )
+    ];
+
+    const campaignDeviceTokens =
+      selectCampaignPushTokens(deviceTokens);
+
+
+    const now = new Date();
+
+    const initialDelivery = {
+      campaignId,
+      userId: uid,
+      recipientCount: 1,
+      pushTargetCount: campaignDeviceTokens.length,
+      pushSuccessCount: 0,
+      pushFailureCount: 0,
+      pushUnknownCount: campaignDeviceTokens.length,
+      pushState: campaignDeviceTokens.length
+        ? "claimed"
+        : "no_tokens",
+      createdAt: now,
+      updatedAt: now
+    };
+
+    const inboxMessage = {
+      campaignId,
+      title: String(campaign.title || ""),
+      body: String(campaign.body || ""),
+      type: String(campaign.type || "message"),
+      imageUrl: campaign.imageUrl || null,
+      videoUrl: campaign.videoUrl || null,
+      mediaType: campaign.mediaType || null,
+      createdAt: now
+    };
+
+    const claimed = await firestoreCommit(
+      env,
+      token,
+      [
+        updateWrite(
+          env,
+          `user_inbox/${encodeURIComponent(uid)}` +
+          `/messages/${encodeURIComponent(campaignId)}`,
+          inboxMessage
+        ),
+        createWrite(
+          env,
+          deliveryPath,
+          initialDelivery
+        )
+      ]
+    );
+
+    if (!claimed) {
+      const racedDelivery = await firestoreGet(
+        env,
+        token,
+        deliveryPath
+      );
+
+      if (racedDelivery) {
+        const counters = campaignDeliveryCounters(
+          racedDelivery
+        );
+
+        pageRecipientCount += counters.recipientCount;
+        pagePushTargetCount += counters.pushTargetCount;
+        pagePushSuccessCount += counters.pushSuccessCount;
+        pagePushFailureCount += counters.pushFailureCount;
+        pagePushUnknownCount += counters.pushUnknownCount;
+      }
+
+      continue;
+    }
+
+    let finalDelivery = initialDelivery;
+
+    if (campaignDeviceTokens.length) {
+      const push = await sendCampaignPushToTokens(
+        env,
+        token,
+        campaignDeviceTokens,
+        {
+          userId: uid,
+        title: String(campaign.title || ""),
+          body: String(campaign.body || ""),
+          data: {
+            type: String(campaign.type || "message"),
+            campaignId
+          }
+        }
+      );
+
+      finalDelivery = {
+        ...initialDelivery,
+        pushTargetCount: push.targetCount,
+        pushSuccessCount: push.successCount,
+        pushFailureCount: push.failureCount,
+        pushUnknownCount: push.unknownCount,
+        pushState: "complete",
+        updatedAt: new Date()
+      };
+
+      await firestoreCommit(
+        env,
+        token,
+        [
+          updateWrite(
+            env,
+            deliveryPath,
+            finalDelivery
+          )
+        ]
+      );
+    }
+
+    const counters = campaignDeliveryCounters(
+      finalDelivery
+    );
+
+    pageRecipientCount += counters.recipientCount;
+    pagePushTargetCount += counters.pushTargetCount;
+    pagePushSuccessCount += counters.pushSuccessCount;
+    pagePushFailureCount += counters.pushFailureCount;
+    pagePushUnknownCount += counters.pushUnknownCount;
+  }
+
+  const complete = !page.nextPageToken;
+
+  const updatedRecord = {
+    cursor: page.nextPageToken || "",
+    complete,
+    status: complete ? "completed" : "pending",
+    recipientCount:
+      Number(campaign.recipientCount || 0) +
+      pageRecipientCount,
+    scannedCount:
+      Number(campaign.scannedCount || 0) +
+      page.documents.length,
+    pushTargetCount:
+      Number(campaign.pushTargetCount || 0) +
+      pagePushTargetCount,
+    pushSuccessCount:
+      Number(campaign.pushSuccessCount || 0) +
+      pagePushSuccessCount,
+    pushFailureCount:
+      Number(campaign.pushFailureCount || 0) +
+      pagePushFailureCount,
+    pushUnknownCount:
+      Number(campaign.pushUnknownCount || 0) +
+      pagePushUnknownCount,
+    pageCount:
+      Number(campaign.pageCount || 0) + 1,
+    processingLeaseId: null,
+    processingLeaseUntil: null,
+    updatedAt: new Date(),
+    ...(complete ? { completedAt: new Date() } : {})
+  };
+
+  const progressSaved = await firestoreCommit(
+    env,
+    token,
+    [
+      updateWrite(
+        env,
+        `communication_campaigns/${encodeURIComponent(campaignId)}`,
+        updatedRecord,
+        campaign.updateTime
+      )
+    ]
+  );
+
+  if (!progressSaved) {
+    fail(
+      409,
+      "campaign-progress-conflict",
+      "تغيّر تقدم الحملة أثناء المعالجة. حاول الاستكمال."
+    );
+  }
+
+  const finalCampaign = {
+    ...campaign,
+    ...updatedRecord,
+    id: campaignId
+  };
+
+  return communicationCampaignProgress(finalCampaign);
+}
+__name(processCommunicationCampaign, "processCommunicationCampaign");
+
 async function listOrderSupervisorOrders(env, user) {
   const token = await serviceToken(env);
   const actor = await firestoreGet(
@@ -786,77 +1999,1002 @@ async function listOrderSupervisorOrders(env, user) {
   };
 }
 __name(listOrderSupervisorOrders, "listOrderSupervisorOrders");
-async function sendPushToTokens(env, token, deviceTokens, { title, body, data = {} }) {
-  const uniqueTokens = [...new Set((deviceTokens || []).filter((value) => typeof value === "string" && value.length > 20))];
-  if (!uniqueTokens.length) return;
-  const isUrgentOrder = data.type === "new_order" || data.type === "driver_order_available";
-  await Promise.all(
-    uniqueTokens.slice(0, 100).map(async (deviceToken) => {
-      const response = await fetch(
-        `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/messages:send`,
-        {
-          method: "POST",
-          headers: {
-            ...JSON_HEADERS,
-            authorization: `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            message: {
-              token: deviceToken,
-              notification: {
-                title,
-                body
-              },
-              data,
-              android: {
-                priority: "HIGH",
-                notification: {
-                  sound: "default",
-                  channel_id: isUrgentOrder ? "barakah_urgent_orders_v3" : "barakah_orders",
-                  notification_priority: isUrgentOrder ? "PRIORITY_MAX" : "PRIORITY_HIGH",
-                  default_vibrate_timings: true,
-                  visibility: "PUBLIC",
-                  sticky: isUrgentOrder
-                }
-              },
-              apns: {
-                headers: {
-                  "apns-priority": "10"
-                },
-                payload: {
-                  aps: {
-                    sound: "default",
-                    badge: 1,
-                    "interruption-level": isUrgentOrder ? "time-sensitive" : "active"
-                  }
-                }
-              },
-              webpush: {
-                notification: {
-                  icon: "/icons/Icon-192.png",
-                  badge: "/icons/Icon-192.png",
-                  dir: "rtl",
-                  lang: "ar"
-                },
-                fcm_options: {
-                  link: "https://barakah-new.web.app/"
-                }
-              }
-            }
-          })
-        }
-      );
-      if (!response.ok) {
-        console.error(
-          "push_notification_failed",
-          response.status,
-          (await response.text()).substring(0, 300)
-        );
-      }
-    })
+const GENERIC_PUSH_CONCURRENCY = 4;
+const GENERIC_PUSH_PER_USER_LIMIT = 4;
+
+const GENERIC_PUSH_IMMEDIATE_LIMIT = 8;
+const NOTIFICATION_OUTBOX_TOKEN_CHUNK = 8;
+const NOTIFICATION_OUTBOX_BATCH_SIZE = 4;
+const NOTIFICATION_OUTBOX_MAX_ATTEMPTS = 7;
+
+function isRetryableFcmStatus(status) {
+  const value = Number(status);
+
+  return (
+    value === 401 ||
+    value === 408 ||
+    value === 425 ||
+    value === 429 ||
+    value >= 500
   );
 }
+__name(isRetryableFcmStatus, "isRetryableFcmStatus");
+
+function selectRecentPushTokens(deviceTokens) {
+  // Every registered device remains eligible; delivery is already batched by
+  // sendPushBestEffort and its durable outbox. Prefer newly registered devices.
+  return [...new Set((deviceTokens || []).filter(
+    (value) => typeof value === "string" && value.length > 20
+  ))].reverse();
+}
+__name(selectRecentPushTokens, "selectRecentPushTokens");
+
+async function sendPushToTokens(
+  env,
+  token,
+  deviceTokens,
+  { title, body, data = {} }
+) {
+  const uniqueTokens = [
+    ...new Set(
+      (deviceTokens || []).filter(
+        (value) =>
+          typeof value === "string" &&
+          value.length > 20
+      )
+    )
+  ];
+
+  if (!uniqueTokens.length) {
+    return {
+      targetCount: 0,
+      attemptedCount: 0,
+      deferredCount: 0,
+      successCount: 0,
+      failureCount: 0,
+      unknownCount: 0,
+      unregisteredCount: 0,
+      retryTokens: [],
+      invalidTokens: []
+    };
+  }
+
+  const immediateTokens = uniqueTokens.slice(
+    0,
+    GENERIC_PUSH_IMMEDIATE_LIMIT
+  );
+
+  const deferredTokens = uniqueTokens.slice(
+    GENERIC_PUSH_IMMEDIATE_LIMIT
+  );
+
+  const usesCoinSound = [
+    "new_order",
+    "order_status",
+    "driver_order_available",
+    "new_taxi_order",
+    "taxi_order"
+  ].includes(data.type);
+
+  const isUrgentOrder =
+    data.type === "new_order" ||
+    data.type === "driver_order_available" ||
+    data.type === "new_taxi_order";
+
+  let successCount = 0;
+  let failureCount = 0;
+  let unknownCount = 0;
+  let unregisteredCount = 0;
+
+  const retryTokens = [...deferredTokens];
+  const invalidTokens = [];
+
+  for (
+    let start = 0;
+    start < immediateTokens.length;
+    start += GENERIC_PUSH_CONCURRENCY
+  ) {
+    const batch = immediateTokens.slice(
+      start,
+      start + GENERIC_PUSH_CONCURRENCY
+    );
+
+    const results = await Promise.all(
+      batch.map(async (deviceToken) => {
+        try {
+          const response = await fetch(
+            `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/messages:send`,
+            {
+              method: "POST",
+              headers: {
+                ...JSON_HEADERS,
+                authorization: `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                message: {
+                  token: deviceToken,
+                  notification: {
+                    title,
+                    body
+                  },
+                  data,
+                  android: {
+                    priority: "HIGH",
+                    notification: {
+                      sound: usesCoinSound
+                        ? "barakah_coin"
+                        : "default",
+                      channel_id: usesCoinSound
+                        ? (
+                            isUrgentOrder
+                              ? "barakah_urgent_orders_coin_v1"
+                              : "barakah_orders_coin_v1"
+                          )
+                        : "barakah_orders",
+                      notification_priority: isUrgentOrder
+                        ? "PRIORITY_MAX"
+                        : "PRIORITY_HIGH",
+                      default_vibrate_timings: true,
+                      visibility: "PUBLIC",
+                      sticky: isUrgentOrder
+                    }
+                  },
+                  apns: {
+                    headers: {
+                      "apns-priority": "10"
+                    },
+                    payload: {
+                      aps: {
+                        sound: usesCoinSound
+                          ? "barakah_coin.wav"
+                          : "default",
+                        badge: 1,
+                        "interruption-level": isUrgentOrder
+                          ? "time-sensitive"
+                          : "active"
+                      }
+                    }
+                  },
+                  webpush: {
+                    notification: {
+                      icon: "/icons/Icon-192.png",
+                      badge: "/icons/Icon-192.png",
+                      dir: "rtl",
+                      lang: "ar"
+                    },
+                    fcm_options: {
+                      link: "https://barakah-new.web.app/"
+                    }
+                  }
+                }
+              })
+            }
+          );
+
+          const responseText =
+            await response.text();
+
+          if (response.ok) {
+            return {
+              success: 1,
+              failure: 0,
+              unknown: 0,
+              unregistered: 0,
+              retryToken: null,
+              invalidToken: null
+            };
+          }
+
+          const unregistered =
+            isUnregisteredFcmError(
+              responseText
+            );
+
+          const retryable =
+            !unregistered &&
+            isRetryableFcmStatus(
+              response.status
+            );
+
+          console.error(
+            "push_notification_failed",
+            response.status,
+            responseText.substring(0, 300)
+          );
+
+          return {
+            success: 0,
+            failure: 1,
+            unknown: 0,
+            unregistered:
+              unregistered ? 1 : 0,
+            retryToken:
+              retryable
+                ? deviceToken
+                : null,
+            invalidToken:
+              unregistered
+                ? deviceToken
+                : null
+          };
+        } catch (error) {
+          console.error(
+            "push_notification_unknown",
+            String(
+              error?.message || error
+            )
+          );
+
+          return {
+            success: 0,
+            failure: 0,
+            unknown: 1,
+            unregistered: 0,
+            retryToken: deviceToken,
+            invalidToken: null
+          };
+        }
+      })
+    );
+
+    for (const result of results) {
+      successCount += result.success;
+      failureCount += result.failure;
+      unknownCount += result.unknown;
+      unregisteredCount +=
+        result.unregistered;
+
+      if (result.retryToken) {
+        retryTokens.push(
+          result.retryToken
+        );
+      }
+
+      if (result.invalidToken) {
+        invalidTokens.push(
+          result.invalidToken
+        );
+      }
+    }
+  }
+
+  return {
+    targetCount: uniqueTokens.length,
+    attemptedCount:
+      immediateTokens.length,
+    deferredCount:
+      deferredTokens.length,
+    successCount,
+    failureCount,
+    unknownCount,
+    unregisteredCount,
+    retryTokens: [
+      ...new Set(retryTokens)
+    ],
+    invalidTokens: [
+      ...new Set(invalidTokens)
+    ]
+  };
+}
 __name(sendPushToTokens, "sendPushToTokens");
+
+async function cleanupInvalidPushTokensBestEffort(env, token, invalidTokens) {
+  const tokens = [...new Set(
+    (Array.isArray(invalidTokens) ? invalidTokens : []).filter(
+      (value) => typeof value === "string" && value.length > 20
+    )
+  )];
+
+  for (const invalidToken of tokens) {
+    try {
+      const owners = await firestoreQuery(
+        env,
+        token,
+        "users",
+        [fieldArrayContains("fcmTokens", invalidToken)],
+        // Keep Firestore metadata separate from profile fields such as id/name.
+        (document) => document
+      );
+      const userPrefix = `${documentName(env, "users")}/`;
+
+      for (const owner of owners) {
+        try {
+          const name = owner.name;
+          const fcmTokens = decodeValue(owner.fields?.fcmTokens || { nullValue: null });
+          if (typeof name !== "string" || !name.startsWith(userPrefix) ||
+              !name.slice(userPrefix.length) || name.slice(userPrefix.length).includes("/") ||
+              typeof owner.updateTime !== "string" || !owner.updateTime ||
+              !Array.isArray(fcmTokens) || !fcmTokens.includes(invalidToken)) {
+            continue;
+          }
+
+          const cleanupCommit = await firestoreCommit(env, token, [{
+            transform: {
+              document: name,
+              fieldTransforms: [arrayRemoveTransform("fcmTokens", [invalidToken])]
+            },
+            // arrayRemove is concurrency-safe for this exact invalid token.
+            // Require the account to still exist without conflicting with
+            // unrelated profile updates.
+            currentDocument: { exists: true }
+          }]);
+
+          if (!cleanupCommit) {
+            console.error(
+              "push_invalid_token_cleanup_write_conflict"
+            );
+          }
+        } catch (error) {
+          console.error(
+            "push_invalid_token_cleanup_write_failed",
+            String(error?.message || error)
+          );
+        }
+      }
+    } catch (error) {
+      console.error(
+        "push_invalid_token_cleanup_query_failed",
+        String(error?.message || error)
+      );
+    }
+  }
+}
+__name(cleanupInvalidPushTokensBestEffort, "cleanupInvalidPushTokensBestEffort");
+
+async function notificationOutboxDedupeKey(
+  payload,
+  logKey,
+  deviceTokens
+) {
+  const data =
+    payload?.data &&
+    typeof payload.data === "object" &&
+    !Array.isArray(payload.data)
+      ? payload.data
+      : {};
+
+  const sortedData = Object.fromEntries(
+    Object.keys(data)
+      .sort()
+      .map((key) => [key, data[key]])
+  );
+
+  const recipients = [
+    ...new Set(
+      (deviceTokens || []).filter(
+        (value) =>
+          typeof value === "string" &&
+          value.length > 20
+      )
+    )
+  ].sort();
+
+  const raw = JSON.stringify({
+    logKey: String(logKey || ""),
+    title: String(payload?.title || ""),
+    body: String(payload?.body || ""),
+    data: sortedData,
+    recipients
+  });
+
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(raw)
+  );
+
+  return [...new Uint8Array(digest)]
+    .map(
+      (value) =>
+        value.toString(16).padStart(2, "0")
+    )
+    .join("");
+}
+__name(
+  notificationOutboxDedupeKey,
+  "notificationOutboxDedupeKey"
+);
+
+
+async function enqueueNotificationOutbox(
+  env,
+  deviceTokens,
+  payload,
+  logKey
+) {
+  const tokens = [
+    ...new Set(
+      (deviceTokens || []).filter(
+        (value) =>
+          typeof value === "string" &&
+          value.length > 20
+      )
+    )
+  ].sort();
+
+  if (!tokens.length) {
+    return [];
+  }
+
+  const candidates = [];
+  const statements = [];
+
+  for (
+    let start = 0;
+    start < tokens.length;
+    start += NOTIFICATION_OUTBOX_TOKEN_CHUNK
+  ) {
+    const chunk = tokens.slice(
+      start,
+      start + NOTIFICATION_OUTBOX_TOKEN_CHUNK
+    );
+
+    const dedupeKey =
+      await notificationOutboxDedupeKey(
+        payload,
+        logKey,
+        chunk
+      );
+
+    const id =
+      crypto.randomUUID().replace(/-/g, "");
+
+    candidates.push({
+      id,
+      tokens: chunk,
+      attempts: 0
+    });
+
+    statements.push(
+      env.DB.prepare(
+        `INSERT OR IGNORE INTO notification_outbox (
+          id,
+          dedupe_key,
+          tokens_json,
+          payload_json,
+          status,
+          attempts,
+          next_attempt_at,
+          created_at,
+          updated_at
+        ) VALUES (
+          ?, ?, ?, ?,
+          'pending',
+          0,
+          CURRENT_TIMESTAMP,
+          CURRENT_TIMESTAMP,
+          CURRENT_TIMESTAMP
+        )`
+      ).bind(
+        id,
+        dedupeKey,
+        JSON.stringify(chunk),
+        JSON.stringify(payload)
+      )
+    );
+  }
+
+  const results =
+    await env.DB.batch(statements);
+
+  return candidates.filter(
+    (_, index) =>
+      Number(
+        results?.[index]?.meta?.changes || 0
+      ) === 1
+  );
+}
+__name(
+  enqueueNotificationOutbox,
+  "enqueueNotificationOutbox"
+);
+
+
+
+function notificationRetryDelaySeconds(attempt) {
+  const delays = [
+    60,
+    180,
+    600,
+    1800,
+    3600,
+    21600
+  ];
+
+  const index = Math.max(
+    0,
+    Math.min(
+      delays.length - 1,
+      Number(attempt || 1) - 1
+    )
+  );
+
+  return delays[index];
+}
+__name(
+  notificationRetryDelaySeconds,
+  "notificationRetryDelaySeconds"
+);
+
+
+async function finalizeNotificationOutboxAttempt(
+  env,
+  id,
+  result,
+  previousAttempts = 0
+) {
+  const attempts =
+    Number(previousAttempts || 0) + 1;
+
+  const retryTokens = [
+    ...new Set(
+      Array.isArray(result?.retryTokens)
+        ? result.retryTokens
+        : []
+    )
+  ];
+
+  const resultJson = JSON.stringify({
+    targetCount:
+      Number(result?.targetCount || 0),
+    attemptedCount:
+      Number(result?.attemptedCount || 0),
+    deferredCount:
+      Number(result?.deferredCount || 0),
+    successCount:
+      Number(result?.successCount || 0),
+    failureCount:
+      Number(result?.failureCount || 0),
+    unknownCount:
+      Number(result?.unknownCount || 0),
+    unregisteredCount:
+      Number(result?.unregisteredCount || 0)
+  });
+
+  if (
+    retryTokens.length > 0 &&
+    attempts < NOTIFICATION_OUTBOX_MAX_ATTEMPTS
+  ) {
+    const delay =
+      notificationRetryDelaySeconds(
+        attempts
+      );
+
+    await env.DB.prepare(
+      `UPDATE notification_outbox
+       SET
+         tokens_json=?,
+         status='retry',
+         attempts=?,
+         next_attempt_at=
+           datetime(
+             'now',
+             '+' || ? || ' seconds'
+           ),
+         locked_at=NULL,
+         last_error=?,
+         last_result_json=?,
+         updated_at=CURRENT_TIMESTAMP
+       WHERE id=?`
+    ).bind(
+      JSON.stringify(retryTokens),
+      attempts,
+      delay,
+      `retryable:${retryTokens.length}`,
+      resultJson,
+      id
+    ).run();
+
+    return "retry";
+  }
+
+  const successCount =
+    Number(result?.successCount || 0);
+
+  const status =
+    successCount > 0
+      ? "sent"
+      : "dead";
+
+  const lastError =
+    status === "dead"
+      ? (
+          retryTokens.length > 0
+            ? "max-attempts"
+            : "no-delivery"
+        )
+      : null;
+
+  await env.DB.prepare(
+    `UPDATE notification_outbox
+     SET
+       status=?,
+       attempts=?,
+       locked_at=NULL,
+       last_error=?,
+       last_result_json=?,
+       updated_at=CURRENT_TIMESTAMP,
+       sent_at=
+         CASE
+           WHEN ?='sent'
+           THEN CURRENT_TIMESTAMP
+           ELSE sent_at
+         END
+     WHERE id=?`
+  ).bind(
+    status,
+    attempts,
+    lastError,
+    resultJson,
+    status,
+    id
+  ).run();
+
+  return status;
+}
+__name(
+  finalizeNotificationOutboxAttempt,
+  "finalizeNotificationOutboxAttempt"
+);
+
+
+async function processNotificationOutbox(env) {
+  if (!env?.DB) {
+    return {
+      processed: 0,
+      skipped: true
+    };
+  }
+
+  // Recover rows left locked by an interrupted Worker.
+  await env.DB.prepare(
+    `UPDATE notification_outbox
+     SET
+       status='retry',
+       locked_at=NULL,
+       next_attempt_at=CURRENT_TIMESTAMP,
+       updated_at=CURRENT_TIMESTAMP
+     WHERE
+       status='processing'
+       AND locked_at <
+         datetime('now', '-5 minutes')`
+  ).run();
+
+  const due = await env.DB.prepare(
+    `SELECT
+       id,
+       tokens_json,
+       payload_json,
+       attempts
+     FROM notification_outbox
+     WHERE
+       status IN ('pending', 'retry')
+       AND next_attempt_at <= CURRENT_TIMESTAMP
+     ORDER BY created_at ASC
+     LIMIT ?`
+  ).bind(
+    NOTIFICATION_OUTBOX_BATCH_SIZE
+  ).all();
+
+  const rows =
+    Array.isArray(due?.results)
+      ? due.results
+      : [];
+
+  if (!rows.length) {
+    return {
+      processed: 0
+    };
+  }
+
+  // Fresh Firebase access token for every retry run.
+  const accessToken =
+    await serviceToken(env);
+
+  let processed = 0;
+
+  for (const row of rows) {
+    // Claim the row so overlapping retry runs
+    // cannot process the same notification together.
+    const claim = await env.DB.prepare(
+      `UPDATE notification_outbox
+       SET
+         status='processing',
+         locked_at=CURRENT_TIMESTAMP,
+         updated_at=CURRENT_TIMESTAMP
+       WHERE
+         id=?
+         AND status IN ('pending', 'retry')
+         AND next_attempt_at <= CURRENT_TIMESTAMP`
+    ).bind(
+      row.id
+    ).run();
+
+    if (
+      Number(
+        claim?.meta?.changes || 0
+      ) !== 1
+    ) {
+      continue;
+    }
+
+    let tokens;
+    let payload;
+
+    try {
+      tokens =
+        JSON.parse(
+          row.tokens_json || "[]"
+        );
+
+      payload =
+        JSON.parse(
+          row.payload_json || "{}"
+        );
+    } catch (error) {
+      await env.DB.prepare(
+        `UPDATE notification_outbox
+         SET
+           status='dead',
+           locked_at=NULL,
+           last_error='invalid-outbox-json',
+           updated_at=CURRENT_TIMESTAMP
+         WHERE id=?`
+      ).bind(
+        row.id
+      ).run();
+
+      continue;
+    }
+
+    try {
+      const result =
+        await sendPushToTokens(
+          env,
+          accessToken,
+          tokens,
+          payload
+        );
+
+      await cleanupInvalidPushTokensBestEffort(env, accessToken, result.invalidTokens);
+
+      await finalizeNotificationOutboxAttempt(
+        env,
+        row.id,
+        result,
+        row.attempts
+      );
+    } catch (error) {
+      // Network/Worker exception:
+      // keep all tokens retryable.
+      await finalizeNotificationOutboxAttempt(
+        env,
+        row.id,
+        {
+          targetCount:
+            Array.isArray(tokens)
+              ? tokens.length
+              : 0,
+          attemptedCount: 0,
+          deferredCount: 0,
+          successCount: 0,
+          failureCount: 0,
+          unknownCount: 1,
+          unregisteredCount: 0,
+          retryTokens:
+            Array.isArray(tokens)
+              ? tokens
+              : [],
+          invalidTokens: []
+        },
+        row.attempts
+      );
+
+      console.error(
+        "notification_outbox_attempt_failed",
+        String(
+          error?.message || error
+        )
+      );
+    }
+
+    processed += 1;
+  }
+
+  // Keep history temporarily for diagnosis,
+  // but prevent D1 from growing forever.
+  await env.DB.prepare(
+    `DELETE FROM notification_outbox
+     WHERE
+       status IN ('sent', 'dead')
+       AND created_at <
+         datetime('now', '-14 days')`
+  ).run();
+
+  return {
+    processed
+  };
+}
+__name(
+  processNotificationOutbox,
+  "processNotificationOutbox"
+);
+
+
+async function sendPushBestEffort(
+  env,
+  token,
+  deviceTokens,
+  payload,
+  logKey = "push_best_effort_failed"
+) {
+  const normalizedTokens = [
+    ...new Set(
+      (deviceTokens || []).filter(
+        (value) =>
+          typeof value === "string" &&
+          value.length > 20
+      )
+    )
+  ];
+
+  if (!normalizedTokens.length) {
+    return {
+      targetCount: 0,
+      attemptedCount: 0,
+      deferredCount: 0,
+      successCount: 0,
+      failureCount: 0,
+      unknownCount: 0,
+      unregisteredCount: 0,
+      retryTokens: [],
+      invalidTokens: [],
+      queuedCount: 0
+    };
+  }
+
+  let entries;
+
+  try {
+    entries =
+      await enqueueNotificationOutbox(
+        env,
+        normalizedTokens,
+        payload,
+        logKey
+      );
+  } catch (error) {
+    console.error(
+      "notification_outbox_persist_failed",
+      logKey,
+      String(error?.message || error)
+    );
+
+    try {
+      const result = await sendPushToTokens(
+        env,
+        token,
+        normalizedTokens,
+        payload
+      );
+      await cleanupInvalidPushTokensBestEffort(env, token, result.invalidTokens);
+      return result;
+    } catch (fallbackError) {
+      console.error(
+        logKey,
+        String(
+          fallbackError?.message ||
+          fallbackError
+        )
+      );
+
+      return {
+        targetCount:
+          normalizedTokens.length,
+        attemptedCount: 0,
+        deferredCount:
+          normalizedTokens.length,
+        successCount: 0,
+        failureCount: 0,
+        unknownCount:
+          normalizedTokens.length,
+        unregisteredCount: 0,
+        retryTokens:
+          normalizedTokens,
+        invalidTokens: [],
+        queuedCount: 0
+      };
+    }
+  }
+
+  if (!entries.length) {
+    return {
+      targetCount:
+        normalizedTokens.length,
+      attemptedCount: 0,
+      deferredCount: 0,
+      successCount: 0,
+      failureCount: 0,
+      unknownCount: 0,
+      unregisteredCount: 0,
+      retryTokens: [],
+      invalidTokens: [],
+      queuedCount: 0,
+      deduped: true
+    };
+  }
+
+  const immediate = entries[0];
+
+  let result;
+
+  try {
+    result =
+      await sendPushToTokens(
+        env,
+        token,
+        immediate.tokens,
+        payload
+      );
+    await cleanupInvalidPushTokensBestEffort(env, token, result.invalidTokens);
+  } catch (error) {
+    console.error(
+      logKey,
+      String(error?.message || error)
+    );
+
+    result = {
+      targetCount:
+        immediate.tokens.length,
+      attemptedCount: 0,
+      deferredCount: 0,
+      successCount: 0,
+      failureCount: 0,
+      unknownCount:
+        immediate.tokens.length,
+      unregisteredCount: 0,
+      retryTokens:
+        immediate.tokens,
+      invalidTokens: []
+    };
+  }
+
+  try {
+    await finalizeNotificationOutboxAttempt(
+      env,
+      immediate.id,
+      result,
+      immediate.attempts
+    );
+  } catch (error) {
+    console.error(
+      "notification_outbox_finalize_failed",
+      String(error?.message || error)
+    );
+
+    // Do not send again here.
+    // The durable row remains for recovery.
+  }
+
+  return {
+    ...result,
+    outboxId: immediate.id,
+    queuedCount:
+      Math.max(
+        0,
+        entries.length - 1
+      ) +
+      (
+        Array.isArray(
+          result.retryTokens
+        ) &&
+        result.retryTokens.length > 0
+          ? 1
+          : 0
+      )
+  };
+}
+__name(sendPushBestEffort, "sendPushBestEffort");
+
 async function userPushTokens(env, token, uid) {
   if (!uid) return [];
   const profile = await firestoreGet(
@@ -864,7 +3002,7 @@ async function userPushTokens(env, token, uid) {
     token,
     `users/${encodeURIComponent(uid)}`
   );
-  return Array.isArray(profile?.fcmTokens) ? profile.fcmTokens : [];
+  return selectRecentPushTokens(profile?.fcmTokens);
 }
 __name(userPushTokens, "userPushTokens");
 async function notifyCustomerOrderStatus(env, token, order, orderId, status) {
@@ -875,7 +3013,9 @@ async function notifyCustomerOrderStatus(env, token, order, orderId, status) {
     driver_assigned: "\u062A\u0645 \u062A\u0639\u064A\u064A\u0646 \u0633\u0627\u0626\u0642 \u0644\u0637\u0644\u0628\u0643 \u{1F697}",
     picked_up: "\u0637\u0644\u0628\u0643 \u0641\u064A \u0627\u0644\u0637\u0631\u064A\u0642 \u0625\u0644\u064A\u0643 \u{1F6F5}",
     delivered: "\u062A\u0645 \u062A\u0633\u0644\u064A\u0645 \u0637\u0644\u0628\u0643 \u0628\u0646\u062C\u0627\u062D \u{1F389}",
-    rejected: "\u062A\u0645 \u0631\u0641\u0636 \u0627\u0644\u0637\u0644\u0628"
+    rejected: "\u062A\u0645 \u0631\u0641\u0636 \u0627\u0644\u0637\u0644\u0628",
+    cancelled: "\u062A\u0645 \u0625\u0644\u063A\u0627\u0621 \u0637\u0644\u0628\u0643",
+    canceled: "\u062A\u0645 \u0625\u0644\u063A\u0627\u0621 \u0637\u0644\u0628\u0643"
   };
   const title = labels[status];
   if (!title || !order?.customerId) return;
@@ -887,7 +3027,7 @@ async function notifyCustomerOrderStatus(env, token, order, orderId, status) {
     token,
     order.customerId
   );
-  await sendPushToTokens(
+  await sendPushBestEffort(
     env,
     token,
     tokens,
@@ -913,7 +3053,7 @@ async function notifyAdminsAboutOrder(env, token, orderId, order) {
     ...ownerTokens,
     ...supervisors
       .filter((supervisor) => supervisor.adminPermissions?.manageOrders === true)
-      .flatMap((supervisor) => Array.isArray(supervisor.fcmTokens) ? supervisor.fcmTokens : [])
+      .flatMap((supervisor) => selectRecentPushTokens(supervisor.fcmTokens))
   ];
   let merchantTokens = [];
   if (order.businessId) {
@@ -939,17 +3079,17 @@ async function notifyAdminsAboutOrder(env, token, orderId, order) {
     )).flat();
     merchantTokens.push(
       ...directlyLinkedMerchants.flatMap((profile) =>
-        Array.isArray(profile.fcmTokens) ? profile.fcmTokens : []
+        selectRecentPushTokens(profile.fcmTokens)
       ),
       ...managedBusinessMerchants.flatMap((profile) =>
-        Array.isArray(profile.fcmTokens) ? profile.fcmTokens : []
+        selectRecentPushTokens(profile.fcmTokens)
       )
     );
   }
   const orderLabel = String(
     order.orderNumber || orderId.substring(0, 6).toUpperCase()
   );
-  await sendPushToTokens(
+  await sendPushBestEffort(
     env,
     token,
     [
@@ -968,6 +3108,115 @@ async function notifyAdminsAboutOrder(env, token, orderId, order) {
   );
 }
 __name(notifyAdminsAboutOrder, "notifyAdminsAboutOrder");
+
+async function notifyOrderAdminAlarmStop(
+  env,
+  token,
+  orderId,
+  order,
+  status
+) {
+  const [ownerTokens, supervisors] = await Promise.all([
+    adminPushTokens(env, token),
+    firestoreQuery(env, token, "users", [
+      fieldEquals("role", "order_supervisor")
+    ])
+  ]);
+
+  const adminTokens = [
+    ...ownerTokens,
+    ...supervisors
+      .filter(
+        (supervisor) =>
+          supervisor.adminPermissions?.manageOrders === true
+      )
+      .flatMap(
+        (supervisor) =>
+          selectRecentPushTokens(supervisor.fcmTokens)
+      )
+  ];
+
+  let merchantTokens = [];
+
+  if (order.businessId) {
+    const [
+      business,
+      directlyLinkedMerchants,
+      managedBusinessMerchants
+    ] = await Promise.all([
+      firestoreGet(
+        env,
+        token,
+        `items/${encodeURIComponent(order.businessId)}`
+      ),
+      firestoreQuery(env, token, "users", [
+        fieldEquals("merchantBusinessId", order.businessId)
+      ]),
+      firestoreQuery(env, token, "users", [
+        fieldArrayContains("managedBusinessIds", order.businessId)
+      ])
+    ]);
+
+    const merchantUserIds = [
+      business?.ownerId,
+      ...(Array.isArray(business?.managerIds)
+        ? business.managerIds
+        : [])
+    ].filter(Boolean);
+
+    merchantTokens = (
+      await Promise.all(
+        [...new Set(merchantUserIds)].map(
+          (uid) => userPushTokens(env, token, uid)
+        )
+      )
+    ).flat();
+
+    merchantTokens.push(
+      ...directlyLinkedMerchants.flatMap(
+        (profile) => selectRecentPushTokens(profile.fcmTokens)
+      ),
+      ...managedBusinessMerchants.flatMap(
+        (profile) => selectRecentPushTokens(profile.fcmTokens)
+      )
+    );
+  }
+
+  const orderLabel = String(
+    order.orderNumber ||
+      orderId.substring(0, 6).toUpperCase()
+  );
+
+  await sendPushBestEffort(
+    env,
+    token,
+    [
+      ...adminTokens,
+      ...merchantTokens
+    ],
+    {
+      title:
+        status === "accepted"
+          ? "تم قبول الطلب ✅"
+          : "تم إغلاق الطلب",
+      body: `الطلب #${orderLabel} لم يعد بانتظار القبول.`,
+      data: {
+        type: "admin_order_alarm_stop",
+        adminAlarm: "stop",
+        orderId,
+        orderNumber: orderLabel,
+        status: String(status || "")
+      }
+    },
+    "order_admin_alarm_stop_failed"
+  );
+}
+
+__name(
+  notifyOrderAdminAlarmStop,
+  "notifyOrderAdminAlarmStop"
+);
+
 async function createPartnerApplication(request, env) {
   const data = await readJson(request);
   const required = [
@@ -1060,12 +3309,12 @@ async function createPartnerApplication(request, env) {
     record
   );
 
-  const adminTokens = await adminPushTokens(env, token);
   // The application is already committed at this point. A push notification is
   // best-effort and must never make the applicant see a failed submission (or
   // submit duplicates) when FCM is temporarily unavailable.
   try {
-    await sendPushToTokens(env, token, adminTokens, {
+    const adminTokens = await adminPushTokens(env, token);
+    await sendPushBestEffort(env, token, adminTokens, {
       title: "طلب انضمام شريك جديد 🤝",
       body: `${record.businessName} بانتظار المراجعة.`,
       data: {
@@ -1074,7 +3323,7 @@ async function createPartnerApplication(request, env) {
       }
     });
   } catch (error) {
-    console.error("partner_application_notification_failed", error.message);
+    console.error("partner_application_notification_failed", String(error?.message || error));
   }
   return { applicationId, status: "pending" };
 }
@@ -1085,9 +3334,256 @@ async function adminPushTokens(env, token) {
     token,
     `users/${encodeURIComponent(PRIMARY_ADMIN_UID)}`
   );
-  return Array.isArray(owner?.fcmTokens) ? owner.fcmTokens : [];
+  return selectRecentPushTokens(owner?.fcmTokens);
 }
 __name(adminPushTokens, "adminPushTokens");
+
+
+async function taxiBusinessPushTokens(env, token, order) {
+  if (!order?.businessId) return [];
+
+  const business = await firestoreGet(
+    env,
+    token,
+    `items/${encodeURIComponent(order.businessId)}`
+  );
+
+  if (!business) {
+    return await adminPushTokens(env, token);
+  }
+
+  const userIds = [
+    business.ownerId,
+    ...(Array.isArray(business.managerIds)
+      ? business.managerIds
+      : []),
+    PRIMARY_ADMIN_UID
+  ].filter(Boolean);
+
+  const groups = await Promise.all(
+    [...new Set(userIds)].map(
+      (uid) => userPushTokens(env, token, uid)
+    )
+  );
+
+  return groups.flat();
+}
+__name(taxiBusinessPushTokens, "taxiBusinessPushTokens");
+
+
+async function notifyTaxiLifecycle(
+  env,
+  token,
+  order,
+  action,
+  actorUid
+) {
+  if (!order || action === "update_location") {
+    return;
+  }
+
+  const orderId = String(order.orderId || order.id || "");
+  const orderNumber = String(
+    order.orderNumber ||
+    (orderId ? orderId.slice(-8).toUpperCase() : "تكسي")
+  );
+
+  const commonData = {
+    type: action === "created" ? "new_taxi_order" : "taxi_order",
+    action: String(action),
+    orderId,
+    orderNumber,
+    status: String(order.status || "")
+  };
+
+  const customerTokens = order.customerId
+    ? await userPushTokens(env, token, order.customerId)
+    : [];
+
+  const driverTokens = order.driverUid
+    ? await userPushTokens(env, token, order.driverUid)
+    : [];
+
+  if (
+    action === "dispatch" ||
+    action === "cancel"
+  ) {
+    try {
+      const officeTokens =
+        await taxiBusinessPushTokens(env, token, order);
+
+      await sendPushBestEffort(
+        env,
+        token,
+        officeTokens,
+        {
+          title:
+            action === "dispatch"
+              ? "تم إرسال سيارة للطلب ✅"
+              : "تم إلغاء طلب التكسي",
+          body: `طلب التكسي ${orderNumber} لم يعد بانتظار الإرسال.`,
+          data: {
+            ...commonData,
+            type: "admin_taxi_alarm_stop",
+            adminAlarm: "stop"
+          }
+        },
+        "taxi_admin_alarm_stop_failed"
+      );
+    } catch (error) {
+      console.error(
+        "taxi_admin_alarm_stop_failed",
+        String(error?.message || error)
+      );
+    }
+  }
+
+  if (action === "created") {
+    const officeTokens =
+      await taxiBusinessPushTokens(env, token, order);
+
+    await sendPushBestEffort(
+      env,
+      token,
+      officeTokens,
+      {
+        title: "طلب تكسي جديد 🚕",
+        body: `الطلب ${orderNumber} بانتظار إرسال سيارة.`,
+        data: commonData
+      },
+      "taxi_created_notification_failed"
+    );
+
+    return;
+  }
+
+  if (action === "dispatch") {
+    await sendPushBestEffort(
+      env,
+      token,
+      customerTokens,
+      {
+        title: "تم إرسال سيارة تكسي بركة 🚕",
+        body: order.dispatchedEtaMinutes
+          ? `السيارة في طريقها إليك. الوصول المتوقع خلال ${order.dispatchedEtaMinutes} دقائق.`
+          : "السيارة في طريقها إليك.",
+        data: commonData
+      },
+      "taxi_customer_dispatch_notification_failed"
+    );
+
+    await sendPushBestEffort(
+      env,
+      token,
+      driverTokens,
+      {
+        title: "تم تعيين رحلة تكسي جديدة 🚕",
+        body: `الرحلة ${orderNumber} جاهزة في لوحة السائق.`,
+        data: commonData
+      },
+      "taxi_driver_dispatch_notification_failed"
+    );
+
+    return;
+  }
+
+  if (action === "start_trip") {
+    await sendPushBestEffort(
+      env,
+      token,
+      customerTokens,
+      {
+        title: "بدأت رحلة تكسي بركة 🚕",
+        body: "بدأ السائق الرحلة ويمكنك متابعة موقعه من داخل بركة.",
+        data: commonData
+      },
+      "taxi_start_notification_failed"
+    );
+
+    return;
+  }
+
+  if (action === "complete") {
+    await sendPushBestEffort(
+      env,
+      token,
+      customerTokens,
+      {
+        title: "الرحلة بانتظار تأكيدك ✅",
+        body: `وصلت رحلة ${orderNumber}. افتح بركة لتأكيد الوصول.`,
+        data: commonData
+      },
+      "taxi_complete_notification_failed"
+    );
+
+    return;
+  }
+
+  if (action === "confirm") {
+    const officeTokens =
+      await taxiBusinessPushTokens(env, token, order);
+
+    await sendPushBestEffort(
+      env,
+      token,
+      [
+        ...officeTokens,
+        ...driverTokens
+      ],
+      {
+        title: "تم تأكيد رحلة تكسي بركة ✅",
+        body: `أكد العميل اكتمال الرحلة ${orderNumber}.`,
+        data: commonData
+      },
+      "taxi_confirm_notification_failed"
+    );
+
+    return;
+  }
+
+  if (action === "cancel") {
+    const cancelledByCustomer =
+      order.customerId &&
+      actorUid === order.customerId;
+
+    if (cancelledByCustomer) {
+      const officeTokens =
+        await taxiBusinessPushTokens(env, token, order);
+
+      await sendPushBestEffort(
+        env,
+        token,
+        [
+          ...officeTokens,
+          ...driverTokens
+        ],
+        {
+          title: "تم إلغاء طلب التكسي",
+          body: `ألغى العميل الطلب ${orderNumber}.`,
+          data: commonData
+        },
+        "taxi_customer_cancel_notification_failed"
+      );
+    } else {
+      await sendPushBestEffort(
+        env,
+        token,
+        [
+          ...customerTokens,
+          ...driverTokens
+        ],
+        {
+          title: "تم إلغاء رحلة تكسي بركة",
+          body: `تم إلغاء الطلب ${orderNumber}.`,
+          data: commonData
+        },
+        "taxi_office_cancel_notification_failed"
+      );
+    }
+  }
+}
+__name(notifyTaxiLifecycle, "notifyTaxiLifecycle");
+
 async function notifyAdminsAboutVerifiedRequest(request, env, user) {
   const body = await readJson(request);
   const requestType = String(body?.type || "").trim();
@@ -1114,6 +3610,13 @@ async function notifyAdminsAboutVerifiedRequest(request, env, user) {
       collection: "driver_applications",
       title: "طلب انضمام سائق جديد 🚗",
       label: (record) => record.fullName || "متقدم جديد"
+    },
+    taxi_driver_application: {
+      collection: "taxi_driver_applications",
+      title: "طلب انضمام سائق تكسي بركة جديد 🚕",
+      label: (record) => record.fullName || "متقدم جديد",
+      ownerField: "userId",
+      expectedStatus: "pending"
     },
     customer_service_application: {
       collection: "customer_service_applications",
@@ -1144,7 +3647,7 @@ async function notifyAdminsAboutVerifiedRequest(request, env, user) {
     fail(403, "request-not-owned", "تعذر التحقق من الطلب الجديد.");
   }
   const tokens = await adminPushTokens(env, token);
-  await sendPushToTokens(env, token, tokens, {
+  await sendPushBestEffort(env, token, tokens, {
     title: definition.title,
     body: `${String(definition.label(record)).slice(0, 160)} بانتظار المراجعة.`,
     data: {
@@ -1201,7 +3704,7 @@ async function notifyAuctionStatus(request, env, user) {
     targetIds.map((uid) => userPushTokens(env, token, uid))
   );
   const message = labels[status];
-  await sendPushToTokens(env, token, tokenGroups.flat(), {
+  await sendPushBestEffort(env, token, tokenGroups.flat(), {
     title: message.title,
     body: message.body,
     data: { type: "auction_status", saleId, status }
@@ -1211,78 +3714,156 @@ async function notifyAuctionStatus(request, env, user) {
 __name(notifyAuctionStatus, "notifyAuctionStatus");
 async function sendSupportMessage(request, env, user) {
   const body = await readJson(request);
-  const threadId = String(body?.threadId || "").trim();
-  const message = String(body?.text || "").trim();
+  const threadId =
+    String(body?.threadId || "").trim();
+
+  const message =
+    String(body?.text || "").trim();
+
+  const imageUrl = String(body?.imageUrl || "").trim();
+  const videoUrl = String(body?.videoUrl || "").trim();
+  const mediaType = String(body?.mediaType || "").trim();
+  const attachmentUrl = imageUrl || videoUrl;
+  const expectedType = imageUrl ? "image" : videoUrl ? "video" : "";
+  let validMedia = !attachmentUrl;
+  if (attachmentUrl) {
+    try {
+      const parsed = new URL(attachmentUrl);
+      validMedia = attachmentUrl.length <= 2048 && parsed.protocol === "https:" &&
+        parsed.hostname === "ik.imagekit.io" && !parsed.username && !parsed.password &&
+        !parsed.port && !parsed.search && !parsed.hash && parsed.pathname.length > 1;
+    } catch (_) { validMedia = false; }
+  }
+  if ((imageUrl && videoUrl) || !validMedia || (mediaType && mediaType !== expectedType)) {
+    fail(400, "invalid-media", "رابط المرفق أو نوعه غير صالح. أعد رفع الملف من بركة.");
+  }
+  const media = attachmentUrl
+    ? { ...(imageUrl ? { imageUrl } : { videoUrl }), mediaType: expectedType }
+    : {};
+  const preview = message || (imageUrl ? "📷 صورة" : videoUrl ? "🎥 فيديو" : "");
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(threadId)) {
-    fail(400, "invalid-thread", "محادثة خدمة العملاء غير صالحة.");
+    fail(
+      400,
+      "invalid-thread",
+      "محادثة خدمة العملاء غير صالحة."
+    );
   }
-  if (!message || message.length > 4e3) {
-    fail(400, "invalid-message", "الرسالة فارغة أو طويلة جدًا.");
+
+  if ((!message && !attachmentUrl) || message.length > 4e3) {
+    fail(
+      400,
+      "invalid-message",
+      "الرسالة فارغة أو طويلة جدًا."
+    );
   }
+
   const token = await serviceToken(env);
-  const [thread, actor] = await Promise.all([
-    firestoreGet(env, token, `support_threads/${encodeURIComponent(threadId)}`),
-    firestoreGet(env, token, `users/${encodeURIComponent(user.uid)}`)
-  ]);
-  if (!thread || !actor) {
-    fail(404, "support-thread-not-found", "محادثة خدمة العملاء غير موجودة.");
-  }
-  let senderRole;
-  let senderName;
-  let recipientTokens = [];
-  let notificationTitle;
-  if (thread.customerId === user.uid) {
-    senderRole = "customer";
-    senderName = String(actor.displayName || thread.customerName || "عميل بركة");
-    notificationTitle = "رسالة جديدة لخدمة العملاء 💬";
-    if (thread.assignedAgentId) {
-      recipientTokens.push(
-        ...await userPushTokens(env, token, thread.assignedAgentId)
-      );
-    } else {
-      const agents = await firestoreQuery(
+
+  const [thread, actor] =
+    await Promise.all([
+      firestoreGet(
         env,
         token,
-        "users",
-        [fieldEquals("role", "customer_service")]
-      );
-      recipientTokens.push(
-        ...agents.filter((agent) => agent.customerServiceEnabled === true).flatMap(
-          (agent) => Array.isArray(agent.fcmTokens) ? agent.fcmTokens : []
-        )
-      );
-    }
-    recipientTokens.push(...await adminPushTokens(env, token));
+        `support_threads/${encodeURIComponent(threadId)}`
+      ),
+      firestoreGet(
+        env,
+        token,
+        `users/${encodeURIComponent(user.uid)}`
+      )
+    ]);
+
+  if (!thread || !actor) {
+    fail(
+      404,
+      "support-thread-not-found",
+      "محادثة خدمة العملاء غير موجودة."
+    );
+  }
+
+  let senderRole;
+  let senderName;
+  let notificationTitle;
+
+  if (thread.customerId === user.uid) {
+    senderRole = "customer";
+    senderName = String(
+      actor.displayName ||
+      thread.customerName ||
+      "عميل بركة"
+    );
+
+    notificationTitle =
+      "رسالة جديدة لخدمة العملاء 💬";
+
   } else if (
     actor.role === "customer_service" &&
     actor.customerServiceEnabled === true &&
     thread.assignedAgentId === user.uid
   ) {
-    // Match Firestore's isCustomerService gate. Server writes bypass rules.
-    const contract = await firestoreGet(
-      env,
-      token,
-      `employment_contracts/${encodeURIComponent(user.uid)}`
-    );
+    // This is authorization/business validation,
+    // so it remains before the message commit.
+    const contract =
+      await firestoreGet(
+        env,
+        token,
+        `employment_contracts/${encodeURIComponent(user.uid)}`
+      );
+
     if (contract?.status !== "accepted") {
-      fail(403, "support-contract-required", "يجب قبول عقد العمل قبل إرسال رسائل خدمة العملاء.");
+      fail(
+        403,
+        "support-contract-required",
+        "يجب قبول عقد العمل قبل إرسال رسائل خدمة العملاء."
+      );
     }
+
     senderRole = "customer_service";
-    senderName = String(actor.displayName || "خدمة عملاء بركة");
-    notificationTitle = "رد جديد من خدمة عملاء بركة 💬";
-    recipientTokens = await userPushTokens(env, token, thread.customerId);
-  } else if (isPrimaryAdmin(user, actor)) {
+    senderName = String(
+      actor.displayName ||
+      "خدمة عملاء بركة"
+    );
+
+    notificationTitle =
+      "رد جديد من خدمة عملاء بركة 💬";
+
+  } else if (
+    isPrimaryAdmin(user, actor)
+  ) {
     senderRole = "admin";
-    senderName = String(actor.displayName || "إدارة بركة");
-    notificationTitle = "رد جديد من إدارة بركة 💬";
-    recipientTokens = await userPushTokens(env, token, thread.customerId);
+    senderName = String(
+      actor.displayName ||
+      "إدارة بركة"
+    );
+
+    notificationTitle =
+      "رد جديد من إدارة بركة 💬";
+
   } else {
-    fail(403, "support-permission-denied", "غير مسموح بإرسال رسالة في هذه المحادثة.");
+    fail(
+      403,
+      "support-permission-denied",
+      "غير مسموح بإرسال رسالة في هذه المحادثة."
+    );
   }
-  const messageId = crypto.randomUUID().replace(/-/g, "");
-  const shouldSendWelcome = senderRole === "customer" &&
+
+  const messageId =
+    crypto.randomUUID().replace(/-/g, "");
+
+  const shouldSendWelcome =
+    senderRole === "customer" &&
     thread.autoWelcomeSent !== true;
-  const welcomeMessage = "أهلًا وسهلًا بك في خدمة عملاء بركة 🌟\nتم استلام رسالتك بنجاح، وسيقوم أحد أعضاء فريقنا بالرد عليك بأقرب وقت. شكرًا لاختيارك بركة.";
+
+  const welcomeMessageId =
+    shouldSendWelcome
+      ? crypto.randomUUID().replace(/-/g, "")
+      : null;
+
+  const welcomeMessage =
+    "أهلًا وسهلًا بك في خدمة عملاء بركة 🌟\n" +
+    "تم استلام رسالتك بنجاح، وسيقوم أحد أعضاء فريقنا " +
+    "بالرد عليك بأقرب وقت. شكرًا لاختيارك بركة.";
+
   const writes = [
     createWrite(
       env,
@@ -1292,68 +3873,222 @@ async function sendSupportMessage(request, env, user) {
         senderRole,
         senderName,
         text: message,
+        ...media,
         createdAt: new Date()
       }
     ),
+
     updateWrite(
       env,
       `support_threads/${encodeURIComponent(threadId)}`,
       {
-        lastMessage: message,
+        lastMessage: preview,
         lastMessageAt: new Date(),
         updatedAt: new Date(),
-        status: senderRole === "customer" ? "open" : "active",
-        ...(shouldSendWelcome ? {
-          autoWelcomeSent: true,
-          autoWelcomeAt: new Date()
-        } : {})
+        status:
+          senderRole === "customer"
+            ? "open"
+            : "active",
+        ...(shouldSendWelcome
+          ? {
+              autoWelcomeSent: true,
+              autoWelcomeAt: new Date()
+            }
+          : {})
       },
       thread.updateTime
     )
   ];
+
   if (shouldSendWelcome) {
-    writes.push(createWrite(
-      env,
-      `support_threads/${encodeURIComponent(threadId)}/messages/${crypto.randomUUID().replace(/-/g, "")}`,
-      {
-        senderId: "barakah_support_bot",
-        senderRole: "system",
-        senderName: "مساعد بركة",
-        text: welcomeMessage,
-        createdAt: new Date(Date.now() + 1)
-      }
-    ));
+    writes.push(
+      createWrite(
+        env,
+        `support_threads/${encodeURIComponent(threadId)}/messages/${welcomeMessageId}`,
+        {
+          senderId: "barakah_support_bot",
+          senderRole: "system",
+          senderName: "مساعد بركة",
+          text: welcomeMessage,
+          createdAt:
+            new Date(Date.now() + 1)
+        }
+      )
+    );
   }
-  const commit = await firestoreCommit(env, token, writes);
-  if (!commit) {
-    fail(409, "support-thread-changed", "وصلت رسالة أخرى؛ حاول الإرسال مجددًا.");
-  }
-  await sendPushToTokens(env, token, recipientTokens, {
-    title: notificationTitle,
-    body: `${senderName}: ${message.slice(0, 180)}`,
-    data: {
-      type: "support_message",
-      threadId,
-      senderRole
-    }
-  });
-  if (shouldSendWelcome) {
-    await sendPushToTokens(
+
+  // Business data is committed BEFORE any notification lookup.
+  const commit =
+    await firestoreCommit(
       env,
       token,
-      await userPushTokens(env, token, thread.customerId),
+      writes
+    );
+
+  if (!commit) {
+    fail(
+      409,
+      "support-thread-changed",
+      "وصلت رسالة أخرى؛ حاول الإرسال مجددًا."
+    );
+  }
+
+  // ----------------------------------------------------------
+  // Everything below is notification-only best effort.
+  // It must never make an already-saved message look failed.
+  // ----------------------------------------------------------
+
+  try {
+    let recipientTokens = [];
+
+    if (senderRole === "customer") {
+      if (thread.assignedAgentId) {
+        try {
+          recipientTokens.push(
+            ...await userPushTokens(
+              env,
+              token,
+              thread.assignedAgentId
+            )
+          );
+        } catch (error) {
+          console.error(
+            "support_agent_token_lookup_failed",
+            String(error?.message || error)
+          );
+        }
+      } else {
+        try {
+          const agents =
+            await firestoreQuery(
+              env,
+              token,
+              "users",
+              [
+                fieldEquals(
+                  "role",
+                  "customer_service"
+                )
+              ]
+            );
+
+          recipientTokens.push(
+            ...agents
+              .filter(
+                (agent) =>
+                  agent.customerServiceEnabled === true
+              )
+              .flatMap(
+                (agent) =>
+                  selectRecentPushTokens(
+                    agent.fcmTokens
+                  )
+              )
+          );
+        } catch (error) {
+          console.error(
+            "support_agent_directory_failed",
+            String(error?.message || error)
+          );
+        }
+      }
+
+      try {
+        recipientTokens.push(
+          ...await adminPushTokens(
+            env,
+            token
+          )
+        );
+      } catch (error) {
+        console.error(
+          "support_admin_token_lookup_failed",
+          String(error?.message || error)
+        );
+      }
+
+    } else {
+      try {
+        recipientTokens =
+          await userPushTokens(
+            env,
+            token,
+            thread.customerId
+          );
+      } catch (error) {
+        console.error(
+          "support_customer_token_lookup_failed",
+          String(error?.message || error)
+        );
+      }
+    }
+
+    await sendPushBestEffort(
+      env,
+      token,
+      recipientTokens,
       {
-        title: "أهلًا بك في خدمة عملاء بركة 🌟",
-        body: "تم استلام رسالتك وسيقوم فريقنا بالرد عليك بأقرب وقت.",
+        title: notificationTitle,
+        body:
+          `${senderName}: ${preview.slice(0, 180)}`,
         data: {
           type: "support_message",
           threadId,
-          senderRole: "system"
+          messageId,
+          senderRole
         }
-      }
+      },
+      "support_message_notification_failed"
+    );
+
+  } catch (error) {
+    console.error(
+      "support_message_notification_failed",
+      String(error?.message || error)
     );
   }
-  return { ok: true, threadId, messageId };
+
+  if (shouldSendWelcome) {
+    try {
+      const customerTokens =
+        await userPushTokens(
+          env,
+          token,
+          thread.customerId
+        );
+
+      await sendPushBestEffort(
+        env,
+        token,
+        customerTokens,
+        {
+          title:
+            "أهلًا بك في خدمة عملاء بركة 🌟",
+          body:
+            "تم استلام رسالتك وسيقوم فريقنا بالرد عليك بأقرب وقت.",
+          data: {
+            type: "support_message",
+            threadId,
+            messageId: welcomeMessageId,
+            senderRole: "system"
+          }
+        },
+        "support_welcome_notification_failed"
+      );
+
+    } catch (error) {
+      console.error(
+        "support_welcome_notification_failed",
+        String(error?.message || error)
+      );
+    }
+  }
+
+  return {
+    ok: true,
+    threadId,
+    messageId
+  };
 }
 __name(sendSupportMessage, "sendSupportMessage");
 function documentName(env, path) {
@@ -1583,6 +4318,7 @@ async function deleteCurrentAccount(env, user, targetUid = user.uid, adminDelete
     orders,
     coupons,
     driverApplications,
+    taxiDriverApplications,
     merchantApplications,
     auctionRequests,
     auctionSalesBuyer,
@@ -1597,7 +4333,23 @@ async function deleteCurrentAccount(env, user, targetUid = user.uid, adminDelete
     firestoreQuery(env, token, "driver_applications", [
       fieldEquals("userId", targetUid)
     ]),
-    firestoreQuery(env, token, "merchant_applications", [
+            firestoreQuery(
+      env,
+      token,
+      "taxi_driver_applications",
+      [
+        fieldEquals("userId", targetUid)
+      ]
+    ).catch(() => []),
+firestoreQuery(
+      env,
+      token,
+      "taxi_driver_applications",
+      [
+        fieldEquals("userId", targetUid)
+      ]
+    ).catch(() => []),
+firestoreQuery(env, token, "merchant_applications", [
       fieldEquals("userId", targetUid)
     ]).catch(() => []),
     firestoreQuery(env, token, "auction_requests", [
@@ -1711,6 +4463,15 @@ async function deleteCurrentAccount(env, user, targetUid = user.uid, adminDelete
       deleteWrite(
         env,
         `driver_applications/${encodeURIComponent(application.id)}`
+      )
+    );
+  }
+
+  for (const application of taxiDriverApplications) {
+    writes.push(
+      deleteWrite(
+        env,
+        `taxi_driver_applications/${encodeURIComponent(application.id)}`
       )
     );
   }
@@ -2021,6 +4782,152 @@ function canManageBusiness(userId, business) {
 }
 __name(canManageBusiness, "canManageBusiness");
 
+
+async function listTaxiOfficeDrivers(request, env, user) {
+  const data = await readJson(request);
+  const businessId = String(data.businessId || "").trim();
+
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(businessId)) {
+    fail(
+      400,
+      "invalid-business",
+      "رقم مكتب التكسي غير صالح."
+    );
+  }
+
+  const token = await serviceToken(env);
+
+  const [actor, business] = await Promise.all([
+    firestoreGet(
+      env,
+      token,
+      `users/${encodeURIComponent(user.uid)}`
+    ),
+    firestoreGet(
+      env,
+      token,
+      `items/${encodeURIComponent(businessId)}`
+    )
+  ]);
+
+  if (!business || business.kind === "product") {
+    fail(
+      404,
+      "business-not-found",
+      "مكتب التكسي غير موجود."
+    );
+  }
+
+  const mayManage =
+    user.uid === PRIMARY_ADMIN_UID ||
+    actor?.role === "admin" ||
+    actor?.isAdmin === true ||
+    canManageBusiness(user.uid, business);
+
+  if (!mayManage) {
+    fail(
+      403,
+      "permission-denied",
+      "لا يحق لهذا الحساب عرض سائقي مكتب التكسي."
+    );
+  }
+
+  const type =
+    String(business.type || "").trim().toLowerCase();
+
+  const category =
+    String(business.category || "").trim().toLowerCase();
+
+  const activity =
+    String(
+      business.activityType ||
+      business.activity ||
+      ""
+    ).trim().toLowerCase();
+
+  const title =
+    String(business.title || "").trim().toLowerCase();
+
+  const taxiBusiness =
+    type === "taxi" ||
+    category.includes("تكسي") ||
+    category.includes("تاكسي") ||
+    category.includes("taxi") ||
+    activity.includes("تكسي") ||
+    activity.includes("تاكسي") ||
+    activity.includes("taxi") ||
+    title.includes("تكسي") ||
+    title.includes("تاكسي");
+
+  if (!taxiBusiness) {
+    fail(
+      409,
+      "not-taxi-business",
+      "المحل المحدد ليس مكتب تكسي."
+    );
+  }
+
+  const matches = await firestoreQuery(
+    env,
+    token,
+    "users",
+    [
+      fieldEquals("taxiBusinessId", businessId)
+    ]
+  );
+
+  const drivers = matches
+    .filter(
+      (driver) =>
+        driver?.id &&
+        driver.taxiDriverEnabled === true
+    )
+    .map((driver) => ({
+      uid: String(driver.id),
+
+      name: String(
+        driver.displayName ||
+        driver.name ||
+        driver.fullName ||
+        "سائق بركة"
+      )
+        .trim()
+        .slice(0, 120),
+
+      vehicle: String(
+        driver.taxiDriverVehicle ||
+        driver.vehicleInfo ||
+        driver.vehicle ||
+        driver.carInfo ||
+        ""
+      )
+        .trim()
+        .slice(0, 160),
+
+      plateNumber: String(
+        driver.taxiDriverPlateNumber || ""
+      )
+        .trim()
+        .slice(0, 40),
+
+      vehicleColor: String(
+        driver.taxiDriverVehicleColor || ""
+      )
+        .trim()
+        .slice(0, 60)
+    }));
+
+  return {
+    ok: true,
+    businessId,
+    drivers
+  };
+}
+__name(
+  listTaxiOfficeDrivers,
+  "listTaxiOfficeDrivers"
+);
+
 async function assignTaxiDriver(request, env, user) {
   const data = await readJson(request);
   const driverUid = String(data.driverUid || "").trim();
@@ -2060,21 +4967,21 @@ async function assignTaxiDriver(request, env, user) {
     `users/${encodeURIComponent(driverUid)}`
   );
 
-  if (!driver || driver.role !== "driver") {
+  if (!driver) {
     fail(
       404,
       "driver-not-found",
-      "الحساب غير موجود أو ليس سائقًا معتمدًا."
+      "الحساب غير موجود."
     );
   }
 
   // ربط السيارة بمكتب تكسي لا يتم إلا بعد وجود وثيقة طلب سائق معتمدة.
   // تبقى الهوية والرخصة ووثائق المركبة والتأمين وبيانات المستحقات وشروط
-  // السائق محفوظة في driver_applications ولا يمكن تجاوزها بتعديل profile.
+  // السائق محفوظة في taxi_driver_applications ولا يمكن تجاوزها بتعديل profile.
   const driverApplication = await firestoreGet(
     env,
     token,
-    `driver_applications/${encodeURIComponent(driverUid)}`
+    `taxi_driver_applications/${encodeURIComponent(driverUid)}`
   );
 
   if (
@@ -2377,18 +5284,28 @@ async function createMerchantProduct(request, env, user) {
       `items/${encodeURIComponent(businessId)}`
     )
   ]);
-  if (!actor || actor.role !== "merchant" || actor.merchantEnabled !== true) {
+  const isAdminProductManager = isPrimaryAdmin(user, actor);
+
+  if (
+    !isAdminProductManager &&
+    (!actor || actor.role !== "merchant" || actor.merchantEnabled !== true)
+  ) {
     fail(
       403,
       "merchant-not-authorized",
-      "\u0647\u0630\u0627 \u0627\u0644\u062D\u0633\u0627\u0628 \u063A\u064A\u0631 \u0645\u0641\u0648\u0636 \u0644\u0625\u062F\u0627\u0631\u0629 \u0645\u062A\u062C\u0631."
+      "\u0647\u0630\u0627 \u0627\u0644\u062d\u0633\u0627\u0628 \u063a\u064a\u0631 \u0645\u0641\u0648\u0636 \u0644\u0625\u062f\u0627\u0631\u0629 \u0645\u062a\u062c\u0631."
     );
   }
-  if (!business || business.kind === "product" || !canManageBusiness(user.uid, business)) {
+
+  if (
+    !business ||
+    business.kind === "product" ||
+    (!isAdminProductManager && !canManageBusiness(user.uid, business))
+  ) {
     fail(
       403,
       "business-not-owned",
-      "\u0644\u0627 \u064A\u0645\u0643\u0646\u0643 \u0625\u0636\u0627\u0641\u0629 \u0645\u0646\u062A\u062C\u0627\u062A \u0625\u0644\u0649 \u0647\u0630\u0627 \u0627\u0644\u0645\u062A\u062C\u0631."
+      "\u0644\u0627 \u064a\u0645\u0643\u0646\u0643 \u0625\u0636\u0627\u0641\u0629 \u0645\u0646\u062a\u062c\u0627\u062a \u0625\u0644\u0649 \u0647\u0630\u0627 \u0627\u0644\u0645\u062a\u062c\u0631."
     );
   }
   const productId = crypto.randomUUID().replace(/-/g, "");
@@ -2679,7 +5596,7 @@ async function createAgentOrder(request, env, user) {
     const pushTokens = (await Promise.all(
       [...new Set(recipients)].map((uid) => userPushTokens(env, token, uid))
     )).flat();
-    await sendPushToTokens(env, token, pushTokens, {
+    await sendPushBestEffort(env, token, pushTokens, {
       title: "طلب جديد للوسيطة",
       body: `طلب جديد إلى ${record.agentName}`,
       data: { type: "agent_order", requestId, agentId }
@@ -3956,6 +6873,7 @@ async function createOrder(request, env, user) {
     status: scheduledFor ? "scheduled" : "new",
     businessId,
     businessTitle: business.title || null,
+    restaurantAddress: String(business.address || ""),
     restaurantLatitude: finiteOrNull(business.latitude),
     restaurantLongitude: finiteOrNull(business.longitude),
     preparationMinutes,
@@ -4269,6 +7187,21 @@ async function cancelCustomerOrder(env, user, orderId) {
       writes
     );
     if (result) {
+      try {
+        await notifyCustomerOrderStatus(
+          env,
+          token,
+          { ...order, ...orderPatch },
+          orderId,
+          "cancelled"
+        );
+      } catch (error) {
+        console.error(
+          "customer_cancel_notification_failed",
+          error.message
+        );
+      }
+
       return {
         orderId,
         status: "cancelled",
@@ -4306,7 +7239,7 @@ __name(canTransitionOrderStatus, "canTransitionOrderStatus");
 async function updateOrderStatus(request, env, user, orderId) {
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(orderId)) fail(400, "invalid-order", "\u0631\u0642\u0645 \u0627\u0644\u0637\u0644\u0628 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D.");
   const data = await readJson(request);
-  const allowed = /* @__PURE__ */ new Set(["accepted", "preparing", "ready", "rejected", "picked_up", "delivered"]);
+  const allowed = /* @__PURE__ */ new Set(["accepted", "preparing", "ready", "rejected", "picked_up", "delivered", "awaiting_driver"]);
   if (!allowed.has(data.status)) fail(400, "invalid-status", "\u062D\u0627\u0644\u0629 \u0627\u0644\u0637\u0644\u0628 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D\u0629.");
   const token = await serviceToken(env);
   const [actor, order] = await Promise.all([
@@ -4334,6 +7267,29 @@ async function updateOrderStatus(request, env, user, orderId) {
   if (!isAdmin && !(isMerchant && merchantStates.has(data.status)) && !(isPickupMerchant && data.status === "delivered") && !(isDriver && driverStates.has(data.status))) {
     fail(403, "permission-denied", "\u0644\u0627 \u062A\u0645\u0644\u0643 \u0635\u0644\u0627\u062D\u064A\u0629 \u062A\u063A\u064A\u064A\u0631 \u0647\u0630\u0627 \u0627\u0644\u0637\u0644\u0628.");
   }
+  if (data.status === "awaiting_driver") {
+    if (
+      !isAdmin ||
+      order.status !== "ready" ||
+      order.awaitingAdminApproval !== true ||
+      order.deliveryMethod === "pickup"
+    ) {
+      fail(
+        403,
+        "admin-approval-required",
+        "\u0644\u0627 \u064a\u0645\u0643\u0646 \u0625\u0631\u0633\u0627\u0644 \u0627\u0644\u0637\u0644\u0628 \u0644\u0644\u0633\u0627\u0626\u0642 \u0642\u0628\u0644 \u0645\u0648\u0627\u0641\u0642\u0629 \u0627\u0644\u0623\u062f\u0645\u0646."
+      );
+    }
+
+    return await publishOrderToDrivers(
+      env,
+      token,
+      order,
+      orderId,
+      user.uid
+    );
+  }
+
   if (!canTransitionOrderStatus(order.status, data.status, {
     isAdmin,
     isPickupMerchant,
@@ -4352,12 +7308,66 @@ async function updateOrderStatus(request, env, user, orderId) {
     fail(409, "scheduled-order", "\u0644\u0645 \u064A\u062D\u0646 \u0645\u0648\u0639\u062F \u0627\u0644\u0637\u0644\u0628 \u0627\u0644\u0645\u062C\u062F\u0648\u0644 \u0628\u0639\u062F.");
   }
   if (data.status === "ready") {
-    const result = await publishOrderToDrivers(env, token, order, orderId);
+    if (order.deliveryMethod === "pickup") {
+      const result = await publishOrderToDrivers(
+        env,
+        token,
+        order,
+        orderId,
+        user.uid
+      );
+
+      try {
+        await notifyCustomerOrderStatus(
+          env,
+          token,
+          { ...order, status: "ready" },
+          orderId,
+          "ready"
+        );
+      } catch (error) {
+        console.error(
+          "customer_status_notification_failed",
+          error.message
+        );
+      }
+
+      return result;
+    }
+
+    const statusChangedAt = /* @__PURE__ */ new Date();
+
+    const orderPatch = {
+      status: "ready",
+      awaitingDriver: false,
+      awaitingAdminApproval: true,
+      readyAt: statusChangedAt,
+      readyBy: user.uid,
+      updatedAt: statusChangedAt
+    };
+
+    const result = await firestoreCommit(env, token, [
+      updateWrite(
+        env,
+        "orders/" + encodeURIComponent(orderId),
+        orderPatch,
+        order.updateTime
+      )
+    ]);
+
+    if (!result) {
+      fail(
+        409,
+        "order-changed",
+        "\u062a\u063a\u064a\u0651\u0631\u062a \u062d\u0627\u0644\u0629 \u0627\u0644\u0637\u0644\u0628\u061b \u062d\u062f\u0651\u062b \u0627\u0644\u0635\u0641\u062d\u0629."
+      );
+    }
+
     try {
       await notifyCustomerOrderStatus(
         env,
         token,
-        { ...order, status: "ready" },
+        { ...order, ...orderPatch },
         orderId,
         "ready"
       );
@@ -4367,7 +7377,108 @@ async function updateOrderStatus(request, env, user, orderId) {
         error.message
       );
     }
-    return result;
+
+    // إشعار الأدمن الرئيسي + مشرفي الطلبات بأن الطلب جاهز للموافقة.
+    try {
+      const [ownerTokens, supervisors, business, directlyLinkedMerchants, managedBusinessMerchants] =
+        await Promise.all([
+          adminPushTokens(env, token),
+          firestoreQuery(env, token, "users", [
+            fieldEquals("role", "order_supervisor")
+          ]),
+          order.businessId
+            ? firestoreGet(
+                env,
+                token,
+                `items/${encodeURIComponent(order.businessId)}`
+              )
+            : null,
+          order.businessId
+            ? firestoreQuery(env, token, "users", [
+                fieldEquals("merchantBusinessId", order.businessId)
+              ])
+            : [],
+          order.businessId
+            ? firestoreQuery(env, token, "users", [
+                fieldArrayContains("managedBusinessIds", order.businessId)
+              ])
+            : []
+        ]);
+
+      const adminTokens = [
+        ...ownerTokens,
+        ...supervisors
+          .filter(
+            (supervisor) =>
+              supervisor.adminPermissions?.manageOrders === true
+          )
+          .flatMap((supervisor) =>
+            selectRecentPushTokens(supervisor.fcmTokens)
+          )
+      ];
+
+      const merchantUserIds = [
+        business?.ownerId,
+        ...(Array.isArray(business?.managerIds) ? business.managerIds : [])
+      ].filter(Boolean);
+
+      const merchantTokens = (
+        await Promise.all(
+          [...new Set(merchantUserIds)].map((uid) =>
+            userPushTokens(env, token, uid)
+          )
+        )
+      ).flat();
+
+      merchantTokens.push(
+        ...directlyLinkedMerchants.flatMap((profile) =>
+          selectRecentPushTokens(profile.fcmTokens)
+        ),
+        ...managedBusinessMerchants.flatMap((profile) =>
+          selectRecentPushTokens(profile.fcmTokens)
+        )
+      );
+
+      const orderLabel = String(
+        order.orderNumber || orderId.substring(0, 6).toUpperCase()
+      );
+
+      await sendPushBestEffort(
+        env,
+        token,
+        [
+          ...adminTokens,
+          ...merchantTokens
+        ],
+        {
+          title: "\u0637\u0644\u0628 \u062c\u0627\u0647\u0632 \u0644\u0644\u0645\u0648\u0627\u0641\u0642\u0629",
+          body:
+            "\u0627\u0644\u0637\u0644\u0628 #" +
+            orderLabel +
+            " \u062c\u0627\u0647\u0632 \u0645\u0646 " +
+            (order.businessTitle || "\u0627\u0644\u0645\u062d\u0644") +
+            " \u0648\u064a\u0646\u062a\u0638\u0631 \u0645\u0648\u0627\u0641\u0642\u062a\u0643 \u0644\u0625\u0631\u0633\u0627\u0644\u0647 \u0644\u0644\u0633\u0627\u0626\u0642.",
+          data: {
+            type: "order_status",
+            orderId,
+            orderNumber: orderLabel,
+            status: "ready",
+            awaitingAdminApproval: "true"
+          }
+        }
+      );
+    } catch (error) {
+      console.error(
+        "admin_ready_notification_failed",
+        error.message
+      );
+    }
+
+    return {
+      orderId,
+      status: "ready",
+      awaitingAdminApproval: true
+    };
   }
   if (data.status === "delivered") {
     return completeDelivery(
@@ -4380,8 +7491,30 @@ async function updateOrderStatus(request, env, user, orderId) {
       isPickupMerchant
     );
   }
-  const timestampField = data.status === "accepted" ? { acceptedAt: /* @__PURE__ */ new Date() } : {};
-  const orderPatch = { status: data.status, updatedAt: /* @__PURE__ */ new Date(), ...timestampField };
+  const statusChangedAt = /* @__PURE__ */ new Date();
+  const statusAuditFields = {
+    accepted: {
+      acceptedAt: statusChangedAt,
+      acceptedBy: user.uid
+    },
+    preparing: {
+      preparingAt: statusChangedAt,
+      preparingBy: user.uid
+    },
+    rejected: {
+      rejectedAt: statusChangedAt,
+      rejectedBy: user.uid
+    },
+    picked_up: {
+      pickedUpAt: statusChangedAt,
+      pickedUpBy: user.uid
+    }
+  };
+  const orderPatch = {
+    status: data.status,
+    updatedAt: statusChangedAt,
+    ...(statusAuditFields[data.status] || {})
+  };
   const writes = [];
   if (data.status === "rejected" && order.stockRestored !== true) {
     writes.push(...await restoreOrderInventory(env, token, order));
@@ -4404,6 +7537,26 @@ async function updateOrderStatus(request, env, user, orderId) {
       "\u062A\u063A\u064A\u0651\u0631\u062A \u062D\u0627\u0644\u0629 \u0627\u0644\u0637\u0644\u0628\u061B \u062D\u062F\u0651\u062B \u0627\u0644\u0635\u0641\u062D\u0629."
     );
   }
+  if (
+    data.status === "accepted" ||
+    data.status === "rejected"
+  ) {
+    try {
+      await notifyOrderAdminAlarmStop(
+        env,
+        token,
+        orderId,
+        { ...order, status: data.status },
+        data.status
+      );
+    } catch (error) {
+      console.error(
+        "order_admin_alarm_stop_notification_failed",
+        error.message
+      );
+    }
+  }
+
   try {
     await notifyCustomerOrderStatus(
       env,
@@ -4424,7 +7577,7 @@ async function updateOrderStatus(request, env, user, orderId) {
   };
 }
 __name(updateOrderStatus, "updateOrderStatus");
-async function publishOrderToDrivers(env, token, order, orderId) {
+async function publishOrderToDrivers(env, token, order, orderId, actorId) {
   if (order.deliveryMethod === "pickup") {
     const result2 = await firestoreCommit(env, token, [
       updateWrite(
@@ -4433,6 +7586,8 @@ async function publishOrderToDrivers(env, token, order, orderId) {
         {
           status: "ready",
           awaitingDriver: false,
+          readyAt: /* @__PURE__ */ new Date(),
+          readyBy: actorId,
           updatedAt: /* @__PURE__ */ new Date()
         },
         order.updateTime
@@ -4459,6 +7614,11 @@ async function publishOrderToDrivers(env, token, order, orderId) {
       {
         status: "awaiting_driver",
         awaitingDriver: true,
+        awaitingAdminApproval: false,
+        adminApprovedAt: /* @__PURE__ */ new Date(),
+        adminApprovedBy: actorId,
+        readyAt: order.readyAt || /* @__PURE__ */ new Date(),
+        readyBy: order.readyBy || actorId,
         availableDriverCount: availableDrivers.length,
         driverBroadcastAt: /* @__PURE__ */ new Date(),
         updatedAt: /* @__PURE__ */ new Date()
@@ -4469,13 +7629,15 @@ async function publishOrderToDrivers(env, token, order, orderId) {
   if (!result) {
     fail(409, "order-changed", "\u062A\u063A\u064A\u0651\u0631\u062A \u062D\u0627\u0644\u0629 \u0627\u0644\u0637\u0644\u0628\u061B \u062D\u062F\u0651\u062B \u0627\u0644\u0635\u0641\u062D\u0629.");
   }
-  const driverTokens = availableDrivers.flatMap((driver) => Array.isArray(driver.fcmTokens) ? driver.fcmTokens : []);
+  const driverTokens = availableDrivers.flatMap(
+    (driver) => selectRecentPushTokens(driver.fcmTokens, 1)
+  );
   if (driverTokens.length > 0) {
     const orderLabel = String(
       order.orderNumber || orderId.substring(0, 6).toUpperCase()
     );
     try {
-      await sendPushToTokens(
+      await sendPushBestEffort(
         env,
         token,
         driverTokens,
@@ -4530,6 +7692,9 @@ async function listAvailableDriverOrders(env, user) {
       id: order.id,
       orderNumber: order.orderNumber || null,
       businessTitle: order.businessTitle || null,
+      restaurantAddress: order.restaurantAddress || null,
+      restaurantLatitude: order.restaurantLatitude ?? null,
+      restaurantLongitude: order.restaurantLongitude ?? null,
       total: Number(order.total || 0)
     })).slice(0, 30)
   };
@@ -4546,13 +7711,13 @@ async function waitingDriverOrders(env, token) {
 __name(waitingDriverOrders, "waitingDriverOrders");
 async function notifyDriverAboutWaitingOrders(env, token, driver, orders) {
   const waitingOrders = orders ?? await waitingDriverOrders(env, token);
-  const driverTokens = Array.isArray(driver?.fcmTokens) ? driver.fcmTokens : [];
+  const driverTokens = selectRecentPushTokens(driver?.fcmTokens);
   if (!waitingOrders.length || !driverTokens.length) return waitingOrders.length;
   const firstOrder = waitingOrders[0];
   const orderLabel = String(
     firstOrder.orderNumber || firstOrder.id?.substring(0, 6).toUpperCase() || "جديد"
   );
-  await sendPushToTokens(env, token, driverTokens, {
+  await sendPushBestEffort(env, token, driverTokens, {
     title: "طلب بحاجة لسائق 🚗",
     body: waitingOrders.length === 1
       ? `الطلب #${orderLabel} جاهز. افتح لوحة السائق للموافقة عليه.`
@@ -4610,13 +7775,23 @@ async function setDriverAvailability(request, env, user) {
     fail(409, "driver-changed", "تغيّرت حالة السائق. حاول مجددًا.");
   }
   let waitingOrderCount = 0;
+
   if (available) {
-    waitingOrderCount = await notifyDriverAboutWaitingOrders(
-      env,
-      token,
-      driver
-    );
+    try {
+      waitingOrderCount =
+        await notifyDriverAboutWaitingOrders(
+          env,
+          token,
+          driver
+        );
+    } catch (error) {
+      console.error(
+        "waiting_driver_notification_failed",
+        String(error?.message || error)
+      );
+    }
   }
+
   return { available, waitingOrderCount };
 }
 __name(setDriverAvailability, "setDriverAvailability");
@@ -4657,6 +7832,8 @@ async function claimDriverOrder(env, user, orderId) {
         driverName: driver.fullName || driver.displayName || driver.email || "\u0633\u0627\u0626\u0642 \u0628\u0631\u0643\u0629",
         driverPhone: driver.driverPhone || driver.phone || null,
         driverAcceptedAt: /* @__PURE__ */ new Date(),
+        driverAssignedAt: /* @__PURE__ */ new Date(),
+        driverAssignedBy: user.uid,
         updatedAt: /* @__PURE__ */ new Date()
       },
       order.updateTime
@@ -4747,6 +7924,7 @@ async function completeDelivery(env, token, initialOrder, orderId, actorId, isAd
         status: "delivered",
         rewardGranted: true,
         deliveredAt: /* @__PURE__ */ new Date(),
+        deliveredBy: actorId,
         rewardGrantedAt: /* @__PURE__ */ new Date(),
         accountingFinalizedAt: /* @__PURE__ */ new Date(),
         loyaltyPointsAwarded: earnedPoints,
@@ -5084,5 +8262,15 @@ export {
   canUploadMedia,
   canTransitionOrderStatus,
   createImageKitSignature,
-  index_default as default
+  index_default as default,
+communicationAudienceMatches,
+communicationCampaignProgress,
+normalizeCommunicationCampaignInput,
+createCommunicationCampaign,
+processCommunicationCampaign,
+  selectCampaignPushTokens,
+  selectRecentPushTokens,
+  isUnregisteredFcmError,
+  isRetryableFcmStatus,
+  sendPushBestEffort,
 };

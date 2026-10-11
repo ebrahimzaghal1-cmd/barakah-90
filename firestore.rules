@@ -768,6 +768,84 @@ match /agent_orders/{requestId} {
         (signedIn() && request.auth.uid == agentId);
 
       allow create, update, delete: if isAdmin();
+
+      // قطع الوسيطة: الأدمن يديرها، والوسيطة تقرأ قطعها فقط.
+      match /pieces/{pieceId} {
+        allow read: if isAdmin() ||
+          (signedIn() && request.auth.uid == agentId);
+
+        allow create: if isAdmin() &&
+          exists(/databases/$(database)/documents/agents/$(agentId)) &&
+          pieceId.matches('^[A-Z0-9_-]{2,40}$') &&
+          request.resource.data.keys().hasOnly([
+            'agentId',
+            'agentName',
+            'pieceCode',
+            'name',
+            'size',
+            'color',
+            'notes',
+            'active',
+            'createdAt',
+            'updatedAt'
+          ]) &&
+          request.resource.data.agentId == agentId &&
+          request.resource.data.pieceCode == pieceId &&
+          request.resource.data.agentName is string &&
+          request.resource.data.agentName.size() > 0 &&
+          request.resource.data.agentName.size() <= 120 &&
+          request.resource.data.name is string &&
+          request.resource.data.name.size() > 0 &&
+          request.resource.data.name.size() <= 120 &&
+          request.resource.data.size is string &&
+          request.resource.data.size.size() <= 80 &&
+          request.resource.data.color is string &&
+          request.resource.data.color.size() <= 80 &&
+          request.resource.data.notes is string &&
+          request.resource.data.notes.size() <= 1000 &&
+          request.resource.data.active is bool &&
+          request.resource.data.createdAt == request.time &&
+          request.resource.data.updatedAt == request.time;
+
+        allow update: if isAdmin() &&
+          request.resource.data.agentId == resource.data.agentId &&
+          request.resource.data.agentId == agentId &&
+          request.resource.data.pieceCode == resource.data.pieceCode &&
+          request.resource.data.pieceCode == pieceId &&
+          request.resource.data.createdAt == resource.data.createdAt &&
+          request.resource.data.agentName is string &&
+          request.resource.data.agentName.size() > 0 &&
+          request.resource.data.agentName.size() <= 120 &&
+          request.resource.data.name is string &&
+          request.resource.data.name.size() > 0 &&
+          request.resource.data.name.size() <= 120 &&
+          request.resource.data.size is string &&
+          request.resource.data.size.size() <= 80 &&
+          request.resource.data.color is string &&
+          request.resource.data.color.size() <= 80 &&
+          request.resource.data.notes is string &&
+          request.resource.data.notes.size() <= 1000 &&
+          request.resource.data.active is bool &&
+          request.resource.data.updatedAt == request.time &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'agentName',
+            'name',
+            'size',
+            'color',
+            'notes',
+            'active',
+            'updatedAt'
+          ]);
+
+        allow delete: if isAdmin();
+      }
+    }
+
+
+    // يسمح للوحة الأدمن بالبحث المركزي عبر collectionGroup('pieces').
+    // الكتابة تبقى محكومة بقواعد agents/{agentId}/pieces أعلاه.
+    match /{path=**}/pieces/{pieceId} {
+      allow read: if isAdmin();
     }
 
     match /business_ratings/{businessId}/votes/{userId} {

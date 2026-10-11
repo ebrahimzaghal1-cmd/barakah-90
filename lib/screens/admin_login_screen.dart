@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import '../admin/admin_dashboard.dart';
+import '../services/admin_notification_service.dart';
 import '../services/user_profile_service.dart';
 import '../theme/app_theme.dart';
 
@@ -68,7 +69,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
           user != null && (await _profiles.adminAccess(user.uid)).canOpenAdmin;
       if (!mounted) return;
       if (!isAdmin) {
-        await FirebaseAuth.instance.signOut();
+        await AdminNotificationService.instance.signOutCurrentUser();
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('هذا الحساب لا يملك صلاحية الأدمن.'),

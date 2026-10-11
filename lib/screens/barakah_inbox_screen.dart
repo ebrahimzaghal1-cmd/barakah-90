@@ -8,9 +8,11 @@ class BarakahInboxScreen extends StatelessWidget {
   const BarakahInboxScreen({
     super.key,
     required this.userId,
+    this.title = 'رسائل بركة',
   });
 
   final String userId;
+  final String title;
 
   IconData _icon(String type) {
     if (type == 'offer') return Icons.local_offer_rounded;
@@ -40,9 +42,9 @@ class BarakahInboxScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: AppTheme.navy,
         foregroundColor: Colors.white,
-        title: const Text(
-          'رسائل بركة',
-          style: TextStyle(fontWeight: FontWeight.w900),
+        title: Text(
+          title,
+          style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         centerTitle: true,
       ),

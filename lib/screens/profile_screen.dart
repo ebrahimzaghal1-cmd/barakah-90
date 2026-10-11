@@ -74,69 +74,78 @@ class ProfileScreen extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
-    // Firebase Web is not configured yet. Do not call FirebaseAuth in the
-    // Chrome preview, so the screen remains usable instead of showing an error.
-    if (!FirebaseState.isReady) return const _WebPreviewProfile();
-    return ValueListenableBuilder<Locale>(
-      valueListenable: AppLanguageService.instance.locale,
-      builder: (context, locale, _) {
-        final copy = _ProfileCopy(locale.languageCode);
-        return Scaffold(
-          backgroundColor: const Color(0xFFFFFCF5),
-          appBar: AppBar(
-            backgroundColor: Colors.white,
-            elevation: 0,
-            centerTitle: true,
-            surfaceTintColor: Colors.transparent,
-            title: Text(
-              copy.myPage,
-              style: const TextStyle(
-                color: AppTheme.navy,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            iconTheme: const IconThemeData(color: AppTheme.navy),
-          ),
-          body: Stack(
-            fit: StackFit.expand,
-            children: [
-              Image.asset(
-                'assets/images/profile_gold_background.jpg',
-                fit: BoxFit.cover,
-                alignment: Alignment.center,
-              ),
-              const ColoredBox(color: Color(0xB8FFFCF5)),
-              ResponsivePage(
-                child: StreamBuilder<User?>(
-                  stream: AuthService().authStateChanges,
-                  builder: (context, snapshot) {
-                    final user = snapshot.data;
-                    if (user == null) {
-                      return _ProfileBody(
-                          user: null,
-                          data: const {},
-                          copy: copy,
-                          onAdmin: _openAdmin);
-                    }
-                    return StreamBuilder<
-                        DocumentSnapshot<Map<String, dynamic>>>(
-                      stream: FirebaseFirestore.instance
-                          .collection('users')
-                          .doc(user.uid)
-                          .snapshots(),
-                      builder: (context, profileSnapshot) => _ProfileBody(
-                        user: user,
-                        data: profileSnapshot.data?.data() ?? const {},
-                        copy: copy,
-                        onAdmin: _openAdmin,
-                      ),
-                    );
-                  },
+  Widget build(BuildContext context) => ValueListenableBuilder<bool>(
+        valueListenable: AdminNotificationService.instance.notificationsEnabled,
+        builder: (context, enabled, _) => _buildWithNotifications(context),
+      );
+
+  Widget _buildWithNotifications(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: FirebaseState.ready,
+      builder: (context, firebaseReady, _) {
+        if (!firebaseReady) return const _WebPreviewProfile();
+
+        return ValueListenableBuilder<Locale>(
+          valueListenable: AppLanguageService.instance.locale,
+          builder: (context, locale, _) {
+            final copy = _ProfileCopy(locale.languageCode);
+            return Scaffold(
+              backgroundColor: const Color(0xFFFFFCF5),
+              appBar: AppBar(
+                backgroundColor: Colors.white,
+                elevation: 0,
+                centerTitle: true,
+                surfaceTintColor: Colors.transparent,
+                title: Text(
+                  copy.myPage,
+                  style: const TextStyle(
+                    color: AppTheme.navy,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
+                iconTheme: const IconThemeData(color: AppTheme.navy),
               ),
-            ],
-          ),
+              body: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.asset(
+                    'assets/images/profile_gold_background.jpg',
+                    fit: BoxFit.cover,
+                    alignment: Alignment.center,
+                  ),
+                  const ColoredBox(color: Color(0xB8FFFCF5)),
+                  ResponsivePage(
+                    child: StreamBuilder<User?>(
+                      stream: AuthService().authStateChanges,
+                      builder: (context, snapshot) {
+                        final user = snapshot.data;
+                        if (user == null) {
+                          return _ProfileBody(
+                              user: null,
+                              data: const {},
+                              copy: copy,
+                              onAdmin: _openAdmin);
+                        }
+                        return StreamBuilder<
+                            DocumentSnapshot<Map<String, dynamic>>>(
+                          stream: FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(user.uid)
+                              .snapshots(),
+                          builder: (context, profileSnapshot) => _ProfileBody(
+                            user: user,
+                            data: profileSnapshot.data?.data() ?? const {},
+                            copy: copy,
+                            onAdmin: _openAdmin,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         );
       },
     );
@@ -365,7 +374,7 @@ class _ProfileBody extends StatelessWidget {
               ),
               _ProfileAction(
                 icon: Icons.notifications_none_rounded,
-                title: 'الإشعارات',
+                title: AdminNotificationService.instance.activationLabel,
                 onTap: () => requireLogin(() async {
                   final enabled = await AdminNotificationService.instance
                       .requestPermissionForCurrentUser();

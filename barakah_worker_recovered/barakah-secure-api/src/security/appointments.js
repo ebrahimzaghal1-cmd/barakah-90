@@ -72,7 +72,9 @@ export async function createAppointment(store, user, input, { now = new Date(), 
     tx.set(dayPath, { updatedAt: now, revision: crypto.randomUUID() });
     tx.set(`barber_slot_locks/${lockId}`, { businessId, dateKey: window.dateKey, startMinutes: window.startMinutes, endMinutes: window.endMinutes, bookingId, status: 'reserved', createdAt: now });
     tx.set(`barber_bookings/${bookingId}`, { businessId, serviceId: input.serviceId, serviceTitle: String(window.service.title), customerId: user.uid,
-      customerName: input.customerName.trim(), customerPhone: input.customerPhone.trim(), dateKey: window.dateKey, startMinutes: window.startMinutes, endMinutes: window.endMinutes,
+      customerName: input.customerName.trim(), customerPhone: input.customerPhone.trim(),
+      customerEmail: String(actor.email || user.email || '').trim(),
+      dateKey: window.dateKey, startMinutes: window.startMinutes, endMinutes: window.endMinutes,
       scheduledAt: window.scheduledAt, price, commissionRate: 10, commissionAmount, businessNetAmount: Number((price - commissionAmount).toFixed(2)),
       lockId, status: 'pending', orderType: 'barber_booking', createdAt: now, updatedAt: now, bookingVersion: 2 });
     return { bookingId, status: 'pending' };
@@ -105,8 +107,35 @@ export async function updateAppointment(store, user, bookingId, status, { now = 
       requireValue(!bookings.some(b => b.id !== bookingId && b.data.status !== 'cancelled' && overlap(booking, b.data)) &&
         !locks.some(l => l.data.status === 'reserved' && !(l.id === lockId && belongs) && overlap(booking, l.data)), 'slot-unavailable', 'الموعد يتداخل مع حجز آخر.', 409);
     }
+    const statusAuditFields = {
+      confirmed: {
+        confirmedAt: now,
+        confirmedBy: user.uid,
+      },
+      completed: {
+        completedAt: now,
+        completedBy: user.uid,
+      },
+      cancelled: {
+        cancelledAt: now,
+        cancelledBy: user.uid,
+      },
+      no_show: {
+        noShowAt: now,
+        noShowBy: user.uid,
+      },
+    };
+
     tx.set(dayPath, { updatedAt: now, revision: crypto.randomUUID() });
-    tx.set(`barber_bookings/${bookingId}`, { status, updatedAt: now }, { merge: true });
+    tx.set(
+      `barber_bookings/${bookingId}`,
+      {
+        status,
+        updatedAt: now,
+        ...(statusAuditFields[status] || {}),
+      },
+      { merge: true },
+    );
     if (status !== 'cancelled' || belongs) tx.set(`barber_slot_locks/${lockId}`, { businessId, dateKey: booking.dateKey, startMinutes: booking.startMinutes, endMinutes: booking.endMinutes,
       bookingId, status: status === 'cancelled' ? 'cancelled' : 'reserved', createdAt: lock?.createdAt || now });
     return { bookingId, status };

@@ -20,8 +20,11 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       LatLng(widget.latitude ?? 32.3104, widget.longitude ?? 35.0286);
   final MapController _mapController = MapController();
   var _loadingLocation = false;
+  int _locationRevision = 0;
+  late bool _hasSelection = widget.latitude != null && widget.longitude != null;
 
   Future<void> _useCurrentLocation() async {
+    final revision = ++_locationRevision;
     setState(() => _loadingLocation = true);
     try {
       if (!await Geolocator.isLocationServiceEnabled()) throw Exception();
@@ -34,17 +37,20 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
         throw Exception();
       }
       final position = await Geolocator.getCurrentPosition();
+      if (!mounted || revision != _locationRevision) return;
       _selected = LatLng(position.latitude, position.longitude);
+      _hasSelection = true;
       _mapController.move(_selected, 16);
       if (mounted) setState(() {});
     } catch (_) {
-      if (mounted) {
+      if (mounted && revision == _locationRevision) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text(
                 'تعذر تحديد الموقع. فعّلي خدمة الموقع واسمحي للتطبيق بالوصول إليها.')));
       }
     } finally {
-      if (mounted) setState(() => _loadingLocation = false);
+      if (mounted && revision == _locationRevision)
+        setState(() => _loadingLocation = false);
     }
   }
 
@@ -59,7 +65,12 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                 initialCenter: _selected,
                 initialZoom: 14,
                 onTap: (_, point) {
-                  setState(() => _selected = point);
+                  setState(() {
+                    ++_locationRevision;
+                    _loadingLocation = false;
+                    _selected = point;
+                    _hasSelection = true;
+                  });
                   _mapController.move(point, _mapController.camera.zoom);
                 }),
             children: [
@@ -104,10 +115,12 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                 SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                        onPressed: () => Navigator.pop(context, {
-                              'latitude': _selected.latitude,
-                              'longitude': _selected.longitude
-                            }),
+                        onPressed: !_hasSelection
+                            ? null
+                            : () => Navigator.pop(context, {
+                                  'latitude': _selected.latitude,
+                                  'longitude': _selected.longitude
+                                }),
                         child: const Text('تأكيد وحفظ الموقع'))),
               ])),
         ]),

@@ -190,7 +190,12 @@ class _RestaurantsScreenState extends State<RestaurantsScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ValueListenableBuilder<bool>(
+        valueListenable: AdminNotificationService.instance.notificationsEnabled,
+        builder: (context, enabled, _) => _buildWithNotifications(context),
+      );
+
+  Widget _buildWithNotifications(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Stack(
@@ -284,7 +289,8 @@ class _RestaurantsScreenState extends State<RestaurantsScreen> {
                             ),
                             const SizedBox(width: 10),
                             IconButton(
-                              tooltip: 'تفعيل الإشعارات',
+                              tooltip: AdminNotificationService
+                                  .instance.activationLabel,
                               onPressed: () async {
                                 final enabled = await AdminNotificationService
                                     .instance

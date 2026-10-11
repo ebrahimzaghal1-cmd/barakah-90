@@ -7,7 +7,14 @@ import '../widgets/chat_media_widgets.dart';
 import '../theme/app_theme.dart';
 
 class AdminBroadcastCampaigns extends StatefulWidget {
-  const AdminBroadcastCampaigns({super.key});
+  const AdminBroadcastCampaigns({
+    super.key,
+    this.service,
+    this.campaignsStream,
+  });
+
+  final CommunicationCampaignService? service;
+  final Stream<QuerySnapshot<Map<String, dynamic>>>? campaignsStream;
 
   @override
   State<AdminBroadcastCampaigns> createState() =>
@@ -17,15 +24,18 @@ class AdminBroadcastCampaigns extends StatefulWidget {
 class _AdminBroadcastCampaignsState extends State<AdminBroadcastCampaigns> {
   final _title = TextEditingController();
   final _body = TextEditingController();
-  final _service = CommunicationCampaignService();
+  late final _service = widget.service ?? CommunicationCampaignService();
   final _mediaDraft = ChatMediaDraft();
 
   String _audience = 'all';
   String _type = 'message';
   bool _sending = false;
+  bool _checkingFcm = false;
   String _progress = '';
+  String _fcmCheckResult = '';
 
   static const audiences = <String, String>{
+    'admin_only': 'اختبار - الإدارة فقط',
     'all': 'جميع مستخدمي بركة',
     'customers': 'العملاء / المشتركون',
     'merchants': 'أصحاب المحلات / الشركاء',
@@ -130,7 +140,7 @@ class _AdminBroadcastCampaignsState extends State<AdminBroadcastCampaigns> {
       _mediaDraft.clear();
 
       setState(() {
-        _progress = 'تم الإرسال إلى ${result.recipientCount} حساب ✅';
+        _progress = _completionMessage(result);
       });
     } catch (error) {
       if (!mounted) return;
@@ -150,12 +160,101 @@ class _AdminBroadcastCampaignsState extends State<AdminBroadcastCampaigns> {
     }
   }
 
+  Future<void> _checkAdminFcmTokens() async {
+    if (_checkingFcm) return;
+
+    setState(() {
+      _checkingFcm = true;
+      _fcmCheckResult = 'جارٍ فحص توكنات الإدارة بدون إرسال إشعارات...';
+    });
+
+    try {
+      final result = await _service.checkAdminFcmTokens();
+
+      if (!mounted) return;
+
+      final total = (result['totalTokenCount'] as num?)?.toInt() ?? 0;
+      final checked = (result['checkedCount'] as num?)?.toInt() ?? 0;
+      final valid = (result['validCount'] as num?)?.toInt() ?? 0;
+      final unregistered = (result['unregisteredCount'] as num?)?.toInt() ?? 0;
+      final failed = (result['failedCount'] as num?)?.toInt() ?? 0;
+      final unknown = (result['unknownCount'] as num?)?.toInt() ?? 0;
+
+      setState(() {
+        _fcmCheckResult = 'فحص صامت: $checked من أصل $total توكن\n'
+            'صالحة: $valid • غير مسجلة: $unregistered • '
+            'فشل آخر: $failed • غير مؤكدة: $unknown\n'
+            'لم يتم حذف أي توكن.';
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _fcmCheckResult = '';
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error.toString().replaceFirst('Bad state: ', ''),
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _checkingFcm = false);
+      }
+    }
+  }
+
+  String _completionMessage(CommunicationCampaignProgress progress) {
+    final inbox = 'حُفظت الحملة في رسائل بركة لدى '
+        '${progress.recipientCount} حساب.';
+    if (progress.pushTargetCount == 0) return inbox;
+    return '$inbox\n'
+        'إشعارات مقبولة: ${progress.pushSuccessCount} • '
+        'فشلت: ${progress.pushFailureCount} • '
+        'غير مؤكدة: ${progress.pushUnknownCount}';
+  }
+
+  Future<void> _resume(String campaignId) async {
+    if (_sending) return;
+    setState(() {
+      _sending = true;
+      _progress = 'جارٍ استئناف الحملة...';
+    });
+    try {
+      final result = await _service.sendExisting(
+        campaignId,
+        onProgress: (progress) {
+          if (!mounted) return;
+          setState(() {
+            _progress = 'فحص ${progress.scannedCount} حساب • '
+                'المستلمون ${progress.recipientCount}';
+          });
+        },
+      );
+      if (!mounted) return;
+      setState(() => _progress = _completionMessage(result));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(error.toString().replaceFirst('Bad state: ', '')),
+        backgroundColor: Colors.red,
+      ));
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final campaigns = FirebaseFirestore.instance
-        .collection('communication_campaigns')
-        .orderBy('createdAt', descending: true)
-        .snapshots();
+    final campaigns = widget.campaignsStream ??
+        FirebaseFirestore.instance
+            .collection('communication_campaigns')
+            .orderBy('createdAt', descending: true)
+            .snapshots();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F5F7),
@@ -256,6 +355,43 @@ class _AdminBroadcastCampaignsState extends State<AdminBroadcastCampaigns> {
               ),
             ),
           ),
+          OutlinedButton.icon(
+            onPressed: _checkingFcm ? null : _checkAdminFcmTokens,
+            icon: _checkingFcm
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.security_update_good_rounded),
+            label: Text(
+              _checkingFcm
+                  ? 'جارٍ الفحص الصامت...'
+                  : 'فحص توكنات الإدارة - بدون حذف',
+            ),
+          ),
+          if (_fcmCheckResult.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: AppTheme.navy.withValues(alpha: 0.15),
+                ),
+              ),
+              child: Text(
+                _fcmCheckResult,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: AppTheme.navy,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 24),
           const Text(
             'سجل الحملات',
@@ -269,6 +405,9 @@ class _AdminBroadcastCampaignsState extends State<AdminBroadcastCampaigns> {
           StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
             stream: campaigns,
             builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return const Text('تعذر تحميل سجل الحملات. حاول مجددًا.');
+              }
               if (!snapshot.hasData) {
                 return const Center(
                   child: Padding(
@@ -310,16 +449,27 @@ class _AdminBroadcastCampaignsState extends State<AdminBroadcastCampaigns> {
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('المستلمون: $count'),
+                          Text('رسائل بركة: $count حساب'),
+                          if (status == 'completed' &&
+                              ((data['pushTargetCount'] as num?) ?? 0) > 0)
+                            Text(
+                              'إشعارات مقبولة: ${data['pushSuccessCount'] ?? 0} • '
+                              'فشلت: ${data['pushFailureCount'] ?? 0} • '
+                              'غير مؤكدة: ${data['pushUnknownCount'] ?? 0}',
+                            ),
                           const SizedBox(height: 8),
                           ChatMessageContent(
                             data: {...data, 'text': data['body'] ?? ''},
                           ),
                         ],
                       ),
-                      trailing: Text(
-                        status == 'completed' ? 'مكتملة' : 'جارٍ الإرسال',
-                      ),
+                      trailing: status == 'completed'
+                          ? const Text('مكتملة')
+                          : TextButton(
+                              onPressed:
+                                  _sending ? null : () => _resume(doc.id),
+                              child: const Text('استئناف'),
+                            ),
                     ),
                   );
                 }).toList(),

@@ -1,12 +1,17 @@
-import 'package:barakah90/widgets/responsive_page.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:integration_test/integration_test.dart';
+import '../lib/main.dart' as app;
 
 void main() {
-  testWidgets('responsive page keeps its child visible', (tester) async {
-    await tester.pumpWidget(const MaterialApp(
-      home: Scaffold(body: ResponsivePage(child: Text('Barakah'))),
-    ));
-    expect(find.text('Barakah'), findsOneWidget);
+  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets('Barakah launches without crashing', (tester) async {
+    app.main();
+
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle(const Duration(seconds: 10));
+
+    expect(tester.takeException(), isNull);
   });
 }

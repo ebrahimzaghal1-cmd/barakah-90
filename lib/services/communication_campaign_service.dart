@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
@@ -13,6 +14,9 @@ class CommunicationCampaignProgress {
     required this.scannedCount,
     required this.pushTargetCount,
     required this.pageCount,
+    this.pushSuccessCount = 0,
+    this.pushFailureCount = 0,
+    this.pushUnknownCount = 0,
   });
 
   final String campaignId;
@@ -21,6 +25,9 @@ class CommunicationCampaignProgress {
   final int scannedCount;
   final int pushTargetCount;
   final int pageCount;
+  final int pushSuccessCount;
+  final int pushFailureCount;
+  final int pushUnknownCount;
 
   factory CommunicationCampaignProgress.fromJson(
     Map<String, dynamic> json,
@@ -32,6 +39,9 @@ class CommunicationCampaignProgress {
       scannedCount: (json['scannedCount'] as num?)?.toInt() ?? 0,
       pushTargetCount: (json['pushTargetCount'] as num?)?.toInt() ?? 0,
       pageCount: (json['pageCount'] as num?)?.toInt() ?? 0,
+      pushSuccessCount: (json['pushSuccessCount'] as num?)?.toInt() ?? 0,
+      pushFailureCount: (json['pushFailureCount'] as num?)?.toInt() ?? 0,
+      pushUnknownCount: (json['pushUnknownCount'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -40,13 +50,19 @@ class CommunicationCampaignService {
   CommunicationCampaignService({
     FirebaseAuth? auth,
     http.Client? client,
+    Future<void> Function(Duration)? delay,
   })  : _auth = auth ?? FirebaseAuth.instance,
-        _client = client;
+        _client = client,
+        _delay = delay ?? Future<void>.delayed;
 
   static const _base = 'https://barakah-secure-api.ebrahimzaghal1.workers.dev';
 
   final FirebaseAuth _auth;
   final http.Client? _client;
+  final Future<void> Function(Duration) _delay;
+  String? _pendingPayload;
+  String? _pendingCreationKey;
+  String? _pendingCampaignId;
 
   Future<String> createCampaign({
     required String title,
@@ -56,6 +72,7 @@ class CommunicationCampaignService {
     String? imageUrl,
     String? videoUrl,
     String? mediaType,
+    String? idempotencyKey,
   }) async {
     final media = chatMediaFields(
       imageUrl: imageUrl,
@@ -74,6 +91,7 @@ class CommunicationCampaignService {
         'type': type,
         ...media,
       },
+      idempotencyKey: idempotencyKey,
     );
 
     final campaignId = result['campaignId']?.toString() ?? '';
@@ -88,12 +106,18 @@ class CommunicationCampaignService {
   Future<CommunicationCampaignProgress> processCampaign(
     String campaignId,
   ) async {
-    final result = await _post(
-      '/v1/admin/communications/campaigns/process',
-      {'campaignId': campaignId},
-    );
-
-    return CommunicationCampaignProgress.fromJson(result);
+    for (var attempt = 0;; attempt++) {
+      try {
+        final result = await _post(
+          '/v1/admin/communications/campaigns/process',
+          {'campaignId': campaignId},
+        );
+        return CommunicationCampaignProgress.fromJson(result);
+      } on _CampaignRequestError catch (error) {
+        if (error.statusCode != 409 || attempt >= 3) rethrow;
+        await _delay(Duration(seconds: 2 << attempt));
+      }
+    }
   }
 
   Future<CommunicationCampaignProgress> createAndSend({
@@ -106,7 +130,29 @@ class CommunicationCampaignService {
     String? mediaType,
     void Function(CommunicationCampaignProgress progress)? onProgress,
   }) async {
-    final campaignId = await createCampaign(
+    final payload = jsonEncode({
+      'title': title.trim(),
+      'body': body.trim(),
+      'audience': audience,
+      'type': type,
+      ...chatMediaFields(
+        imageUrl: imageUrl,
+        videoUrl: videoUrl,
+        mediaType: mediaType,
+      ),
+    });
+    if (_pendingPayload != payload) {
+      final random = Random.secure();
+      _pendingPayload = payload;
+      _pendingCreationKey = List.generate(
+        16,
+        (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+      ).join();
+      _pendingCampaignId = null;
+    }
+    // Keep both the creation key and the returned ID after an interrupted send.
+    // Retrying the same draft must resume its campaign instead of creating one.
+    final campaignId = _pendingCampaignId ??= await createCampaign(
       title: title,
       body: body,
       audience: audience,
@@ -114,8 +160,15 @@ class CommunicationCampaignService {
       imageUrl: imageUrl,
       videoUrl: videoUrl,
       mediaType: mediaType,
+      idempotencyKey: _pendingCreationKey,
     );
+    return sendExisting(campaignId, onProgress: onProgress);
+  }
 
+  Future<CommunicationCampaignProgress> sendExisting(
+    String campaignId, {
+    void Function(CommunicationCampaignProgress progress)? onProgress,
+  }) async {
     var progress = CommunicationCampaignProgress(
       campaignId: campaignId,
       complete: false,
@@ -131,16 +184,35 @@ class CommunicationCampaignService {
     }
 
     if (!progress.complete) {
-      throw StateError('توقفت الحملة قبل إنهاء جميع الحسابات.');
+      throw StateError('لم تكتمل الحملة بعد. استأنفها من سجل الحملات.');
+    }
+    if (_pendingCampaignId == campaignId) {
+      _pendingCampaignId = null;
+      _pendingCreationKey = null;
+      _pendingPayload = null;
     }
 
     return progress;
   }
 
+  Future<Map<String, dynamic>> checkAdminFcmTokens({
+    int offset = 0,
+    bool apply = false,
+  }) {
+    return _post(
+      '/v1/admin/communications/fcm-cleanup',
+      {
+        'offset': offset,
+        'apply': apply,
+      },
+    );
+  }
+
   Future<Map<String, dynamic>> _post(
     String path,
-    Map<String, dynamic> body,
-  ) async {
+    Map<String, dynamic> body, {
+    String? idempotencyKey,
+  }) async {
     final user = _auth.currentUser;
 
     if (user == null) {
@@ -159,6 +231,7 @@ class CommunicationCampaignService {
       headers: {
         'Authorization': 'Bearer $token',
         'Content-Type': 'application/json; charset=utf-8',
+        if (idempotencyKey != null) 'Idempotency-Key': idempotencyKey,
       },
       body: jsonEncode(body),
     ).timeout(const Duration(seconds: 30));
@@ -181,10 +254,17 @@ class CommunicationCampaignService {
       return decoded;
     }
 
-    throw StateError(
+    throw _CampaignRequestError(
+      response.statusCode,
       decoded?['message']?.toString() ??
           decoded?['error']?.toString() ??
           'تعذر تنفيذ العملية.',
     );
   }
+}
+
+class _CampaignRequestError extends StateError {
+  _CampaignRequestError(this.statusCode, super.message);
+
+  final int statusCode;
 }

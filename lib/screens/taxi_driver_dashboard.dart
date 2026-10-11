@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import '../widgets/taxi_driver_tracking.dart';
+import '../widgets/order_navigation.dart';
 
 class TaxiDriverDashboard extends StatelessWidget {
   const TaxiDriverDashboard({super.key});
@@ -280,6 +281,16 @@ class TaxiDriverDashboard extends StatelessWidget {
                                 '🏁 الوجهة: '
                                 '${destination.isEmpty ? 'غير محددة' : destination}',
                               ),
+                              OrderNavigation(
+                                  label: 'الانطلاق',
+                                  address: pickupAddress,
+                                  latitude: data['pickupLatitude'],
+                                  longitude: data['pickupLongitude']),
+                              OrderNavigation(
+                                  label: 'الوجهة',
+                                  address: destination,
+                                  latitude: data['destinationLatitude'],
+                                  longitude: data['destinationLongitude']),
                               if (vehicle.isNotEmpty) ...[
                                 const SizedBox(height: 5),
                                 Text('🚕 السيارة: $vehicle'),

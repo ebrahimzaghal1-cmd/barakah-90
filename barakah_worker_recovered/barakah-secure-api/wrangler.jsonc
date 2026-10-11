@@ -6,7 +6,6 @@
   "compatibility_flags": [
     "global_fetch_strictly_public"
   ],
-
   "d1_databases": [
     {
       "binding": "DB",
@@ -14,16 +13,18 @@
       "database_id": "66681e60-4155-4b5e-82dd-1c613bb7ea66"
     }
   ],
-
   "vars": {
     "FIREBASE_PROJECT_ID": "barakah-new",
     "FIREBASE_WEB_API_KEY": "AIzaSyA8vUPyQHotiybswHkP5bAXqrXIkggM0Us",
-    "ALLOWED_ORIGINS": "https://barakah-new.web.app"
+    "ALLOWED_ORIGINS": "https://barakah-new.web.app,https://barakah-new-admin.web.app,https://barakah-live-fallback.pages.dev"
   },
-
   "observability": {
     "enabled": true
   },
-
-  "upload_source_maps": true
+  "upload_source_maps": true,
+  "triggers": {
+    "crons": [
+      "* * * * *"
+    ]
+  }
 }

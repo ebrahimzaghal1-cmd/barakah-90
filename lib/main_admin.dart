@@ -69,7 +69,8 @@ class AdminAuthGate extends StatelessWidget {
             if (profileSnapshot.hasError) {
               return _AccessErrorScreen(
                 message: 'تعذر التحقق من صلاحية الحساب.',
-                onLogout: () => FirebaseAuth.instance.signOut(),
+                onLogout: () =>
+                    AdminNotificationService.instance.signOutCurrentUser(),
               );
             }
 
@@ -79,7 +80,8 @@ class AdminAuthGate extends StatelessWidget {
             if (role != 'admin') {
               return _AccessErrorScreen(
                 message: 'هذا الحساب لا يملك صلاحية دخول لوحة إدارة بركة.',
-                onLogout: () => FirebaseAuth.instance.signOut(),
+                onLogout: () =>
+                    AdminNotificationService.instance.signOutCurrentUser(),
               );
             }
 
@@ -339,7 +341,6 @@ class _AccessErrorScreen extends StatelessWidget {
   }
 }
 
-
 class _AdminDashboardWithNotifications extends StatefulWidget {
   const _AdminDashboardWithNotifications();
 
@@ -374,7 +375,12 @@ class _AdminDashboardWithNotificationsState
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ValueListenableBuilder<bool>(
+        valueListenable: AdminNotificationService.instance.notificationsEnabled,
+        builder: (context, enabled, _) => _buildWithNotifications(context),
+      );
+
+  Widget _buildWithNotifications(BuildContext context) {
     return Stack(
       children: [
         const AdminDashboard(),
@@ -393,7 +399,9 @@ class _AdminDashboardWithNotificationsState
                     )
                   : const Icon(Icons.notifications_active_outlined),
               label: Text(
-                _busy ? 'جاري التفعيل...' : 'تفعيل الإشعارات',
+                _busy
+                    ? 'جاري التفعيل...'
+                    : AdminNotificationService.instance.activationLabel,
               ),
             ),
           ),

@@ -1,4 +1,5 @@
 import "package:firebase_auth/firebase_auth.dart";
+import 'admin_notification_service.dart';
 import 'user_profile_service.dart';
 
 class AuthService {
@@ -66,6 +67,11 @@ class AuthService {
 
   // تسجيل الخروج
   Future<void> signOut() async {
+    try {
+      await AdminNotificationService.instance.removeCurrentDeviceToken();
+    } catch (_) {
+      // Logout must still succeed if notification cleanup is unavailable.
+    }
     await _auth.signOut();
   }
 

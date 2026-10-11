@@ -30,6 +30,7 @@ import 'admin_agents_screen.dart';
 import 'admin_taxi_orders_screen.dart';
 import 'admin_taxi_offices_screen.dart';
 
+import '../screens/barakah_inbox_screen.dart';
 import '../theme/app_theme.dart';
 import '../services/user_profile_service.dart';
 import '../services/admin_submission_notification_service.dart';
@@ -56,8 +57,7 @@ class AdminDashboard extends StatelessWidget {
           );
         }
 
-        final access =
-            snapshot.data ??
+        final access = snapshot.data ??
             const AdminAccess(isOwner: false, canManageOrders: false);
         if (!access.canOpenAdmin) {
           return Scaffold(
@@ -243,6 +243,15 @@ class AdminDashboard extends StatelessWidget {
         icon: Icons.forum_rounded,
         page: const AdminCommunicationCenter(),
       ),
+      if (FirebaseAuth.instance.currentUser != null)
+        _AdminItem(
+          title: 'رسائل الإدارة',
+          icon: Icons.inbox_rounded,
+          page: BarakahInboxScreen(
+            userId: FirebaseAuth.instance.currentUser!.uid,
+            title: 'رسائل الإدارة',
+          ),
+        ),
       _AdminItem(
         title: 'سائقو التوصيل',
         icon: Icons.delivery_dining_rounded,
@@ -496,8 +505,8 @@ class AdminDashboard extends StatelessWidget {
                   final columns = constraints.maxWidth >= 900
                       ? 4
                       : constraints.maxWidth >= 600
-                      ? 3
-                      : 2;
+                          ? 3
+                          : 2;
                   return GridView.builder(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
@@ -598,7 +607,8 @@ class _AdminBusinessStats extends StatelessWidget {
                   business.data()['title']?.toString() ?? 'محل بدون اسم';
 
               return (title, totals[business.id] ?? totals[title] ?? 0);
-            }).toList()..sort((a, b) => b.$2.compareTo(a.$2));
+            }).toList()
+              ..sort((a, b) => b.$2.compareTo(a.$2));
 
             return Card(
               color: Colors.white.withOpacity(.10),
@@ -651,30 +661,30 @@ class _AdminBusinessStats extends StatelessWidget {
                               ),
                             ]
                           : rows
-                                .map(
-                                  (row) => ListTile(
-                                    dense: true,
-                                    leading: const Icon(
-                                      Icons.store_outlined,
-                                      color: AppTheme.coolYellow,
-                                    ),
-                                    title: Text(
-                                      row.$1,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                    trailing: Text(
-                                      '${row.$2}',
-                                      style: const TextStyle(
-                                        color: AppTheme.coolYellow,
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.w900,
-                                      ),
+                              .map(
+                                (row) => ListTile(
+                                  dense: true,
+                                  leading: const Icon(
+                                    Icons.store_outlined,
+                                    color: AppTheme.coolYellow,
+                                  ),
+                                  title: Text(
+                                    row.$1,
+                                    style: const TextStyle(
+                                      color: Colors.white,
                                     ),
                                   ),
-                                )
-                                .toList(),
+                                  trailing: Text(
+                                    '${row.$2}',
+                                    style: const TextStyle(
+                                      color: AppTheme.coolYellow,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ),
+                              )
+                              .toList(),
                     ),
                   ],
                 ),
@@ -845,107 +855,108 @@ class _AdminHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    height: 190,
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(28),
-      gradient: const LinearGradient(
-        begin: AlignmentDirectional.topStart,
-        end: AlignmentDirectional.bottomEnd,
-        colors: [Color(0xFF1D477E), Color(0xFF0A1B38)],
-      ),
-      border: Border.all(color: Colors.white12),
-      boxShadow: const [
-        BoxShadow(
-          color: Color(0x55040D20),
-          blurRadius: 28,
-          offset: Offset(0, 14),
-        ),
-      ],
-    ),
-    clipBehavior: Clip.antiAlias,
-    child: Stack(
-      children: [
-        PositionedDirectional(
-          end: -32,
-          top: -34,
-          bottom: -40,
-          width: 265,
-          child: Opacity(
-            opacity: .34,
-            child: Image.asset(
-              'assets/images/barakah_header_bunny.png',
-              fit: BoxFit.cover,
-              alignment: Alignment.centerRight,
-            ),
+        height: 190,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(28),
+          gradient: const LinearGradient(
+            begin: AlignmentDirectional.topStart,
+            end: AlignmentDirectional.bottomEnd,
+            colors: [Color(0xFF1D477E), Color(0xFF0A1B38)],
           ),
-        ),
-        PositionedDirectional(
-          start: -40,
-          top: -60,
-          child: Container(
-            width: 160,
-            height: 160,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppTheme.coolYellow.withOpacity(.08),
+          border: Border.all(color: Colors.white12),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x55040D20),
+              blurRadius: 28,
+              offset: Offset(0, 14),
             ),
-          ),
+          ],
         ),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 22, vertical: 18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Color(0x22FFFFFF),
-                  borderRadius: BorderRadius.all(Radius.circular(99)),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          children: [
+            PositionedDirectional(
+              end: -32,
+              top: -34,
+              bottom: -40,
+              width: 265,
+              child: Opacity(
+                opacity: .34,
+                child: Image.asset(
+                  'assets/images/barakah_header_bunny.png',
+                  fit: BoxFit.cover,
+                  alignment: Alignment.centerRight,
                 ),
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-                  child: Text(
-                    'BARAKAH CONTROL',
-                    style: TextStyle(
-                      color: AppTheme.coolYellow,
-                      fontSize: 11,
-                      letterSpacing: 1.1,
-                      fontWeight: FontWeight.w900,
+              ),
+            ),
+            PositionedDirectional(
+              start: -40,
+              top: -60,
+              child: Container(
+                width: 160,
+                height: 160,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppTheme.coolYellow.withOpacity(.08),
+                ),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Color(0x22FFFFFF),
+                      borderRadius: BorderRadius.all(Radius.circular(99)),
+                    ),
+                    child: Padding(
+                      padding:
+                          EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                      child: Text(
+                        'BARAKAH CONTROL',
+                        style: TextStyle(
+                          color: AppTheme.coolYellow,
+                          fontSize: 11,
+                          letterSpacing: 1.1,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-              SizedBox(height: 12),
-              SizedBox(
-                width: 235,
-                child: Text(
-                  'إدارة أذكى، أسرع، وأوضح',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    height: 1.25,
-                    fontWeight: FontWeight.w900,
+                  SizedBox(height: 12),
+                  SizedBox(
+                    width: 235,
+                    child: Text(
+                      'إدارة أذكى، أسرع، وأوضح',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        height: 1.25,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              SizedBox(height: 7),
-              SizedBox(
-                width: 225,
-                child: Text(
-                  'كل ما تحتاجينه لإدارة بركة من شاشة واحدة.',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    height: 1.4,
-                    fontWeight: FontWeight.w700,
+                  SizedBox(height: 7),
+                  SizedBox(
+                    width: 225,
+                    child: Text(
+                      'كل ما تحتاجينه لإدارة بركة من شاشة واحدة.',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        height: 1.4,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-      ],
-    ),
-  );
+      );
 }
 
 class _AdminRequestShortcut extends StatelessWidget {
@@ -1022,70 +1033,70 @@ class _OperationsShortcut extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Material(
-    color: Colors.transparent,
-    child: InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(24),
-      child: Ink(
-        padding: const EdgeInsets.all(17),
-        decoration: BoxDecoration(
-          color: AppTheme.coolYellow,
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
           borderRadius: BorderRadius.circular(24),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x44E8C64A),
-              blurRadius: 22,
-              offset: Offset(0, 10),
-            ),
-          ],
-        ),
-        child: const Row(
-          children: [
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: AppTheme.navy,
-                borderRadius: BorderRadius.all(Radius.circular(17)),
-              ),
-              child: SizedBox(
-                width: 58,
-                height: 58,
-                child: Icon(
-                  Icons.space_dashboard_rounded,
-                  color: AppTheme.coolYellow,
-                  size: 31,
+          child: Ink(
+            padding: const EdgeInsets.all(17),
+            decoration: BoxDecoration(
+              color: AppTheme.coolYellow,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x44E8C64A),
+                  blurRadius: 22,
+                  offset: Offset(0, 10),
                 ),
-              ),
+              ],
             ),
-            SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'الطلبات والمحاسبة',
-                    style: TextStyle(
-                      color: AppTheme.navy,
-                      fontSize: 19,
-                      fontWeight: FontWeight.w900,
+            child: const Row(
+              children: [
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: AppTheme.navy,
+                    borderRadius: BorderRadius.all(Radius.circular(17)),
+                  ),
+                  child: SizedBox(
+                    width: 58,
+                    height: 58,
+                    child: Icon(
+                      Icons.space_dashboard_rounded,
+                      color: AppTheme.coolYellow,
+                      size: 31,
                     ),
                   ),
-                  SizedBox(height: 4),
-                  Text(
-                    'مركز التشغيل اليومي • افتحيه أولًا',
-                    style: TextStyle(
-                      color: Color(0xB3122447),
-                      fontWeight: FontWeight.w700,
-                    ),
+                ),
+                SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'الطلبات والمحاسبة',
+                        style: TextStyle(
+                          color: AppTheme.navy,
+                          fontSize: 19,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'مركز التشغيل اليومي • افتحيه أولًا',
+                        style: TextStyle(
+                          color: Color(0xB3122447),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+                Icon(Icons.arrow_back_ios_new_rounded, color: AppTheme.navy),
+              ],
             ),
-            Icon(Icons.arrow_back_ios_new_rounded, color: AppTheme.navy),
-          ],
+          ),
         ),
-      ),
-    ),
-  );
+      );
 }
 
 class _TechBackground extends StatelessWidget {
@@ -1093,15 +1104,15 @@ class _TechBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const DecoratedBox(
-    decoration: BoxDecoration(
-      gradient: LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [Color(0xFF5B6068), Color(0xFF30343A)],
-      ),
-    ),
-    child: CustomPaint(painter: _TechGridPainter()),
-  );
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFF5B6068), Color(0xFF30343A)],
+          ),
+        ),
+        child: CustomPaint(painter: _TechGridPainter()),
+      );
 }
 
 class _TechGridPainter extends CustomPainter {
@@ -1193,9 +1204,8 @@ class _AdminAnalyticsScreen extends StatelessWidget {
                 ..sort((a, b) => b.value.compareTo(a.value));
 
               return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: FirebaseFirestore.instance
-                    .collection('orders')
-                    .snapshots(),
+                stream:
+                    FirebaseFirestore.instance.collection('orders').snapshots(),
                 builder: (context, orderSnapshot) {
                   final productTotals = <String, int>{};
 
@@ -1216,8 +1226,7 @@ class _AdminAnalyticsScreen extends StatelessWidget {
                           : int.tryParse(quantity?.toString() ?? '') ?? 1;
 
                       if (title.isNotEmpty) {
-                        productTotals[title] =
-                            (productTotals[title] ?? 0) +
+                        productTotals[title] = (productTotals[title] ?? 0) +
                             (count <= 0 ? 1 : count);
                       }
                     }
@@ -1312,9 +1321,8 @@ class _AnalyticsSummaryCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
         child: Row(
-          mainAxisAlignment: fullWidth
-              ? MainAxisAlignment.center
-              : MainAxisAlignment.start,
+          mainAxisAlignment:
+              fullWidth ? MainAxisAlignment.center : MainAxisAlignment.start,
           children: [
             Icon(icon, color: AppTheme.deepYellow, size: 30),
             const SizedBox(width: 12),
@@ -1612,9 +1620,8 @@ class _AdminAuctionRequestsScreen extends StatelessWidget {
 
   Widget _requestsTab(BuildContext context) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('auction_requests')
-          .snapshots(),
+      stream:
+          FirebaseFirestore.instance.collection('auction_requests').snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
@@ -1735,9 +1742,8 @@ class _AdminAuctionRequestsScreen extends StatelessWidget {
 
   Widget _salesTab(BuildContext context) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('auction_sales')
-          .snapshots(),
+      stream:
+          FirebaseFirestore.instance.collection('auction_sales').snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
@@ -1748,11 +1754,11 @@ class _AdminAuctionRequestsScreen extends StatelessWidget {
           ..sort((a, b) {
             final aTime =
                 (a.data()['createdAt'] as Timestamp?)?.millisecondsSinceEpoch ??
-                0;
+                    0;
 
             final bTime =
                 (b.data()['createdAt'] as Timestamp?)?.millisecondsSinceEpoch ??
-                0;
+                    0;
 
             return bTime.compareTo(aTime);
           });

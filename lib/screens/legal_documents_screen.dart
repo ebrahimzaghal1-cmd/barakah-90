@@ -26,7 +26,7 @@ class LegalDocumentScreen extends StatelessWidget {
         LegalDocumentType.driverTerms => 'شروط سائق بركة',
       };
 
-  List<(String, String)> get _sections => switch (type) {
+  List<(String, String)> get sections => switch (type) {
         LegalDocumentType.privacy => const [
             (
               'البيانات التي نجمعها',
@@ -189,7 +189,7 @@ class LegalDocumentScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          ..._sections.map(
+          ...sections.map(
             (section) => Card(
               elevation: 0,
               margin: const EdgeInsets.only(bottom: 12),

@@ -133,14 +133,14 @@ function baseStore(commissionRate = 10) {
     },
 
     [`users/${driverId}`]: {
-      role: "driver",
+      role: "customer",
       name: "سائق الاختبار",
       taxiDriverEnabled: true,
       taxiBusinessId: businessId,
     },
 
     [`users/${otherDriverId}`]: {
-      role: "driver",
+      role: "customer",
       name: "سائق آخر",
       taxiDriverEnabled: true,
       taxiBusinessId: businessId,
@@ -262,14 +262,14 @@ describe("Barakah taxi security and finance", () => {
     const order = store.read(`taxi_orders/${orderId}`);
 
     expect(order.fareAmount).toBe(50);
-    expect(order.commissionRate).toBe(10);
-    expect(order.commissionAmount).toBe(5);
-    expect(order.businessNet).toBe(45);
+    expect(order.commissionRate).toBe(0);
+    expect(order.commissionAmount).toBe(0);
+    expect(order.businessNet).toBe(50);
     expect(order.commissionStatus).toBe("pending");
     expect(order.commissionEarnedAt).toBeNull();
   });
 
-  it("uses the commission rate configured for that taxi office", async () => {
+  it("keeps taxi commission zero despite nonzero office settings", async () => {
     const store = baseStore(12.5);
     const orderId = await createAndDispatch(store);
 
@@ -286,9 +286,9 @@ describe("Barakah taxi security and finance", () => {
     const order = store.read(`taxi_orders/${orderId}`);
 
     expect(order.fareAmount).toBe(80);
-    expect(order.commissionRate).toBe(12.5);
-    expect(order.commissionAmount).toBe(10);
-    expect(order.businessNet).toBe(70);
+    expect(order.commissionRate).toBe(0);
+    expect(order.commissionAmount).toBe(0);
+    expect(order.businessNet).toBe(80);
   });
 
   it("does not allow the office to confirm arrival for the customer", async () => {
@@ -375,9 +375,9 @@ describe("Barakah taxi security and finance", () => {
 
     expect(order.status).toBe("completed");
     expect(order.fareAmount).toBe(50);
-    expect(order.commissionRate).toBe(10);
-    expect(order.commissionAmount).toBe(5);
-    expect(order.businessNet).toBe(45);
+    expect(order.commissionRate).toBe(0);
+    expect(order.commissionAmount).toBe(0);
+    expect(order.businessNet).toBe(50);
     expect(order.commissionStatus).toBe("earned");
     expect(order.commissionEarnedAt).toBeTruthy();
     expect(order.confirmedByCustomerAt).toBeTruthy();
@@ -393,9 +393,9 @@ describe("Barakah taxi security and finance", () => {
     expect(entry.customerId).toBe(customerId);
     expect(entry.source).toBe("taxi");
     expect(entry.fareAmount).toBe(50);
-    expect(entry.commissionRate).toBe(10);
-    expect(entry.commissionAmount).toBe(5);
-    expect(entry.businessNet).toBe(45);
+    expect(entry.commissionRate).toBe(0);
+    expect(entry.commissionAmount).toBe(0);
+    expect(entry.businessNet).toBe(50);
     expect(entry.status).toBe("earned");
     expect(entry.earnedAt).toBeTruthy();
     expect(entry.customerConfirmedAt).toBeTruthy();
@@ -441,8 +441,8 @@ describe("taxi financial cancellation protection", () => {
       "awaiting_customer_confirmation",
     );
     expect(beforeCancel.fareAmount).toBe(50);
-    expect(beforeCancel.commissionRate).toBe(10);
-    expect(beforeCancel.commissionAmount).toBe(5);
+    expect(beforeCancel.commissionRate).toBe(0);
+    expect(beforeCancel.commissionAmount).toBe(0);
     expect(beforeCancel.commissionStatus).toBe("pending");
 
     await expect(
@@ -467,7 +467,7 @@ describe("taxi financial cancellation protection", () => {
       "awaiting_customer_confirmation",
     );
     expect(afterCancelAttempt.fareAmount).toBe(50);
-    expect(afterCancelAttempt.commissionAmount).toBe(5);
+    expect(afterCancelAttempt.commissionAmount).toBe(0);
     expect(afterCancelAttempt.commissionStatus).toBe("pending");
   });
 });
@@ -627,7 +627,6 @@ describe("taxi live driver location", () => {
       ["non-boolean enabled", { taxiDriverEnabled: "true" }],
       ["moved to another office", { taxiBusinessId: "otherOffice" }],
       ["removed from an office", { taxiBusinessId: null }],
-      ["role changed", { role: "merchant" }],
     ])(`rechecks driver authorization for ${action} when %s`, async (_, patch) => {
       const store = baseStore();
       const orderId = await startTrip(store);
@@ -804,9 +803,9 @@ describe("taxi live driver location", () => {
         expect(before).toMatchObject({
           status: "awaiting_customer_confirmation",
           fareAmount: 80,
-          commissionRate: 12.5,
-          commissionAmount: 10,
-          businessNet: 70,
+          commissionRate: 0,
+          commissionAmount: 0,
+          businessNet: 80,
           commissionStatus: "pending",
         });
         await updateTaxiOrder(
@@ -817,8 +816,8 @@ describe("taxi live driver location", () => {
         );
         expect(store.read(`taxi_commission_entries/${orderId}`)).toMatchObject({
           fareAmount: 80,
-          commissionAmount: 10,
-          businessNet: 70,
+          commissionAmount: 0,
+          businessNet: 80,
           status: "earned",
         });
       } else {
@@ -832,4 +831,28 @@ describe("taxi live driver location", () => {
       }
     },
   );
+});
+
+
+describe("taxi route coordinates", () => {
+  it("persists both route points without accepting client commission", async () => {
+    const store = baseStore();
+    const created = await createTaxiOrder(store as any, {uid: customerId}, {
+      requestId: "route001", businessId, pickupAddress: "pickup", destination: "destination",
+      pickupLatitude: 32.3, pickupLongitude: 35.0,
+      destinationLatitude: 32.4, destinationLongitude: 35.1, commissionAmount: 900,
+    });
+    const order = store.read(`taxi_orders/${created.orderId}`);
+    expect(order.pickupLatitude).toBe(32.3);
+    expect(order.destinationLatitude).toBe(32.4);
+    expect(order.destinationLongitude).toBe(35.1);
+    expect(order.commissionAmount).toBeNull();
+  });
+  it("rejects incomplete and out of range route coordinates", async () => {
+    for (const coordinates of [{destinationLatitude: 32}, {destinationLatitude: 91, destinationLongitude: 35}, {pickupLongitude: 35}]) {
+      await expect(createTaxiOrder(baseStore() as any, {uid: customerId}, {
+        requestId: "route002", businessId, pickupAddress: "pickup", destination: "destination", ...coordinates,
+      })).rejects.toThrow();
+    }
+  });
 });

@@ -86,16 +86,9 @@ function taxiBusinessAvailable(business) {
     business?.businessStatus !== 'coming_soon';
 }
 
-function taxiCommissionRate(business) {
-  const configured = Number(business?.commissionRate);
-  const rate =
-    Number.isFinite(configured) &&
-    configured >= 0 &&
-    configured <= 100
-      ? configured
-      : 10;
-
-  return rate;
+function taxiCommissionRate(_business) {
+  // Taxi trips have no platform commission, regardless of office settings.
+  return 0;
 }
 
 function calculateTaxiFinance(business, fareAmount) {
@@ -162,6 +155,11 @@ export async function createTaxiOrder(
     -180,
     180,
   );
+
+  const destinationLatitude = optionalCoordinate(input.destinationLatitude, -90, 90);
+  const destinationLongitude = optionalCoordinate(input.destinationLongitude, -180, 180);
+  requireValue((pickupLatitude === null) === (pickupLongitude === null), 'invalid-location', 'إحداثيات الانطلاق غير مكتملة.', 400);
+  requireValue((destinationLatitude === null) === (destinationLongitude === null), 'invalid-location', 'إحداثيات الوجهة غير مكتملة.', 400);
 
   return store.runTransaction(async (tx) => {
     const existing = await tx.get(`taxi_orders/${orderId}`);
@@ -275,6 +273,8 @@ export async function createTaxiOrder(
       pickupLatitude,
       pickupLongitude,
       destination,
+      destinationLatitude,
+      destinationLongitude,
       notes,
       status: 'pending',
       dispatchedVehicle: null,
@@ -361,7 +361,6 @@ export async function updateTaxiOrder(
       // Neither office owners nor administrators may send GPS for a driver.
       requireValue(
         order.driverUid === user.uid &&
-          actor.role === 'driver' &&
           actor.taxiDriverEnabled === true &&
           actor.taxiBusinessId === businessId,
         'taxi-permission-denied',
@@ -460,7 +459,6 @@ export async function updateTaxiOrder(
 
       requireValue(
         !!driver &&
-          driver.role === 'driver' &&
           driver.taxiDriverEnabled === true &&
           documentId(driver.taxiBusinessId) === businessId,
         'invalid-taxi-driver',

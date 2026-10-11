@@ -1,0 +1,74 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isPrimaryAdmin() {
+      return signedIn() &&
+        request.auth.uid == 'Y3YeLin9gYTbqN4if72o3iTrUSn2';
+    }
+
+    function isFirestoreAdmin() {
+      return signedIn() &&
+        (
+          firestore.get(
+            /databases/(default)/documents/users/$(request.auth.uid)
+          ).data.isAdmin == true ||
+          firestore.get(
+            /databases/(default)/documents/users/$(request.auth.uid)
+          ).data.role == 'admin'
+        );
+    }
+
+    function isAdmin() {
+      return isPrimaryAdmin() || isFirestoreAdmin();
+    }
+
+    function isPdf() {
+      return request.resource != null
+        && request.resource.contentType == 'application/pdf'
+        && request.resource.size > 0
+        && request.resource.size <= 10 * 1024 * 1024;
+    }
+
+    // عقود مكاتب التكسي القديمة: لم تعد الكتابة متاحة
+    // لأي مستخدم مسجل، بل للأدمن فقط.
+    match /taxi_office_contracts/{officeId}/{fileName} {
+      allow read: if isAdmin();
+      allow create, update: if isAdmin() && isPdf();
+      allow delete: if isAdmin();
+    }
+
+    // عقود وسيطات بركة.
+    match /agent_contracts/{agentId}/{fileName} {
+      allow read: if isAdmin() ||
+        (signedIn() && request.auth.uid == agentId);
+
+      allow create, update: if isAdmin()
+        && fileName == 'contract.pdf'
+        && isPdf();
+
+      allow delete: if isAdmin();
+    }
+
+
+    // النسخ الموقعة لعقود الشركاء.
+    // لا تُقرأ أو تُكتب إلا من إدارة بركة.
+    match /partner_contracts/{applicationId}/{fileName} {
+      allow read: if isAdmin();
+
+      allow create, update: if isAdmin()
+        && fileName == 'contract.pdf'
+        && isPdf();
+
+      allow delete: if isAdmin();
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

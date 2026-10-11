@@ -887,3 +887,18 @@ describe('direct taxi driver acceptance', () => {
     await expect(acceptTaxiOrder(store, { uid: driverId }, b.orderId)).rejects.toMatchObject({ status: 409 });
   });
 });
+
+
+it('acceptance records both offices and cannot take an office id from the client', async () => {
+  const store = baseStore();
+  await store.runTransaction(async tx => {
+    tx.set('items/secondOffice', { type: 'taxi', title: 'Second taxi office', ownerId: otherMerchantId, isActive: true });
+    tx.set(`users/${otherDriverId}`, { taxiDriverEnabled: true, taxiBusinessId: 'secondOffice', name: 'Second driver' });
+  });
+  const created = await createTaxiOrder(store, { uid: customerId }, { requestId: 'direct05', pickupAddress: 'Pickup', destination: 'Destination' });
+  const original = store.read(`taxi_orders/${created.orderId}`).businessId;
+  await acceptTaxiOrder(store, { uid: otherDriverId }, created.orderId);
+  expect(store.read(`taxi_orders/${created.orderId}`)).toMatchObject({ businessId: 'secondOffice', originalBusinessId: original, driverUid: otherDriverId });
+  await updateTaxiOrder(store, { uid: otherMerchantId }, created.orderId, { action: 'complete', fareAmount: 70 });
+  expect(store.read(`taxi_orders/${created.orderId}`)).toMatchObject({ businessId: 'secondOffice', originalBusinessId: original, commissionAmount: 0, businessNet: 70 });
+});

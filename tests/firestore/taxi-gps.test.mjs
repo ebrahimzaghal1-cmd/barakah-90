@@ -196,3 +196,17 @@ test.skip('GPS REST transaction: cancellation or reassignment stops the previous
   }
   assert.deepEqual(await readOrder(), cancelled);
 });
+
+
+test('taxi original office keeps its order record after a driver from another office accepts', async () => {
+  await seed({
+    'users/secondMerchant': { role: 'merchant' },
+    'items/secondOffice': { ownerId: 'secondMerchant', managerIds: [] },
+    'taxi_orders/transferred': { businessId: 'secondOffice', originalBusinessId: 'office', customerId: 'customer', driverUid: 'driver', status: 'dispatched' },
+  });
+  await assertSucceeds(getDoc(doc(db('merchant'), 'taxi_orders/transferred')));
+  await assertSucceeds(getDocs(query(collection(db('merchant'), 'taxi_orders'), where('originalBusinessId', '==', 'office'))));
+  await assertSucceeds(getDoc(doc(db('secondMerchant'), 'taxi_orders/transferred')));
+  await assertFails(getDoc(doc(db('otherDriver'), 'taxi_orders/transferred')));
+  await assertFails(updateDoc(doc(db('merchant'), 'taxi_orders/transferred'), { driverUid: 'otherDriver' }));
+});

@@ -276,7 +276,8 @@ match /agent_orders/{requestId} {
         (isAdmin() ||
           resource.data.customerId == request.auth.uid ||
           resource.data.driverUid == request.auth.uid ||
-          ownsBusiness(resource.data.businessId));
+          ownsBusiness(resource.data.businessId) ||
+          ownsBusiness(resource.data.get('originalBusinessId', '')));
 
       // Taxi mutations remain server-only.
       allow create, update, delete: if false;

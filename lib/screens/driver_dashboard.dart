@@ -7,6 +7,7 @@ import '../services/driver_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/taxi_driver_tracking.dart';
 import '../widgets/order_navigation.dart';
+import '../widgets/available_taxi_orders.dart';
 
 class DriverDashboard extends StatelessWidget {
   const DriverDashboard({super.key});
@@ -343,6 +344,8 @@ class DriverDashboard extends StatelessWidget {
                 },
               ),
               const SizedBox(height: 18),
+              if (profile['taxiDriverEnabled'] == true)
+                const AvailableTaxiOrders(),
               const Text(
                 'رحلات تكسي بركة المعيّنة لي',
                 style: TextStyle(

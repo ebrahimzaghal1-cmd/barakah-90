@@ -154,9 +154,11 @@ class AdminNotificationService with WidgetsBindingObserver {
           tag: orderId.isNotEmpty ? orderId : message.messageId ?? title,
           urgent: type == 'new_order' ||
               type == 'driver_order_available' ||
+              type == 'taxi_driver_order_available' ||
               type == 'new_taxi_order',
           coinSound: type == 'order_status' ||
               type == 'driver_order_available' ||
+              type == 'taxi_driver_order_available' ||
               type == 'taxi_order',
         );
       });

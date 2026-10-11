@@ -1484,7 +1484,7 @@ class _MerchantTaxiOrders extends StatelessWidget {
         'استقبال الطلبات وإرسال السيارة وتوثيق الرحلات',
       ),
       children: [
-        StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        StreamBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
           stream: TaxiOrderService.instance.watchBusinessOrders(businessId),
           builder: (context, snapshot) {
             if (snapshot.hasError) {
@@ -1503,7 +1503,7 @@ class _MerchantTaxiOrders extends StatelessWidget {
               );
             }
 
-            final orders = snapshot.data!.docs.toList()
+            final orders = snapshot.data!.toList()
               ..sort((a, b) {
                 final aTime = a.data()['createdAt'];
                 final bTime = b.data()['createdAt'];

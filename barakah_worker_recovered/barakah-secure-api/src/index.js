@@ -1,6 +1,6 @@
 import { createFirestoreStore } from './security/store.js';
 import { createAppointment, updateAppointment } from './security/appointments.js';
-import { createTaxiOrder, updateTaxiOrder } from './security/taxi.js';
+import { createTaxiOrder, updateTaxiOrder, availableTaxiOrders, acceptTaxiOrder } from './security/taxi.js';
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
@@ -88,6 +88,11 @@ var index_default = {
         return json(await updateAppointment(store, user, decodeURIComponent(appointmentStatusMatch[1]), input.status, { primaryAdminUid: PRIMARY_ADMIN_UID }), 200, cors);
       }
 
+      if (request.method === "GET" && url.pathname === "/v1/taxi-driver/orders/available") {
+        const store = createFirestoreStore({ baseUrl: firestoreBase(env), token: await serviceToken(env) });
+        return json(await availableTaxiOrders(store, user), 200, cors);
+      }
+
       if (request.method === "POST" && url.pathname === "/v1/taxi-orders") {
         const token = await serviceToken(env);
         const store = createFirestoreStore({
@@ -144,7 +149,9 @@ var index_default = {
         const input = await readJson(request);
         const action = String(input?.action || "").trim();
 
-        const result = await updateTaxiOrder(
+        const result = action === "accept"
+          ? await acceptTaxiOrder(store, user, orderId)
+          : await updateTaxiOrder(
           store,
           user,
           orderId,
@@ -164,7 +171,7 @@ var index_default = {
               env,
               token,
               order,
-              action,
+              action === "accept" ? "dispatch" : action,
               user.uid
             );
           } catch (error) {
@@ -3341,31 +3348,14 @@ __name(adminPushTokens, "adminPushTokens");
 
 async function taxiBusinessPushTokens(env, token, order) {
   if (!order?.businessId) return [];
-
-  const business = await firestoreGet(
-    env,
-    token,
-    `items/${encodeURIComponent(order.businessId)}`
-  );
-
-  if (!business) {
-    return await adminPushTokens(env, token);
+  const businessIds = [...new Set([order.businessId, order.originalBusinessId].filter(Boolean))];
+  const businesses = await Promise.all(businessIds.map(id => firestoreGet(env, token, `items/${encodeURIComponent(id)}`)));
+  const userIds = [PRIMARY_ADMIN_UID];
+  for (const business of businesses.filter(Boolean)) {
+    if (business.ownerId) userIds.push(business.ownerId);
+    if (Array.isArray(business.managerIds)) userIds.push(...business.managerIds);
   }
-
-  const userIds = [
-    business.ownerId,
-    ...(Array.isArray(business.managerIds)
-      ? business.managerIds
-      : []),
-    PRIMARY_ADMIN_UID
-  ].filter(Boolean);
-
-  const groups = await Promise.all(
-    [...new Set(userIds)].map(
-      (uid) => userPushTokens(env, token, uid)
-    )
-  );
-
+  const groups = await Promise.all([...new Set(userIds)].map(uid => userPushTokens(env, token, uid)));
   return groups.flat();
 }
 __name(taxiBusinessPushTokens, "taxiBusinessPushTokens");
@@ -3439,8 +3429,16 @@ async function notifyTaxiLifecycle(
   }
 
   if (action === "created") {
-    const officeTokens =
-      await taxiBusinessPushTokens(env, token, order);
+    const officeTokens = await taxiBusinessPushTokens(env, token, order);
+    const store = createFirestoreStore({ baseUrl: firestoreBase(env), token });
+    const drivers = await store.query('users', { taxiDriverEnabled: true });
+    const driverTokenGroups = await Promise.all(drivers
+      .filter(row => row.id !== order.customerId && row.data.taxiBusinessId)
+      .map(async row => {
+        const office = await store.get(`items/${encodeURIComponent(row.data.taxiBusinessId)}`);
+        if (!office || office.data.isActive === false || office.data.status === 'closed' || office.data.businessStatus === 'closed') return [];
+        return userPushTokens(env, token, row.id);
+      }));
 
     await sendPushBestEffort(
       env,
@@ -3448,11 +3446,15 @@ async function notifyTaxiLifecycle(
       officeTokens,
       {
         title: "طلب تكسي جديد 🚕",
-        body: `الطلب ${orderNumber} بانتظار إرسال سيارة.`,
+        body: `الطلب ${orderNumber} متاح؛ افتح لوحة سائق التكسي لقبوله.`,
         data: commonData
       },
       "taxi_created_notification_failed"
     );
+    await sendPushBestEffort(env, token, [...new Set(driverTokenGroups.flat())], {
+      title: "طلب تكسي متاح 🚕", body: `الطلب ${orderNumber} متاح للقبول في لوحة السائق.`,
+      data: { ...commonData, type: "taxi_driver_order_available" }
+    }, "taxi_available_driver_notification_failed");
 
     return;
   }

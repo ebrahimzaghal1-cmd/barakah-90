@@ -678,3 +678,46 @@ export async function updateTaxiOrder(
     return { orderId, status: 'cancelled' };
   });
 }
+
+
+async function eligibleTaxiDriver(store, user) {
+  const actor = (await store.get(`users/${documentId(user.uid)}`))?.data;
+  requireValue(actor?.taxiDriverEnabled === true && typeof actor.taxiBusinessId === 'string' && !!actor.taxiBusinessId,
+    'taxi-driver-disabled', 'حسابك غير مفعّل كسائق تكسي.', 403);
+  const office = (await store.get(`items/${documentId(actor.taxiBusinessId)}`))?.data;
+  requireValue(taxiBusinessAvailable(office), 'taxi-office-unavailable', 'مكتب السائق غير متاح.', 403);
+  return actor;
+}
+
+export async function availableTaxiOrders(store, user) {
+  await eligibleTaxiDriver(store, user);
+  const rows = await store.query('taxi_orders', { status: 'pending' });
+  return { orders: rows.filter(row => row.data.customerId !== user.uid && !row.data.driverUid)
+    .sort((a, b) => new Date(b.data.createdAt) - new Date(a.data.createdAt))
+    .slice(0, 50).map(row => ({ orderId: row.id, orderNumber: row.data.orderNumber || 'طلب تكسي', status: 'pending' })) };
+}
+
+export async function acceptTaxiOrder(store, user, orderId, { now = new Date() } = {}) {
+  documentId(orderId);
+  return store.runTransaction(async tx => {
+    const actor = await eligibleTaxiDriver(tx, user);
+    const record = await tx.get(`taxi_orders/${orderId}`);
+    requireValue(!!record, 'taxi-order-not-found', 'طلب التكسي غير موجود.', 404);
+    const order = record.data;
+    requireValue(order.status === 'pending' && !order.driverUid,
+      'taxi-already-accepted', 'قبل سائق آخر هذا الطلب أو لم يعد متاحًا.', 409);
+    requireValue(order.customerId !== user.uid, 'taxi-self-accept', 'لا يمكنك قبول طلبك الخاص.', 403);
+    const active = await tx.query('taxi_orders', { driverUid: user.uid, status: 'dispatched' });
+    requireValue(active.length === 0, 'taxi-driver-busy', 'لديك رحلة نشطة؛ أكملها أولاً.', 409);
+    tx.set(`taxi_orders/${orderId}`, {
+      businessId: actor.taxiBusinessId, originalBusinessId: order.originalBusinessId || order.businessId,
+      status: 'dispatched', driverUid: user.uid,
+      driverName: String(actor.displayName || actor.name || actor.fullName || 'سائق بركة').slice(0, 120),
+      driverPhone: String(actor.phone || actor.phoneNumber || '').slice(0, 40),
+      dispatchedVehicle: String(actor.vehicleInfo || actor.vehicle || actor.carInfo || 'سيارة تكسي بركة').slice(0, 160),
+      dispatchedEtaMinutes: null, driverAssignedAt: now, driverAssignedBy: user.uid,
+      dispatchedAt: now, dispatchedBy: user.uid, updatedAt: now, directDriverAcceptance: true,
+    }, { merge: true });
+    return { orderId, status: 'dispatched' };
+  });
+}

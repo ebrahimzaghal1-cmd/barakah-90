@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../widgets/taxi_driver_tracking.dart';
 import '../widgets/order_navigation.dart';
+import '../widgets/available_taxi_orders.dart';
 
 class TaxiDriverDashboard extends StatelessWidget {
   const TaxiDriverDashboard({super.key});
@@ -111,6 +112,8 @@ class TaxiDriverDashboard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 18),
+              if (profile['taxiDriverEnabled'] == true)
+                const AvailableTaxiOrders(),
               const Text(
                 'رحلات التكسي المعيّنة لي',
                 style: TextStyle(

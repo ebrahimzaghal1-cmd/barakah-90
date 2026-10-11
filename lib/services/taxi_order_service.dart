@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -71,10 +72,58 @@ class TaxiOrderService {
     ).snapshots();
   }
 
-  Stream<QuerySnapshot<Map<String, dynamic>>> watchBusinessOrders(
-    String businessId,
-  ) {
-    return _collection.where('businessId', isEqualTo: businessId).snapshots();
+  Stream<List<QueryDocumentSnapshot<Map<String, dynamic>>>> watchBusinessOrders(
+      String businessId) {
+    late StreamController<List<QueryDocumentSnapshot<Map<String, dynamic>>>>
+        controller;
+    final subscriptions =
+        <StreamSubscription<QuerySnapshot<Map<String, dynamic>>>>[];
+    final batches =
+        <String, List<QueryDocumentSnapshot<Map<String, dynamic>>>>{};
+    controller = StreamController(onListen: () {
+      for (final field in ['businessId', 'originalBusinessId']) {
+        subscriptions.add(_collection
+            .where(field, isEqualTo: businessId)
+            .snapshots()
+            .listen((snapshot) {
+          batches[field] = snapshot.docs;
+          final unique =
+              <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+          for (final batch in batches.values) {
+            for (final doc in batch) {
+              unique[doc.id] = doc;
+            }
+          }
+          controller.add(unique.values.toList());
+        }, onError: controller.addError));
+      }
+    }, onCancel: () async {
+      for (final subscription in subscriptions) {
+        await subscription.cancel();
+      }
+    });
+    return controller.stream;
+  }
+
+  Future<List<Map<String, dynamic>>> availableOrders() async {
+    final user = _auth.currentUser;
+    if (user == null) throw StateError('يجب تسجيل الدخول.');
+    final response = await http
+        .get(Uri.parse('$_apiBase/v1/taxi-driver/orders/available'), headers: {
+      'Authorization': 'Bearer ${await user.getIdToken()}'
+    }).timeout(const Duration(seconds: 20));
+    final result =
+        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    if (response.statusCode != 200)
+      throw StateError(result['message']?.toString() ?? 'تعذر تحميل الطلبات.');
+    return (result['orders'] as List? ?? [])
+        .map((row) => Map<String, dynamic>.from(row as Map))
+        .toList();
+  }
+
+  Future<void> acceptOrder(String orderId) async {
+    await _post('/v1/taxi-orders/${Uri.encodeComponent(orderId)}/action',
+        {'action': 'accept'});
   }
 
   Future<void> dispatchTaxi({

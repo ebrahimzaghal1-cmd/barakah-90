@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   createTaxiOrder,
+  availableTaxiOrders,
+  acceptTaxiOrder,
   updateTaxiOrder,
 } from "../src/security/taxi.js";
 
@@ -854,5 +856,34 @@ describe("taxi route coordinates", () => {
         requestId: "route002", businessId, pickupAddress: "pickup", destination: "destination", ...coordinates,
       })).rejects.toThrow();
     }
+  });
+});
+
+
+describe('direct taxi driver acceptance', () => {
+  it('offers pending orders without customer identity, addresses or coordinates', async () => {
+    const store = baseStore();
+    const created = await createTaxiOrder(store, { uid: customerId }, { requestId: 'direct01', pickupAddress: 'Private pickup', destination: 'Private destination' });
+    const result = await availableTaxiOrders(store, { uid: driverId });
+    expect(result.orders[0]).toEqual({ orderId: created.orderId, orderNumber: expect.any(String), status: 'pending' });
+    await expect(availableTaxiOrders(store, { uid: customerId })).rejects.toMatchObject({ status: 403 });
+  });
+  it('first acceptance wins and office accounting is preserved with zero commission', async () => {
+    const store = baseStore();
+    const created = await createTaxiOrder(store, { uid: customerId }, { requestId: 'direct02', pickupAddress: 'Pickup', destination: 'Destination' });
+    await acceptTaxiOrder(store, { uid: driverId }, created.orderId);
+    await expect(acceptTaxiOrder(store, { uid: otherDriverId }, created.orderId)).rejects.toMatchObject({ status: 409 });
+    expect(store.read(`taxi_orders/${created.orderId}`)).toMatchObject({ driverUid: driverId, originalBusinessId: businessId, businessId, status: 'dispatched' });
+    expect((await availableTaxiOrders(store, { uid: otherDriverId })).orders).toEqual([]);
+    await updateTaxiOrder(store, { uid: merchantId }, created.orderId, { action: 'complete', fareAmount: 50 });
+    expect(store.read(`taxi_orders/${created.orderId}`)).toMatchObject({ commissionRate: 0, commissionAmount: 0, businessNet: 50 });
+  });
+  it('rejects a disabled driver and prevents a second active trip', async () => {
+    const store = baseStore();
+    const a = await createTaxiOrder(store, { uid: customerId }, { requestId: 'direct03', pickupAddress: 'Pickup', destination: 'Destination' });
+    await expect(acceptTaxiOrder(store, { uid: otherCustomerId }, a.orderId)).rejects.toMatchObject({ status: 403 });
+    await acceptTaxiOrder(store, { uid: driverId }, a.orderId);
+    const b = await createTaxiOrder(store, { uid: otherCustomerId }, { requestId: 'direct04', pickupAddress: 'Pickup', destination: 'Destination' });
+    await expect(acceptTaxiOrder(store, { uid: driverId }, b.orderId)).rejects.toMatchObject({ status: 409 });
   });
 });

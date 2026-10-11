@@ -726,15 +726,6 @@ class _TaxiOrderSheetState extends State<_TaxiOrderSheet> {
     final pickup = _pickupController.text.trim();
     final destination = _destinationController.text.trim();
 
-    if (_pickupLat == null ||
-        _pickupLng == null ||
-        _destinationLat == null ||
-        _destinationLng == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('حددي نقطة الانطلاق والوجهة على الخريطة أولاً.')));
-      return;
-    }
-
     if (pickup.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('يرجى تحديد موقع الركوب.')),
@@ -878,6 +869,8 @@ class _TaxiOrderSheetState extends State<_TaxiOrderSheet> {
               }),
               decoration: InputDecoration(
                 labelText: 'الوجهة (إلى أين تريد الذهاب؟)',
+                helperText:
+                    'يمكن إرسال الطلب بالعنوان؛ الخريطة تضيف موقعًا دقيقًا.',
                 hintText: 'مثال: جامعة خضوري، مفرق فرعون...',
                 prefixIcon: const Icon(Icons.location_on_rounded,
                     color: Colors.redAccent),
